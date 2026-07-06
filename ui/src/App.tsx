@@ -84,6 +84,7 @@ export default function App() {
       />
       <div className="toolbar">
         <PresetsMenu
+          currentQuery={query}
           onPick={(dsl) => {
             setQuery(dsl);
             run(dsl);
@@ -101,7 +102,7 @@ export default function App() {
             {result.hint ? ` · ${result.hint}` : ""}
           </span>
         )}
-        <a href={ranQuery ? exportCsvUrl(ranQuery, null) : "#"}>
+        <a href={ranQuery ? exportCsvUrl(ranQuery, null, columns) : "#"}>
           <button disabled={!ranQuery || !result?.total}>Export all results (CSV)</button>
         </a>
       </div>

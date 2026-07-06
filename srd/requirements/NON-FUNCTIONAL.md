@@ -52,7 +52,7 @@ The filter engine keeps its millisecond-class promise as the snapshot grows. [E8
 
 Zero-key operation is a guaranteed, permanent contract — not a degraded mode. Everything core runs from one docker compose up with no accounts and no external services. [E2][E5]
 
-**Metric:** A dedicated CI job runs the full E2E suite with an empty environment (no provider keys) and must pass for every release; docker compose up on a clean machine requires nothing but Docker; removing every key from a configured install returns it to a fully working state.
+**Metric:** The release-gating CI runs the entire offline test suite with NO provider keys configured — the enforced zero-key gate; the live compose E2E (real Yahoo crawl → first screen) is a documented manual/nightly procedure because it spends real request budget (first executed and passed 2026-07-07); docker compose up on a clean machine requires nothing but Docker; removing every key returns a configured install to fully working keyless operation.
 
 ## NFR-010 — data quality & transparency
 

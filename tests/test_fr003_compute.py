@@ -224,3 +224,18 @@ def test_fr003_raw_layer_round_trip_builds_snapshot(tmp_path) -> None:
     assert len(snapshot) == 3
     assert snapshot["symbol"].unique().tolist() == ["RT.PA"]
     assert snapshot.loc[snapshot["period"] == "2025", "piotroski_f"].iloc[0] == 9
+
+
+def test_fr003_null_cells_carry_a_note_naming_the_missing_inputs() -> None:
+    """FR-003 AC-2: the snapshot names the canonical inputs the provider did
+    not supply — every NULL ratio is explainable."""
+    frames = {
+        ("income", "annual"): income_frame(
+            {"TotalRevenue": [1000.0], "NetIncome": [80.0]}, ["2025"]
+        )
+    }
+    snapshot = build_symbol_snapshot("X.PA", frames, computed_at=1.0)
+    note = snapshot["missing_inputs"].iloc[0]
+    assert "operating_cashflow" in note
+    assert "total_assets" in note
+    assert "revenue" not in note.split(",")  # supplied fields are not listed

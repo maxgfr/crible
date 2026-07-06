@@ -34,10 +34,15 @@ def data_dir(tmp_path, monkeypatch):
             "net_income": [4e9, 5e9],
             "piotroski_f": [6, 8],
             "piotroski_roa_positive": [True, True],
+            "piotroski_ocf_positive": [True, True],
+            "piotroski_leverage_decreasing": [False, True],
             "altman_z": [3.0, 3.2],
+            "altman_x1_wc_ta": [0.2, 0.22],
             "beneish_m": [-2.4, -2.5],
             "beneish_dsri": [1.0, 1.05],
+            "beneish_sgi": [1.1, 1.08],
             "provider": ["yfinance", "yfinance"],
+            "price_asof": ["2026-07-03", "2026-07-03"],
             "computed_at": [time.time()] * 2,
         }
     )
@@ -48,14 +53,23 @@ def data_dir(tmp_path, monkeypatch):
 def test_fr012_full_history_scores_and_provenance(data_dir) -> None:
     detail = Runtime.from_env().company("AIR.PA")
     assert detail is not None
-    assert detail["profile"]["name"] == "ABN AMRO" or detail["profile"]["symbol"] == "AIR.PA"
+    assert detail["profile"]["name"] == "Airbus"
+    assert detail["profile"]["country"] == "FR"
     periods = detail["periods"]
     assert [p["period"] for p in periods] == ["2025", "2024"]  # newest first
-    assert periods[0]["piotroski_f"] == 8
-    assert periods[0]["piotroski_roa_positive"] is True  # criterion-level breakdown
-    assert periods[0]["beneish_dsri"] == pytest.approx(1.05)
-    assert periods[0]["provider"] == "yfinance"
-    assert periods[0]["computed_at"] is not None
+    latest = periods[0]
+    assert latest["piotroski_f"] == 8
+    # criterion-level breakdown, not just the aggregate score
+    assert latest["piotroski_roa_positive"] is True
+    assert latest["piotroski_leverage_decreasing"] is True
+    assert periods[1]["piotroski_leverage_decreasing"] is False
+    assert latest["altman_x1_wc_ta"] == pytest.approx(0.22)
+    assert latest["beneish_dsri"] == pytest.approx(1.05)
+    assert latest["beneish_sgi"] == pytest.approx(1.08)
+    # provenance: provider + price date + computation time
+    assert latest["provider"] == "yfinance"
+    assert latest["price_asof"] == "2026-07-03"
+    assert latest["computed_at"] is not None
 
 
 def test_fr012_not_yet_crawled_company_shows_universe_metadata_not_error(data_dir) -> None:
@@ -73,4 +87,8 @@ def test_fr012_api_surfaces_the_same_contract(data_dir) -> None:
     assert len(ok.json()["periods"]) == 2
     queued = client.get("/api/company/SAP.DE")
     assert queued.status_code == 200
-    assert queued.json()["periods"] == []
+    body = queued.json()
+    assert body["periods"] == []
+    # FR-012 AC-2: queue position instead of an error
+    assert body["queue"]["state"] == "queued"
+    assert "europe" in body["queue"]["note"]

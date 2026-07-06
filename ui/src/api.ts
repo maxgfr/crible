@@ -53,9 +53,10 @@ export async function screen(
   return (await response.json()) as ScreenResponse;
 }
 
-export function exportCsvUrl(query: string, sort: string | null): string {
+export function exportCsvUrl(query: string, sort: string | null, columns?: string[]): string {
   const params = new URLSearchParams({ query });
   if (sort) params.set("sort", sort);
+  if (columns && columns.length) params.set("columns", columns.join(","));
   return `/api/screen.csv?${params.toString()}`;
 }
 

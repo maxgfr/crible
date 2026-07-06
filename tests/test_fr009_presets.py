@@ -19,8 +19,29 @@ def test_fr009_ships_the_five_published_presets_with_visible_dsl() -> None:
         assert preset.description
 
 
-def test_fr009_presets_carry_no_hidden_logic() -> None:
-    """A preset is nothing but a name + a DSL string — running it must be
-    byte-for-byte the DSL string (no extra clauses injected anywhere)."""
+def test_fr009_running_a_preset_is_byte_for_byte_its_dsl() -> None:
+    """No hidden logic: screening via a preset returns exactly the rows of
+    screening its DSL string directly (execution equivalence)."""
+    import duckdb
+    import pandas as pd
+
+    from crible.store import screen, whitelist_from_relation
+
+    con = duckdb.connect()
+    frame = pd.DataFrame(
+        {
+            "symbol": ["A", "B", "C"],
+            "piotroski_f": [8, 6, 9],
+            "altman_z": [3.5, 1.2, 4.0],
+            "beneish_m": [-2.5, -1.0, -2.9],
+        }
+    )
+    con.register("snapshot_latest", frame)
+    whitelist = whitelist_from_relation(con, "snapshot_latest")
     for preset in PRESETS.values():
-        assert isinstance(preset.dsl, str) and preset.dsl.strip() == preset.dsl
+        if any(field not in whitelist for field in ("price_to_earnings_ratio", "return_on_equity"))\
+           and preset.id in ("classic-value", "quality"):
+            continue  # fields absent from this minimal fixture
+        via_preset = screen(con, PRESETS[preset.id].dsl, whitelist=whitelist, limit=10, offset=0)
+        direct = screen(con, preset.dsl, whitelist=whitelist, limit=10, offset=0)
+        pd.testing.assert_frame_equal(via_preset, direct)

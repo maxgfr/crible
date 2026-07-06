@@ -4,6 +4,7 @@ failures switch rule, and price_asof provenance in the snapshot."""
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from crible.compute.snapshot import build_symbol_snapshot
 from crible.ingest.budget import TokenBucket
@@ -64,17 +65,22 @@ def test_fr011_budget_exhaustion_skips_instead_of_blocking(tmp_path) -> None:
 
 
 def test_fr011_snapshot_exposes_price_asof_and_prices_latest_period_only(tmp_path) -> None:
-    frames = {(s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()}
+    frames = {
+        (s, "annual"): income_frame(dict(rows), ["2023", "2024", "2025"])
+        for s, rows in IMPROVING.items()
+    }
+    # add share count so price-dependent ratios compute to exact values
+    frames[("income", "annual")]["BasicAverageShares"] = [10.0, 10.0, 10.0]
     frames[("prices", "daily")] = pd.DataFrame(
         {"Date": ["2026-07-03", "2026-07-04"], "Close": [95.0, 100.0]}
     )
     snapshot = build_symbol_snapshot("TEST.PA", frames, computed_at=1000.0)
     assert (snapshot["price_asof"] == "2026-07-04").all()
-    # price-dependent ratios exist for the latest period only — never faked history
-    assert "price_to_earnings_ratio" in snapshot.columns
-    assert pd.notna(snapshot["price_to_earnings_ratio"].iloc[-1]) or pd.isna(
-        snapshot["price_to_earnings_ratio"].iloc[-1]
-    )  # column present; value NaN when shares_outstanding is unknown
+    # exact valuation from the latest close: PE = (100 × 10 shares) / NI 120
+    latest = snapshot.iloc[-1]
+    assert latest["market_cap"] == 1000.0
+    assert latest["price_to_earnings_ratio"] == pytest.approx(1000.0 / 120.0)
+    # latest period only — historical prices are never faked
     assert snapshot["price_to_earnings_ratio"].iloc[:-1].isna().all()
 
 

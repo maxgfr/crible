@@ -140,15 +140,8 @@ def test_fr010_snapshot_marks_audited_provenance() -> None:
     assert by_period.loc["2023", "audited_fields"] is None or by_period.loc["2023", "audited_fields"] != by_period.loc["2024", "audited_fields"]
 
 
-def test_fr010_unreachable_source_never_partially_overwrites() -> None:
-    """The enrichment path writes raw esef frames only on success; a failing
-    client raises before any write — scraped data stays byte-identical."""
-    scraped_frames = {
-        ("income", "annual"): income_frame({"TotalRevenue": [1000.0]}, ["2024"]),
-    }
-    before = build_symbol_snapshot("MC.PA", scraped_frames, computed_at=1.0)
-    after = build_symbol_snapshot("MC.PA", scraped_frames, audited_frames=None, computed_at=1.0)
-    pd.testing.assert_frame_equal(before, after)
+# (the outage path is exercised for real by
+#  test_fr010_service_cycle_outage_records_and_resumes below)
 
 
 def test_fr010_service_enrichment_cycle_writes_esef_raw_and_counts_unmatched(tmp_path, monkeypatch) -> None:

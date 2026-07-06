@@ -94,3 +94,29 @@ def test_fr005_presets_are_visible_editable_dsl(data_dir) -> None:
     result2 = runner.invoke(app, ["screen", "--preset", "piotroski-strong", "--format", "csv"])
     assert result2.exit_code == 0
     assert "AAPL" in result2.output
+
+
+def test_fr005_status_exposes_coverage_freshness_and_provider_health(data_dir) -> None:
+    """FR-005 AC-3: coverage %, freshness histogram, req/h and provider health
+    all surface through crible status (via the ingest heartbeat)."""
+    import json as _json
+
+    heartbeat = {
+        "requests_last_hour": 42,
+        "budget_per_hour": 330,
+        "coverage_pct": 3.2,
+        "freshness": {"<7d": 6, "never": 2},
+        "providers": {"yfinance": "healthy"},
+        "esef_unmatched": 3,
+    }
+    (data_dir / "status.json").write_text(_json.dumps(heartbeat))
+    result = runner.invoke(app, ["status"])
+    assert result.exit_code == 0
+    body = _json.loads(result.output)
+    ingest = body["ingest"]
+    assert ingest["coverage_pct"] == 3.2
+    assert ingest["freshness"]["<7d"] == 6
+    assert ingest["requests_last_hour"] == 42
+    assert ingest["providers"]["yfinance"] == "healthy"
+    assert ingest["esef_unmatched"] == 3  # FR-010 AC-4 visibility
+    assert body["by_region"]["europe"] == 6

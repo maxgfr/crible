@@ -68,11 +68,19 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/api/screen.csv")
-    def screen_csv(query: str, sort: str | None = None):
+    def screen_csv(query: str, sort: str | None = None, columns: str | None = None):
+        """Full result set of the query; `columns` (comma-separated) restricts
+        the export to the currently visible columns (FR-007 AC-1)."""
         try:
             rows, _ = runtime().screen(query, sort=sort, limit=EXPORT_LIMIT, offset=0)
         except SnapshotMissingError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if columns:
+            wanted = [c.strip() for c in columns.split(",") if c.strip()]
+            keep = [c for c in wanted if c in rows.columns]
+            if not keep:
+                raise HTTPException(status_code=422, detail="no requested column exists")
+            rows = rows[keep]
         buffer = io.StringIO()
         rows.to_csv(buffer, index=False)
         buffer.seek(0)
@@ -91,6 +99,17 @@ def create_app() -> FastAPI:
         detail = runtime().company(symbol)
         if detail is None:
             raise HTTPException(status_code=404, detail=f"unknown symbol {symbol!r}")
+        if not detail["periods"]:
+            # FR-012 AC-2: not crawled yet → queue position, never an error
+            status = runtime().status()
+            region = detail["profile"].get("region", "world")
+            ingest = status.get("ingest", {}) if isinstance(status.get("ingest"), dict) else {}
+            detail["queue"] = {
+                "state": "queued",
+                "region": region,
+                "note": f"queued by region priority ({region} tier)",
+                "coverage_pct": ingest.get("coverage_pct"),
+            }
         return detail
 
     @app.get("/api/status")

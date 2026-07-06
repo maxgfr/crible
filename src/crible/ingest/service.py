@@ -77,6 +77,53 @@ def write_heartbeat(payload: dict) -> None:
     tmp.rename(path)
 
 
+def update_heartbeat(**fields) -> None:
+    """Merge fields into the heartbeat (read-modify-write, atomic rename)."""
+    path = config.data_dir() / "status.json"
+    current: dict = {}
+    if path.exists():
+        try:
+            current = json.loads(path.read_text())
+        except json.JSONDecodeError:
+            current = {}
+    current.update(fields)
+    write_heartbeat(current)
+
+
+def _queue_stats(con: duckdb.DuckDBPyConnection) -> dict:
+    """FR-005 AC-3 — coverage %, freshness histogram, per-region backlog."""
+    stats: dict = {}
+    tables = {
+        r[0] for r in con.execute("SELECT table_name FROM information_schema.tables").fetchall()
+    }
+    if "companies" in tables:
+        stats["universe"] = con.execute("SELECT count(*) FROM companies").fetchone()[0]
+        stats["by_region"] = dict(
+            con.execute("SELECT region, count(*) FROM companies GROUP BY region").fetchall()
+        )
+    if "crawl_tasks" in tables:
+        crawled = con.execute(
+            "SELECT count(*) FROM crawl_tasks WHERE last_crawled_at IS NOT NULL"
+        ).fetchone()[0]
+        stats["crawled"] = crawled
+        if stats.get("universe"):
+            stats["coverage_pct"] = round(100.0 * crawled / stats["universe"], 2)
+        stats["freshness"] = dict(
+            con.execute(
+                """
+                SELECT CASE
+                    WHEN last_crawled_at IS NULL THEN 'never'
+                    WHEN last_crawled_at > epoch(now()) - 7*86400 THEN '<7d'
+                    WHEN last_crawled_at > epoch(now()) - 30*86400 THEN '<30d'
+                    WHEN last_crawled_at > epoch(now()) - 90*86400 THEN '<90d'
+                    ELSE 'stale' END AS bucket, count(*)
+                FROM crawl_tasks GROUP BY bucket
+                """
+            ).fetchall()
+        )
+    return stats
+
+
 def run_bootstrap() -> BootstrapReport:
     con = _connect()
     try:
@@ -104,14 +151,13 @@ def run_once(limit: int = 50) -> CrawlOutcome:
     try:
         crawler = _make_crawler(con)
         outcome = crawler.run_cycle(limit=limit)
-        write_heartbeat(
-            {
-                "requests_last_hour": crawler.budget.used_in_window(),
-                "budget_per_hour": crawler.budget.capacity,
-                "last_cycle": {"fetched": len(outcome.fetched), "failed": len(outcome.failed)},
-                "provider": crawler.provider.id,
-                "ts": time.time(),
-            }
+        update_heartbeat(
+            requests_last_hour=crawler.budget.used_in_window(),
+            budget_per_hour=crawler.budget.capacity,
+            last_cycle={"fetched": len(outcome.fetched), "failed": len(outcome.failed)},
+            providers={crawler.provider.id: "healthy"},
+            **_queue_stats(con),
+            ts=time.time(),
         )
         return outcome
     finally:
@@ -167,6 +213,8 @@ def run_esef_cycle(limit: int = 5, client=None, mapping: dict[str, str] | None =
         ]
         resolved, unmatched = resolve_leis(companies, mapping)
         outcome["unmatched"] = len(unmatched)
+        # FR-010 AC-4: the unmatched-EU-listings metric is visible in status
+        update_heartbeat(esef_unmatched=len(unmatched), esef_resolved=len(resolved))
         for symbol, lei in resolved.items():
             con.execute(
                 "INSERT INTO esef_tasks (symbol, lei) VALUES (?, ?) ON CONFLICT (symbol) DO NOTHING",

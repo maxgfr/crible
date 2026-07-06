@@ -97,3 +97,33 @@ def test_fr006_fresh_install_no_snapshot_is_200_with_hint(tmp_path, monkeypatch)
     assert body["rows"] == [] and body["total"] == 0
     assert "ingest" in body["hint"]
     assert client.get("/api/status").status_code == 200
+
+
+def test_fr006_spa_is_served_at_root_with_api_reachable(tmp_path, monkeypatch) -> None:
+    """FR-006 AC-3: the built SPA is served at / while /api stays reachable."""
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><title>crible</title>")
+    (dist / "assets" / "index-abc123.js").write_text("// hashed asset")
+    monkeypatch.setenv("CRIBLE_UI_DIST", str(dist))
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path / "empty"))
+    client = TestClient(create_app())
+    root = client.get("/")
+    assert root.status_code == 200 and "crible" in root.text
+    asset = client.get("/assets/index-abc123.js")
+    assert asset.status_code == 200
+    assert client.get("/api/status").status_code == 200  # same-origin API intact
+
+
+def test_fr006_csv_export_restricts_to_visible_columns(client) -> None:
+    """FR-007 AC-1 export clause: `columns` limits the CSV to what is shown."""
+    response = client.get(
+        "/api/screen.csv",
+        params={"query": "piotroski_f >= 5", "columns": "symbol,piotroski_f,nonexistent"},
+    )
+    assert response.status_code == 200
+    header = response.text.strip().splitlines()[0]
+    assert header == "symbol,piotroski_f"  # unknown columns silently dropped
+    assert client.get(
+        "/api/screen.csv", params={"query": "piotroski_f >= 5", "columns": "nope"}
+    ).status_code == 422

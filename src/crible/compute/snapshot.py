@@ -85,6 +85,13 @@ def build_symbol_snapshot(
     out["audited_fields"] = [
         ",".join(audited_fields.get(str(p), [])) or None for p in out["period"]
     ]
+    # FR-003 AC-2 — the provenance note naming the missing inputs: every NULL
+    # ratio is explainable by the canonical fields the provider did not supply
+    missing_per_period = canonical[CANONICAL_FIELDS].isna()
+    out["missing_inputs"] = [
+        ",".join(missing_per_period.columns[missing_per_period.loc[p]]) or None
+        for p in canonical.index
+    ]
     out["computed_at"] = computed_at if computed_at is not None else time.time()
     return out.reset_index(drop=True)
 

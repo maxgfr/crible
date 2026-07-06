@@ -128,7 +128,7 @@ def test_fr004_injection_corpus_never_reaches_sql(hostile: str) -> None:
     assert con.execute("SELECT count(*) FROM snapshot_latest").fetchone()[0] == 5
 
 
-@settings(max_examples=300, deadline=None)
+@settings(max_examples=1000, deadline=None)
 @given(st.text(max_size=60))
 def test_fr004_property_arbitrary_input_rejected_or_whitelisted(text: str) -> None:
     """NFR-011: any input either fails to parse (DslError, nothing executed) or

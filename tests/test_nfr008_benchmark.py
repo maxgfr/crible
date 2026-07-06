@@ -81,3 +81,32 @@ def test_nfr008_adhoc_screen_battery_p95_under_1s(con) -> None:
             timings.append(time.perf_counter() - started)
         assert rows is not None
     assert p95(timings) < 1.0, f"battery p95 {p95(timings):.3f}s ≥ 1s"
+
+
+def test_nfr008_api_layer_p95_under_500ms_warm(con, tmp_path_factory, monkeypatch) -> None:
+    """FR-006 AC-1 / NFR-001: the API layer itself (FastAPI + engine) answers
+    full-universe screens in p95 < 500 ms warm, measured on the synthetic
+    full-size snapshot."""
+    from fastapi.testclient import TestClient
+
+    from crible.api.main import create_app
+
+    data_dir = tmp_path_factory.mktemp("bench-api")
+    (data_dir / "snapshot").mkdir(parents=True)
+    con.execute(
+        f"COPY (SELECT * FROM snapshot_latest) TO '{(data_dir / 'snapshot' / 'snapshot.parquet').as_posix()}' (FORMAT parquet)"
+    )
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(data_dir))
+    client = TestClient(create_app())
+
+    client.post("/api/screen", json={"query": "piotroski_f >= 7"})  # warm-up
+    timings = []
+    for _ in range(5):
+        started = time.perf_counter()
+        response = client.post(
+            "/api/screen",
+            json={"query": "piotroski_f >= 7 AND country IN ('FR','DE')", "page_size": 100},
+        )
+        timings.append(time.perf_counter() - started)
+        assert response.status_code == 200 and response.json()["total"] > 0
+    assert p95(timings) < 0.5, f"API p95 {p95(timings):.3f}s ≥ 500ms"

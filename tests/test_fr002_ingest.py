@@ -239,3 +239,31 @@ def test_fr002_keyed_provider_with_key_is_active() -> None:
     registry = ProviderRegistry(env={"NEEDS_KEY_TOKEN": "x"})
     active = registry.activate([KeyedProvider()])
     assert [p.id for p in active] == ["needs_key"]
+
+
+def test_fr002_run_cycle_persists_raw_parquet_to_disk(con, tmp_path) -> None:
+    """FR-002 AC-1: the crawler→raw-layer link itself — files land on disk."""
+    clock = FakeClock()
+    provider = FakeProvider()
+    crawler, _ = make_crawler(con, provider, clock, tmp_path)
+    crawler.run_cycle(limit=3)
+    files = list(tmp_path.glob("raw/provider=fake/symbol=*/income-annual-*.parquet"))
+    assert len(files) == 3
+
+
+def test_fr002_resume_from_partial_cycle_fetches_only_the_rest(con, tmp_path) -> None:
+    """Killed mid-cycle: 4 of 8 crawled → the next process fetches ONLY the
+    remaining 4 (fresh ones are skipped)."""
+    clock = FakeClock(start=1_000_000)
+    first = FakeProvider()
+    crawler, _ = make_crawler(con, first, clock, tmp_path)
+    crawler.run_cycle(limit=4)  # "killed" after a partial pass
+    assert len(first.calls) == 4
+
+    clock.advance(60)
+    second = FakeProvider()
+    crawler2, _ = make_crawler(con, second, clock, tmp_path)
+    crawler2.run_cycle(limit=8)
+
+    assert len(second.calls) == 4  # only the un-crawled half
+    assert set(second.calls).isdisjoint(first.calls)

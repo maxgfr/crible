@@ -73,10 +73,29 @@ describe("FR-007 results grid", () => {
 });
 
 describe("FR-007 export", () => {
-  it("FR-007: the export URL carries the executed query (full result set endpoint)", () => {
+  it("FR-007: the export URL carries the executed query AND the visible columns", () => {
     expect(exportCsvUrl("piotroski_f >= 7", null)).toBe(
       "/api/screen.csv?query=piotroski_f+%3E%3D+7",
     );
     expect(exportCsvUrl("roe > 15", "-roe")).toContain("sort=-roe");
+    const withColumns = exportCsvUrl("roe > 15", null, ["symbol", "roe", "piotroski_f"]);
+    expect(withColumns).toContain("columns=symbol%2Croe%2Cpiotroski_f");
+  });
+});
+
+describe("FR-009 custom presets", () => {
+  it("FR-009: an edited query can be saved as a new named preset and reloaded", async () => {
+    const { loadCustomPresets, saveCustomPreset } = await import("../presets-store");
+    localStorage.clear();
+    expect(loadCustomPresets()).toEqual([]);
+    saveCustomPreset("My deep value", "price_to_book_ratio < 0.8 AND altman_z > 3");
+    const saved = loadCustomPresets();
+    expect(saved).toHaveLength(1);
+    expect(saved[0].id).toBe("custom-my-deep-value");
+    expect(saved[0].dsl).toBe("price_to_book_ratio < 0.8 AND altman_z > 3");
+    // saving the same name overwrites instead of duplicating
+    saveCustomPreset("My deep value", "altman_z > 4");
+    expect(loadCustomPresets()).toHaveLength(1);
+    expect(loadCustomPresets()[0].dsl).toBe("altman_z > 4");
   });
 });
