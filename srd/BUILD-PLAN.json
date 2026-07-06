@@ -179,12 +179,18 @@
       "dependsOn": [
         "T-003"
       ],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "src/crible/dsl/parser.py",
+        "src/crible/dsl/compiler.py",
+        "src/crible/store.py"
+      ],
+      "tests": [
+        "tests/test_fr004_dsl.py"
+      ],
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-005",
