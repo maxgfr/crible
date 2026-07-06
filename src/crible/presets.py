@@ -41,7 +41,7 @@ _PRESETS = [
         id="classic-value",
         name="Classic value",
         description="Cheap on earnings and book value",
-        dsl="price_earnings < 12 AND price_to_book_ratio < 1.5",
+        dsl="price_to_earnings_ratio < 12 AND price_to_book_ratio < 1.5",
     ),
     Preset(
         id="quality",

@@ -93,7 +93,7 @@ _Traceability — NFRs: NFR-003, NFR-006, NFR-009, NFR-013 · entities: Provider
 
 ## FR-009 — Preset screens _(should)_
 
-Preset screens shipped as plain, visible, editable DSL strings — transparency is the product (the closed ranks of Stockopedia [E67] are the counter-model). Shipped presets with their exact DSL: piotroski-strong (piotroski_f >= 7), altman-safe (altman_z > 2.99), beneish-red-flags (beneish_m > -1.78), classic-value (price_to_earnings < 12 AND price_to_book < 1.5), quality (return_on_equity > 0.15 AND debt_to_equity < 1). Thresholds are visible in the DSL and editable — they are starting points, not hidden judgments. Available identically via CLI (--preset), API (GET /presets) and the SPA presets menu. [E67][E63]
+Preset screens shipped as plain, visible, editable DSL strings — transparency is the product (the closed ranks of Stockopedia [E67] are the counter-model). Shipped presets with their exact DSL: piotroski-strong (piotroski_f >= 7), altman-safe (altman_z > 2.99), beneish-red-flags (beneish_m > -1.78), classic-value (price_to_earnings_ratio < 12 AND price_to_book < 1.5), quality (return_on_equity > 0.15 AND debt_to_equity < 1). Thresholds are visible in the DSL and editable — they are starting points, not hidden judgments. Available identically via CLI (--preset), API (GET /presets) and the SPA presets menu. [E67][E63]
 
 **Acceptance criteria:**
 - **Given** the presets are shipped **When** GET /presets is called or crible screen --preset piotroski-strong runs **Then** each preset exposes its name, a one-line description and its complete DSL string, and running the preset is byte-for-byte equivalent to running that DSL string directly

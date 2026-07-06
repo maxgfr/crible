@@ -20,6 +20,22 @@ from crible.compute.scores import all_scores
 SNAPSHOT_NAME = "snapshot.parquet"
 
 
+def latest_close(frames: dict[tuple[str, str], pd.DataFrame]) -> tuple[float, str] | None:
+    """(close, as-of date) from the newest daily price bar, if any (FR-011)."""
+    bars = frames.get(("prices", "daily"))
+    if bars is None or not len(bars):
+        return None
+    close_col = next((c for c in ("Close", "close", "Adj Close") if c in bars.columns), None)
+    date_col = next((c for c in ("Date", "date", "Datetime") if c in bars.columns), None)
+    if close_col is None:
+        return None
+    last = bars.dropna(subset=[close_col]).iloc[-1] if bars[close_col].notna().any() else None
+    if last is None:
+        return None
+    as_of = str(last[date_col])[:10] if date_col else ""
+    return float(last[close_col]), as_of
+
+
 def build_symbol_snapshot(
     symbol: str,
     frames: dict[tuple[str, str], pd.DataFrame],
@@ -30,6 +46,16 @@ def build_symbol_snapshot(
     canonical = build_canonical(frames)
     if canonical.empty:
         return pd.DataFrame()
+
+    price_asof: str | None = None
+    if price is None:
+        close = latest_close(frames)
+        if close is not None:
+            value, price_asof = close
+            # the current price applies to the LATEST fiscal period only —
+            # older periods keep NaN rather than pretending historical prices
+            price = pd.Series(float("nan"), index=canonical.index)
+            price.iloc[-1] = value
 
     ratios = compute_ratios(canonical, price)
     scores = all_scores(canonical, price)
@@ -42,6 +68,7 @@ def build_symbol_snapshot(
     out.insert(0, "symbol", symbol)
     out.insert(1, "period", out.index.astype(str))
     out["provider"] = provider
+    out["price_asof"] = price_asof
     out["computed_at"] = computed_at if computed_at is not None else time.time()
     return out.reset_index(drop=True)
 

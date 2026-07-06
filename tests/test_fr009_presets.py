@@ -10,7 +10,7 @@ def test_fr009_ships_the_five_published_presets_with_visible_dsl() -> None:
         "piotroski-strong": "piotroski_f >= 7",
         "altman-safe": "altman_z > 2.99",
         "beneish-red-flags": "beneish_m > -1.78",
-        "classic-value": "price_earnings < 12 AND price_to_book_ratio < 1.5",
+        "classic-value": "price_to_earnings_ratio < 12 AND price_to_book_ratio < 1.5",
         "quality": "return_on_equity > 0.15 AND debt_to_equity_ratio < 1",
     }
     for preset_id, dsl in expected.items():

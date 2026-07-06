@@ -343,12 +343,19 @@
         "T-005",
         "T-006"
       ],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "Dockerfile",
+        "docker-compose.yml",
+        ".env.example",
+        "src/crible/ingest/service.py"
+      ],
+      "tests": [
+        "tests/test_fr008_compose.py"
+      ],
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-009",
@@ -436,12 +443,17 @@
       "dependsOn": [
         "T-002"
       ],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "src/crible/ingest/prices.py",
+        "src/crible/compute/snapshot.py"
+      ],
+      "tests": [
+        "tests/test_fr011_prices.py"
+      ],
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-012",
@@ -464,12 +476,18 @@
         "T-006",
         "T-007"
       ],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "src/crible/runtime.py",
+        "src/crible/api/main.py",
+        "ui/src/components/CompanyDrawer.tsx"
+      ],
+      "tests": [
+        "tests/test_fr012_company_detail.py"
+      ],
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-013",

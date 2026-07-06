@@ -92,6 +92,16 @@ class Crawler:
                     frame=payload.frame,
                     fetched_at=fetched_at,
                 )
+            if result.prices is not None and len(result.prices):
+                write_raw_statement(
+                    self.data_dir,
+                    symbol=symbol,
+                    provider=result.provider,
+                    statement_type="prices",
+                    freq="daily",
+                    frame=result.prices,
+                    fetched_at=fetched_at,
+                )
             self.queue.mark_done(symbol, fetched_at)
             log.info(
                 "fetched %s via %s (%d statement(s), budget used %d/h)",
