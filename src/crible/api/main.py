@@ -101,7 +101,10 @@ def create_app() -> FastAPI:
     def healthz():
         return {"ok": True}
 
-    dist = Path(__file__).resolve().parents[3] / "ui" / "dist"
+    import os
+
+    # container: WORKDIR /app holds ui/dist (Dockerfile); dev: repo root cwd
+    dist = Path(os.environ.get("CRIBLE_UI_DIST", "ui/dist"))
     if dist.exists():  # pragma: no cover — exercised in the docker E2E
         app.mount("/", StaticFiles(directory=dist, html=True), name="spa")
 
