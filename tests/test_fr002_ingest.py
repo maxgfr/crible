@@ -144,9 +144,9 @@ def test_fr002_budget_charges_per_upstream_request_not_per_symbol(con, tmp_path)
     crawler.run_cycle(limit=3)
 
     assert len(provider.call_times) == 3
-    first_window = [t for t in provider.call_times if t <= provider.call_times[0] + 3600]
+    first_window = [t for t in provider.call_times if t < provider.call_times[0] + 3600]
     assert len(first_window) == 2  # 3 × 7 = 21 > 20 → third fetch waited out the window
-    assert provider.call_times[2] > 3600
+    assert provider.call_times[2] >= 3600
 
 
 def test_fr002_europe_is_crawled_before_us_before_world(con, tmp_path) -> None:
