@@ -149,3 +149,66 @@ def test_fr010_unreachable_source_never_partially_overwrites() -> None:
     before = build_symbol_snapshot("MC.PA", scraped_frames, computed_at=1.0)
     after = build_symbol_snapshot("MC.PA", scraped_frames, audited_frames=None, computed_at=1.0)
     pd.testing.assert_frame_equal(before, after)
+
+
+def test_fr010_service_enrichment_cycle_writes_esef_raw_and_counts_unmatched(tmp_path, monkeypatch) -> None:
+    """FR-010 — the enrichment cycle end-to-end (offline): EU companies with a
+    resolvable LEI get provider='esef' raw frames; unmatched are counted."""
+    import duckdb as _duckdb
+
+    from crible.ingest.service import run_esef_cycle
+    from crible.universe import bootstrap_universe
+    from tests.test_fr001_universe import fixture_frame
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    con = _duckdb.connect(str(tmp_path / "crible.duckdb"))
+    bootstrap_universe(con, fixture_frame())
+    con.close()
+
+    class FakeClient:
+        def filings_for_lei(self, lei):
+            return [{"attributes": {"json_url": "/x.json"}}]
+
+        def fetch_xbrl_json(self, filing):
+            return XBRL_JSON
+
+    # ISINs from the universe fixture: ABN.AS + AIR.PA resolve, others don't
+    mapping = {"NL0011540547": "LEI-ABN", "NL0000235190": "LEI-AIR"}
+    outcome = run_esef_cycle(limit=10, client=FakeClient(), mapping=mapping)
+
+    assert sorted(outcome["enriched"]) == ["ABN.AS", "AIR.PA"]
+    assert outcome["unmatched"] >= 3  # EU listings without a resolvable ISIN→LEI
+    files = list(tmp_path.glob("raw/provider=esef/symbol=*/*.parquet"))
+    assert len(files) >= 4  # income + balance per enriched symbol
+
+
+def test_fr010_service_cycle_outage_records_and_resumes(tmp_path, monkeypatch) -> None:
+    import duckdb as _duckdb
+
+    from crible.ingest.service import run_esef_cycle
+    from crible.universe import bootstrap_universe
+    from tests.test_fr001_universe import fixture_frame
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    con = _duckdb.connect(str(tmp_path / "crible.duckdb"))
+    bootstrap_universe(con, fixture_frame())
+    con.close()
+
+    class DownClient:
+        def filings_for_lei(self, lei):
+            raise ConnectionError("filings.xbrl.org unreachable")
+
+        def fetch_xbrl_json(self, filing):
+            raise AssertionError("never reached")
+
+    outcome = run_esef_cycle(limit=10, client=DownClient(), mapping={"NL0011540547": "LEI-ABN"})
+    assert outcome["outage"] is not None
+    assert list(tmp_path.glob("raw/provider=esef/**/*.parquet")) == []  # no partial writes
+
+
+def test_fr010_service_cycle_idles_without_gleif_file(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    from crible.ingest.service import run_esef_cycle
+
+    outcome = run_esef_cycle()
+    assert outcome["skipped"] is not None and "isin-lei" in outcome["skipped"].lower()
