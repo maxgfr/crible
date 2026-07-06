@@ -359,8 +359,7 @@
         "src/crible/presets.py"
       ],
       "tests": [
-        "tests/test_fr005_cli.py",
-        "tests/test_fr006_api.py"
+        "tests/test_fr009_presets.py"
       ],
       "verify": {
         "commands": []
