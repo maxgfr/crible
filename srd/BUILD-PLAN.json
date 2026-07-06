@@ -82,12 +82,22 @@
       "dependsOn": [
         "T-000"
       ],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "src/crible/ingest/crawler.py",
+        "src/crible/ingest/queue.py",
+        "src/crible/ingest/budget.py",
+        "src/crible/ingest/backoff.py",
+        "src/crible/ingest/raw.py",
+        "src/crible/providers/base.py",
+        "src/crible/providers/yfinance_provider.py"
+      ],
+      "tests": [
+        "tests/test_fr002_ingest.py"
+      ],
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-003",

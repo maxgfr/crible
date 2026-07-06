@@ -1,0 +1,213 @@
+"""FR-002 — Rolling prioritized keyless ingestion.
+
+All tests run offline: providers are fakes, clocks and sleepers are injected.
+"""
+
+from __future__ import annotations
+
+import duckdb
+import pandas as pd
+import pytest
+
+from crible.ingest.backoff import BackoffPolicy
+from crible.ingest.budget import TokenBucket
+from crible.ingest.crawler import Crawler, CrawlOutcome
+from crible.ingest.queue import CrawlQueue
+from crible.ingest.raw import write_raw_statement
+from crible.providers.base import (
+    FetchResult,
+    ProviderRegistry,
+    RateLimitedError,
+    StatementPayload,
+)
+from crible.universe import bootstrap_universe
+
+from tests.test_fr001_universe import fixture_frame
+
+
+# --------------------------------------------------------------------- fakes
+
+
+class FakeClock:
+    def __init__(self, start: float = 0.0) -> None:
+        self.t = start
+
+    def now(self) -> float:
+        return self.t
+
+    def advance(self, seconds: float) -> None:
+        self.t += seconds
+
+
+class FakeProvider:
+    """Keyless provider double recording calls; can inject 429s per symbol."""
+
+    id = "fake"
+    kind = "keyless"
+
+    def __init__(self, rate_limited_first_n: dict[str, int] | None = None) -> None:
+        self.calls: list[str] = []
+        self._limited = dict(rate_limited_first_n or {})
+
+    def enabled(self, env: dict[str, str]) -> bool:
+        return True
+
+    def fetch_statements(self, symbol: str) -> FetchResult:
+        self.calls.append(symbol)
+        left = self._limited.get(symbol, 0)
+        if left > 0:
+            self._limited[symbol] = left - 1
+            raise RateLimitedError(f"429 for {symbol}")
+        payload = StatementPayload(
+            statement_type="income",
+            freq="annual",
+            frame=pd.DataFrame({"period": ["2025"], "revenue": [100.0]}),
+        )
+        return FetchResult(symbol=symbol, provider=self.id, statements=[payload], requests_used=1)
+
+
+class KeyedProvider:
+    id = "needs_key"
+    kind = "free-key"
+    key_env_var = "NEEDS_KEY_TOKEN"
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def enabled(self, env: dict[str, str]) -> bool:
+        return bool(env.get(self.key_env_var))
+
+    def fetch_statements(self, symbol: str) -> FetchResult:
+        self.calls.append(symbol)
+        return FetchResult(symbol=symbol, provider=self.id, statements=[], requests_used=1)
+
+
+@pytest.fixture()
+def con() -> duckdb.DuckDBPyConnection:
+    c = duckdb.connect()
+    bootstrap_universe(c, fixture_frame())
+    return c
+
+
+def make_crawler(con, provider, clock, data_dir, budget_capacity=330, sleeper=None):
+    sleeps: list[float] = []
+    return (
+        Crawler(
+            queue=CrawlQueue(con),
+            provider=provider,
+            budget=TokenBucket(capacity=budget_capacity, window_seconds=3600, now=clock.now),
+            backoff=BackoffPolicy(base_seconds=60, cap_seconds=900, jitter=0.2, rng=lambda: 0.5),
+            data_dir=data_dir,
+            now=clock.now,
+            sleep=sleeper if sleeper is not None else sleeps.append,
+        ),
+        sleeps,
+    )
+
+
+# --------------------------------------------------------------------- tests
+
+
+def test_fr002_token_bucket_enforces_rolling_hour_budget() -> None:
+    clock = FakeClock()
+    bucket = TokenBucket(capacity=330, window_seconds=3600, now=clock.now)
+
+    for _ in range(330):
+        assert bucket.try_acquire()
+    assert not bucket.try_acquire()  # 331st in the same hour is denied
+    assert bucket.seconds_until_available() > 0
+
+    clock.advance(3600.01)  # window rolls over
+    assert bucket.try_acquire()
+
+
+def test_fr002_europe_is_crawled_before_us_before_world(con, tmp_path) -> None:
+    clock = FakeClock()
+    provider = FakeProvider()
+    crawler, _ = make_crawler(con, provider, clock, tmp_path)
+
+    crawler.run_cycle(limit=8)
+
+    regions = dict(
+        con.execute("SELECT symbol, region FROM companies").fetchall()
+    )
+    seen_order = [regions[s] for s in provider.calls]
+    # all europe first, then us, then world
+    assert seen_order == sorted(seen_order, key=["europe", "us", "world"].index)
+
+
+def test_fr002_backoff_doubles_with_cap_and_reschedules(con, tmp_path) -> None:
+    clock = FakeClock()
+    provider = FakeProvider(rate_limited_first_n={"ABN.AS": 2})
+    crawler, sleeps = make_crawler(con, provider, clock, tmp_path)
+
+    crawler.run_cycle(limit=8)
+
+    # two 429s → two backoff sleeps; rng=0.5 makes jitter factor exactly 1.0
+    backoff_sleeps = [s for s in sleeps if s >= 60]
+    assert backoff_sleeps[:2] == [60.0, 120.0]
+    # the symbol was rescheduled, not dropped: eventually fetched
+    assert provider.calls.count("ABN.AS") == 3
+    status = con.execute(
+        "SELECT consecutive_failures FROM crawl_tasks WHERE symbol = 'ABN.AS'"
+    ).fetchone()[0]
+    assert status == 0  # success reset
+
+
+def test_fr002_backoff_never_exceeds_cap() -> None:
+    policy = BackoffPolicy(base_seconds=60, cap_seconds=900, jitter=0.2, rng=lambda: 1.0)
+    delays = [policy.delay(attempt) for attempt in range(1, 12)]
+    assert max(delays) <= 900 * 1.2 + 1e-9
+    assert delays[0] == pytest.approx(60 * 1.2)
+
+
+def test_fr002_crash_resume_skips_fresh_symbols(con, tmp_path) -> None:
+    clock = FakeClock(start=1_000_000)
+    provider = FakeProvider()
+    crawler, _ = make_crawler(con, provider, clock, tmp_path)
+    crawler.run_cycle(limit=8)
+    assert len(provider.calls) == 8
+
+    # a "new process" over the same operational DB shortly after
+    clock.advance(3600)
+    provider2 = FakeProvider()
+    crawler2, _ = make_crawler(con, provider2, clock, tmp_path)
+    crawler2.run_cycle(limit=8)
+
+    # everything is inside its quarterly freshness window → nothing re-fetched
+    assert provider2.calls == []
+
+
+def test_fr002_raw_parquet_is_versioned_and_readable(tmp_path) -> None:
+    frame = pd.DataFrame({"period": ["2025"], "revenue": [100.0]})
+    path1 = write_raw_statement(
+        tmp_path, symbol="AIR.PA", provider="yfinance",
+        statement_type="income", freq="annual", frame=frame, fetched_at=1_000.0,
+    )
+    path2 = write_raw_statement(
+        tmp_path, symbol="AIR.PA", provider="yfinance",
+        statement_type="income", freq="annual", frame=frame, fetched_at=2_000.0,
+    )
+    assert path1 != path2  # versioned, append-only
+    assert path1.exists() and path2.exists()
+    assert ".tmp" not in path1.name
+    got = duckdb.connect().execute(f"SELECT revenue FROM read_parquet('{path1}')").fetchone()[0]
+    assert got == 100.0
+
+
+def test_fr002_keyed_provider_without_key_disables_cleanly(caplog) -> None:
+    registry = ProviderRegistry(env={})
+    keyed = KeyedProvider()
+    with caplog.at_level("INFO"):
+        active = registry.activate([FakeProvider(), keyed])
+
+    assert [p.id for p in active] == ["fake"]
+    assert keyed.calls == []
+    disabled_lines = [r for r in caplog.records if "disabled (no key configured)" in r.message]
+    assert len(disabled_lines) == 1 and "needs_key" in disabled_lines[0].message
+
+
+def test_fr002_keyed_provider_with_key_is_active() -> None:
+    registry = ProviderRegistry(env={"NEEDS_KEY_TOKEN": "x"})
+    active = registry.activate([KeyedProvider()])
+    assert [p.id for p in active] == ["needs_key"]
