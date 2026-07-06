@@ -1,0 +1,420 @@
+{
+  "schemaVersion": 1,
+  "product": "crible",
+  "generatedAt": "2026-07-06T21:32:15.981Z",
+  "conventions": {
+    "frTagPattern": "FR-\\d{3}",
+    "testCommand": null,
+    "appDir": null
+  },
+  "tasks": [
+    {
+      "id": "T-000",
+      "title": "Project skeleton — repo layout, test harness, CI",
+      "milestone": "M1",
+      "frIds": [],
+      "acceptance": [],
+      "dependsOn": [],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-001",
+      "title": "FR-001 — Worldwide universe built from FinanceDatabase",
+      "milestone": "M1",
+      "frIds": [
+        "FR-001"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-001",
+          "index": 0
+        },
+        {
+          "frId": "FR-001",
+          "index": 1
+        }
+      ],
+      "dependsOn": [
+        "T-000"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-002",
+      "title": "FR-002 — Rolling prioritized keyless ingestion (yfinance)",
+      "milestone": "M1",
+      "frIds": [
+        "FR-002"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-002",
+          "index": 0
+        },
+        {
+          "frId": "FR-002",
+          "index": 1
+        }
+      ],
+      "dependsOn": [
+        "T-000"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-003",
+      "title": "FR-003 — Ratio and score computation into a wide snapshot",
+      "milestone": "M1",
+      "frIds": [
+        "FR-003"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-003",
+          "index": 0
+        },
+        {
+          "frId": "FR-003",
+          "index": 1
+        }
+      ],
+      "dependsOn": [
+        "T-000"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-004",
+      "title": "FR-004 — Filter DSL compiled to DuckDB SQL",
+      "milestone": "M1",
+      "frIds": [
+        "FR-004"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-004",
+          "index": 0
+        },
+        {
+          "frId": "FR-004",
+          "index": 1
+        }
+      ],
+      "dependsOn": [
+        "T-000"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-005",
+      "title": "FR-005 — CLI (crible)",
+      "milestone": "M1",
+      "frIds": [
+        "FR-005"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-005",
+          "index": 0
+        },
+        {
+          "frId": "FR-005",
+          "index": 1
+        }
+      ],
+      "dependsOn": [
+        "T-000"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-006",
+      "title": "FR-006 — HTTP API (FastAPI)",
+      "milestone": "M1",
+      "frIds": [
+        "FR-006"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-006",
+          "index": 0
+        },
+        {
+          "frId": "FR-006",
+          "index": 1
+        }
+      ],
+      "dependsOn": [
+        "T-000"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-007",
+      "title": "FR-007 — React/Vite SPA",
+      "milestone": "M1",
+      "frIds": [
+        "FR-007"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-007",
+          "index": 0
+        },
+        {
+          "frId": "FR-007",
+          "index": 1
+        }
+      ],
+      "dependsOn": [
+        "T-000"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-008",
+      "title": "FR-008 — Docker Compose deployment",
+      "milestone": "M1",
+      "frIds": [
+        "FR-008"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-008",
+          "index": 0
+        },
+        {
+          "frId": "FR-008",
+          "index": 1
+        }
+      ],
+      "dependsOn": [
+        "T-000"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-009",
+      "title": "FR-009 — Preset screens",
+      "milestone": "M2",
+      "frIds": [
+        "FR-009"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-009",
+          "index": 0
+        },
+        {
+          "frId": "FR-009",
+          "index": 1
+        }
+      ],
+      "dependsOn": [
+        "T-000"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-010",
+      "title": "FR-010 — ESEF XBRL Europe enrichment",
+      "milestone": "M2",
+      "frIds": [
+        "FR-010"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-010",
+          "index": 0
+        },
+        {
+          "frId": "FR-010",
+          "index": 1
+        }
+      ],
+      "dependsOn": [
+        "T-000"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-011",
+      "title": "FR-011 — Stooq price fallback",
+      "milestone": "M2",
+      "frIds": [
+        "FR-011"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-011",
+          "index": 0
+        },
+        {
+          "frId": "FR-011",
+          "index": 1
+        }
+      ],
+      "dependsOn": [
+        "T-000"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-012",
+      "title": "FR-012 — Company detail view",
+      "milestone": "M2",
+      "frIds": [
+        "FR-012"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-012",
+          "index": 0
+        },
+        {
+          "frId": "FR-012",
+          "index": 1
+        }
+      ],
+      "dependsOn": [
+        "T-000"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-013",
+      "title": "FR-013 — Phase-2 free-key provider plugins",
+      "milestone": "M3",
+      "frIds": [
+        "FR-013"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-013",
+          "index": 0
+        },
+        {
+          "frId": "FR-013",
+          "index": 1
+        }
+      ],
+      "dependsOn": [
+        "T-000"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-014",
+      "title": "FR-014 — EODHD paid provider PRD + stub plugin",
+      "milestone": "M3",
+      "frIds": [
+        "FR-014"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-014",
+          "index": 0
+        },
+        {
+          "frId": "FR-014",
+          "index": 1
+        }
+      ],
+      "dependsOn": [
+        "T-000"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-015",
+      "title": "Design foundation — design tokens, base components, accessibility baseline",
+      "milestone": "M1",
+      "frIds": [],
+      "acceptance": [],
+      "dependsOn": [
+        "T-000"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    }
+  ]
+}
