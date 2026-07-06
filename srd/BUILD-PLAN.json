@@ -280,7 +280,8 @@
         }
       ],
       "dependsOn": [
-        "T-006"
+        "T-006",
+        "T-015"
       ],
       "artifacts": [],
       "tests": [],
@@ -385,7 +386,7 @@
     },
     {
       "id": "T-011",
-      "title": "FR-011 — Stooq price fallback",
+      "title": "FR-011 — Price freshness tiering (budget-aware, provenance-dated)",
       "milestone": "M2",
       "frIds": [
         "FR-011"

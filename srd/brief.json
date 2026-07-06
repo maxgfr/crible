@@ -74,20 +74,76 @@
     "SimFin/simfin"
   ],
   "featureWishlist": [
-    { "title": "Worldwide universe built from FinanceDatabase", "priority": "must", "notes": "Load the 160,995-equity universe (117 countries, 84 exchanges) into DuckDB; symbols are Yahoo-suffixed tickers usable directly by yfinance. market_cap is categorical (Large/Mid/Small) — numeric market cap enriched later from prices/shares. Region tagging drives crawl priority (Europe first)." },
-    { "title": "Rolling prioritized keyless ingestion (yfinance)", "priority": "must", "notes": "Continuous crawler under a global rate budget (<360 req/h, jitter + exponential backoff on 429, resumable). Priority queue: Europe → US large caps → rest of world; re-crawl driven by expected reporting freshness (quarterly). Per-ticker income/balance/cashflow (~4y annual, 4-5 quarters) + prices written to versioned raw Parquet. Providers are plugins behind one interface; with no key configured a keyed plugin disables itself cleanly." },
-    { "title": "Ratio and score computation into a wide snapshot", "priority": "must", "notes": "financetoolkit (enforce_source=YahooFinance) for 150+ ratios + Piotroski F-Score + Altman Z-Score; Beneish M-Score implemented in-house (8 components, tested against published examples). Output: one row per company × period, ~200 columns, snapshot Parquet the screener queries." },
-    { "title": "Filter DSL compiled to DuckDB SQL", "priority": "must", "notes": "Human query language: roe > 15 AND piotroski >= 7 AND country IN (FR, DE) AND sector = 'Industrials'. Compiled to SQL against the snapshot with a strict field whitelist (no injection), helpful errors, sorting and pagination. The 'ultra-powerful engine' is DuckDB: 161k × 200 columns in milliseconds." },
-    { "title": "CLI (crible)", "priority": "must", "notes": "crible screen \"<dsl>\" (table or CSV out), crible ingest (run/resume crawler), crible status (universe coverage, data freshness, req/h), crible export. Same DSL as API/UI." },
-    { "title": "HTTP API (FastAPI)", "priority": "must", "notes": "POST /screen (DSL or structured filters), GET /presets, GET /company/{symbol} (fundamentals history + scores breakdown), CSV export, GET /status (coverage, freshness). Serves the built SPA statically. No auth (self-hosted, single operator)." },
-    { "title": "React/Vite SPA", "priority": "must", "notes": "Results grid (TanStack Table): column picker, sort, filter bar bound to the DSL, presets menu, CSV export, company detail drawer (statements history, scores breakdown, data source + freshness badges). Dense data-first UI." },
-    { "title": "Docker Compose deployment", "priority": "must", "notes": "Service ingest (continuous crawler) + service api (FastAPI + built SPA), shared Parquet/DuckDB volume, healthchecks, .env for optional phase-2 keys. docker compose up with zero keys gives a fully working system." },
-    { "title": "Preset screens", "priority": "should", "notes": "Piotroski ≥ 7, Altman safe zone (Z > 2.99), Beneish red flags (M > -1.78), classic value (low EV/EBIT + high ROIC), quality (high ROE + low leverage). Each preset = a named DSL string, visible and editable — transparency is the product." },
-    { "title": "ESEF XBRL Europe enrichment", "priority": "should", "notes": "Pull audited annual figures for EU issuers from filings.xbrl.org JSON-API (keyless, 4,000+ ESEF reports, xBRL-JSON). Reconcile/override yfinance fields where audited data exists; company detail links to the filing. Europe-depth differentiator." },
-    { "title": "Stooq price fallback", "priority": "should", "notes": "Keyless CSV OHLCV for ~21k tickers as price backup when Yahoo rate-limits; keeps valuation ratios (P/E, EV) refreshable during Yahoo outages." },
-    { "title": "Company detail view", "priority": "should", "notes": "Per-company page/drawer: statement history (as far as sources allow), every score with its component breakdown (e.g. the 9 Piotroski criteria), data provenance per field, freshness." },
-    { "title": "Phase-2 free-key provider plugins", "priority": "could", "notes": "FinancialReports.eu MCP (EU filings + normalized financials, free account), SimFin bulk CSV (US, ~12-month delay), FMP free + EODHD free (schema validation only). Each optional: no key → plugin off, log line, no crash." },
-    { "title": "EODHD paid provider PRD + stub plugin", "priority": "could", "notes": "docs/prds/eodhd.md: detailed PRD for the single planned paid source (Fundamentals Data Feed €59.99/mo — worldwide fundamentals, 100k calls/day), endpoint schemas validated with the existing free key, switch plan behind the provider interface. FMP Ultimate documented as the rejected alternative in a summary PRD." }
+    {
+      "title": "Worldwide universe built from FinanceDatabase",
+      "priority": "must",
+      "notes": "Load the 160,995-equity universe (117 countries, 84 exchanges) into DuckDB; symbols are Yahoo-suffixed tickers usable directly by yfinance. market_cap is categorical (Large/Mid/Small) — numeric market cap enriched later from prices/shares. Region tagging drives crawl priority (Europe first)."
+    },
+    {
+      "title": "Rolling prioritized keyless ingestion (yfinance)",
+      "priority": "must",
+      "notes": "Continuous crawler under a global rate budget (<360 req/h, jitter + exponential backoff on 429, resumable). Priority queue: Europe → US large caps → rest of world; re-crawl driven by expected reporting freshness (quarterly). Per-ticker income/balance/cashflow (~4y annual, 4-5 quarters) + prices written to versioned raw Parquet. Providers are plugins behind one interface; with no key configured a keyed plugin disables itself cleanly."
+    },
+    {
+      "title": "Ratio and score computation into a wide snapshot",
+      "priority": "must",
+      "notes": "financetoolkit (enforce_source=YahooFinance) for 150+ ratios + Piotroski F-Score + Altman Z-Score; Beneish M-Score implemented in-house (8 components, tested against published examples). Output: one row per company × period, ~200 columns, snapshot Parquet the screener queries."
+    },
+    {
+      "title": "Filter DSL compiled to DuckDB SQL",
+      "priority": "must",
+      "notes": "Human query language: roe > 15 AND piotroski >= 7 AND country IN (FR, DE) AND sector = 'Industrials'. Compiled to SQL against the snapshot with a strict field whitelist (no injection), helpful errors, sorting and pagination. The 'ultra-powerful engine' is DuckDB: 161k × 200 columns in milliseconds."
+    },
+    {
+      "title": "CLI (crible)",
+      "priority": "must",
+      "notes": "crible screen \"<dsl>\" (table or CSV out), crible ingest (run/resume crawler), crible status (universe coverage, data freshness, req/h), crible export. Same DSL as API/UI."
+    },
+    {
+      "title": "HTTP API (FastAPI)",
+      "priority": "must",
+      "notes": "POST /screen (DSL or structured filters), GET /presets, GET /company/{symbol} (fundamentals history + scores breakdown), CSV export, GET /status (coverage, freshness). Serves the built SPA statically. No auth (self-hosted, single operator)."
+    },
+    {
+      "title": "React/Vite SPA",
+      "priority": "must",
+      "notes": "Results grid (TanStack Table): column picker, sort, filter bar bound to the DSL, presets menu, CSV export, company detail drawer (statements history, scores breakdown, data source + freshness badges). Dense data-first UI."
+    },
+    {
+      "title": "Docker Compose deployment",
+      "priority": "must",
+      "notes": "Service ingest (continuous crawler) + service api (FastAPI + built SPA), shared Parquet/DuckDB volume, healthchecks, .env for optional phase-2 keys. docker compose up with zero keys gives a fully working system."
+    },
+    {
+      "title": "Preset screens",
+      "priority": "should",
+      "notes": "Piotroski ≥ 7, Altman safe zone (Z > 2.99), Beneish red flags (M > -1.78), classic value (low EV/EBIT + high ROIC), quality (high ROE + low leverage). Each preset = a named DSL string, visible and editable — transparency is the product."
+    },
+    {
+      "title": "ESEF XBRL Europe enrichment",
+      "priority": "should",
+      "notes": "Pull audited annual figures for EU issuers from filings.xbrl.org JSON-API (keyless, 4,000+ ESEF reports, xBRL-JSON). Reconcile/override yfinance fields where audited data exists; company detail links to the filing. Europe-depth differentiator."
+    },
+    {
+      "title": "Stooq price fallback",
+      "priority": "should",
+      "notes": "Keyless CSV OHLCV for ~21k tickers as price backup when Yahoo rate-limits; keeps valuation ratios (P/E, EV) refreshable during Yahoo outages."
+    },
+    {
+      "title": "Company detail view",
+      "priority": "should",
+      "notes": "Per-company page/drawer: statement history (as far as sources allow), every score with its component breakdown (e.g. the 9 Piotroski criteria), data provenance per field, freshness."
+    },
+    {
+      "title": "Phase-2 free-key provider plugins",
+      "priority": "could",
+      "notes": "FinancialReports.eu MCP (EU filings + normalized financials, free account), SimFin bulk CSV (US, ~12-month delay), FMP free + EODHD free (schema validation only). Each optional: no key → plugin off, log line, no crash."
+    },
+    {
+      "title": "EODHD paid provider PRD + stub plugin",
+      "priority": "could",
+      "notes": "docs/prds/eodhd.md: detailed PRD for the single planned paid source (Fundamentals Data Feed €59.99/mo — worldwide fundamentals, 100k calls/day), endpoint schemas validated with the existing free key, switch plan behind the provider interface. FMP Ultimate documented as the rejected alternative in a summary PRD."
+    }
   ],
   "nfrPriorities": [
     "reliability (rate-limit resilience: crawler never exceeds budget, backs off on 429, resumes cleanly after restart)",
@@ -99,12 +155,19 @@
     "privacy (fully self-hosted; no telemetry; data stays on the operator's machine)"
   ],
   "design": {
-    "platforms": ["web (self-hosted SPA)"],
+    "platforms": [
+      "web (self-hosted SPA)"
+    ],
     "brandConstraints": "Greenfield. Dense, data-first, terminal-inspired aesthetic; the table is the hero. Dark mode first-class.",
-    "referenceSystems": ["shadcn/ui", "TanStack Table", "screener.in (information density)"],
+    "referenceSystems": [
+      "shadcn/ui",
+      "TanStack Table",
+      "screener.in (information density)"
+    ],
     "accessibilityTarget": "WCAG 2.2 AA",
     "tone": "sober, precise, numbers-forward; French product name, English UI"
   },
   "openQuestions": [],
-  "createdAt": "2026-07-06T21:12:51.522Z"
+  "createdAt": "2026-07-06T21:12:51.522Z",
+  "_note": "HISTORICAL INTERVIEW RECORD (2026-07-06) — superseded by SRD.json. Several planning-time figures in here (~360 req/h, ≈19-day sweep, ~21k Stooq tickers, 12-month SimFin delay, 4,000+ ESEF reports, 100k EODHD calls/day) were corrected or reworded during adversarial review; SRD.json and the rendered markdown are the source of truth."
 }

@@ -20,6 +20,6 @@ _Related FRs: FR-007, FR-009, FR-012_
 
 ## Provider Plugin API _(api)_
 
-Internal contract every data source implements: capabilities() (statements/prices/coverage), fetch_statements(symbol), fetch_prices(symbols), health(). Keyless providers are always on; keyed providers self-disable without their env key (one log line, no crash). External endpoints behind it: Yahoo via yfinance, filings.xbrl.org JSON-API, Stooq CSV; phase 2: FinancialReports.eu, SimFin, FMP free, EODHD free; future: EODHD paid.
+Internal contract every data source implements: capabilities() (statements/prices/coverage), fetch_statements(symbol), fetch_prices(symbols), health(). Keyless providers are always on; keyed providers self-disable without their env key (one log line, no crash). External endpoints behind it — keyless: Yahoo via yfinance, filings.xbrl.org JSON-API, GLEIF ISIN→LEI mapping files, optional Stooq fallback (disabled by default); phase 2 keyed: FinancialReports.eu, SimFin, FMP free, EODHD free; future: EODHD paid.
 
 _Related FRs: FR-002, FR-010, FR-011, FR-013, FR-014_

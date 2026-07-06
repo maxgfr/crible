@@ -38,7 +38,7 @@ Data cost is €0 in v1 and can only ever grow by one explicit, documented switc
 
 ## NFR-007 — rate-limit compliance
 
-The crawler never exceeds its configured upstream request budget — polite crawling is a hard constraint of the keyless design, because Yahoo demonstrably rate-limits and blocks aggressive scrapers [E105][E107]. [E105][E106][E107][E108]
+The crawler never exceeds its configured upstream request budget — polite crawling is a hard constraint of the keyless design, because Yahoo demonstrably rate-limits scrapers (429s and YFRateLimitError are endemic in the wild [E105][E107][E108]). [E105][E107][E108]
 
 **Metric:** Rolling 60-minute upstream request count ≤ budget (default 330 — a conservative design choice, configurable), counting every statement/profile/price request individually; enforced by a token bucket and asserted in tests under simulated load; 0 budget violations in a 24 h soak; on HTTP 429 the backoff doubles from 1 min to a 15 min cap with ±20% jitter (design parameters, property-tested).
 

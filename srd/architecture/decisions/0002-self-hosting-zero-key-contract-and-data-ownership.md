@@ -4,7 +4,7 @@
 
 ## Context
 
-Every credible fundamental screener with European coverage is subscription SaaS with closed formulas (Stockopedia [E67], Simply Wall St [E58], Uncle Stock [E59]); data feeds worth using are paid (EODHD fundamentals start at €59.99/mo [E61]). The product's reason to exist is owning the screener: data, formulas, universe.
+Every credible fundamental screener with European coverage is subscription SaaS with closed formulas (Stockopedia [E67], Simply Wall St [E58], Uncle Stock [E59]); data feeds worth using are pay-gated — EODHD's free tier grants 20 API calls/day with paid plans required for more data [E111], the observed paid pricing being recorded to-revalidate in docs/prds/eodhd.md. The product's reason to exist is owning the screener: data, formulas, universe.
 
 ## Decision
 

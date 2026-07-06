@@ -4,7 +4,7 @@
   "generatedAt": "2026-07-06T21:32:15.981Z",
   "product": {
     "name": "crible",
-    "problem": "Serious fundamental screening across ALL of Europe (and the world) is locked behind expensive feeds (EODHD €59.99/mo, FMP Ultimate $149/mo); free tools are US-centric (Finviz), shallow, or SaaS with no control over data, formulas or universe. Investors who want transparent, reproducible fundamental screens over European small/mid caps have no self-hosted option.",
+    "problem": "Serious fundamental screening across ALL of Europe (and the world) is locked behind paid feeds (EODHD gates fundamentals behind paid plans [E111]; FMP's worldwide coverage sits in its top tier — planning-time prices recorded in docs/prds/, re-validated before any purchase); free tools are US-centric (Finviz), shallow, or SaaS with no control over data, formulas or universe. Investors who want transparent, reproducible fundamental screens over European small/mid caps have no self-hosted option.",
     "valueProp": "A screener you own: worldwide universe with Europe-depth, 100% functional with zero API keys (guaranteed forever), transparent formulas (financetoolkit + published score definitions), audited ESEF figures for EU names, DuckDB-fast filtering, and a single optional paid switch (EODHD) ready when deeper history is wanted — never required.",
     "users": [
       "Individual fundamental investor (Maxime) screening European + worldwide equities with value/quality/forensic criteria",
@@ -14,7 +14,7 @@
       "Screen the full worldwide snapshot (~161k equities × ~200 columns) in under 1 second locally — enforced by a CI benchmark on a synthetic full-size snapshot",
       "Europe as depth priority: European listings are always crawled first and, where an ISIN→LEI mapping resolves, enriched with audited ESEF XBRL figures (coverage partial until ESAP opens)",
       "Zero-key contract: a dedicated CI job runs the full E2E suite with no API keys configured and must pass for every release",
-      "Rolling keyless crawl under a hard request budget: the Europe tier refreshes within a quarter; worldwide completes ≈ 2 sweeps/year; coverage and freshness are always visible in crible status",
+      "Rolling keyless crawl under one hard request budget (fundamentals + prices): the Europe tier refreshes within a quarter (~5–7 weeks/sweep), priority symbols get daily prices, worldwide fundamentals complete best-effort (≈ 2 sweeps/year); coverage, freshness and price_asof are always visible in crible status",
       "One-switch paid upgrade path: the EODHD Fundamentals plugin is specced and stubbed so a single key upgrade replaces the fragile yfinance link without touching the rest"
     ]
   },
@@ -47,7 +47,7 @@
       "Timeline: v1 zero-key end-to-end first; phase 2 (free-key plugins) after.",
       "Budget: €0 for data in v1; the zero-key mode is a permanent, CI-enforced contract (empty-env E2E gate), not a marketing absolute.",
       "Compliance: MIT license; polite crawling under a hard request budget; English codebase and docs.",
-      "Zero-key mode depends on four external keyless endpoints (FinanceDatabase, Yahoo, filings.xbrl.org, Stooq); their availability is monitored, an extended outage degrades to serving the last snapshot with staleness visible — fundamentals have no keyless fallback for Yahoo (that is exactly the EODHD switch, FR-014)."
+      "Zero-key mode depends on four external keyless endpoints (FinanceDatabase, Yahoo via yfinance, filings.xbrl.org, GLEIF ISIN→LEI mapping files) plus the optional disabled-by-default Stooq fallback; their availability is monitored, an extended outage degrades to serving the last snapshot with staleness visible — fundamentals have no keyless fallback for Yahoo (that is exactly the EODHD switch, FR-014)."
     ]
   },
   "functional": [
@@ -100,7 +100,7 @@
     {
       "id": "FR-002",
       "title": "Rolling prioritized keyless ingestion (yfinance)",
-      "description": "A continuous, resumable crawler fetches per-ticker fundamentals through yfinance under a hard, configurable request budget (default 330 upstream requests per rolling hour — a deliberately conservative crawl rate chosen because Yahoo aggressively rate-limits scrapers: 429s and YFRateLimitError are endemic and treated by yfinance maintainers as Yahoo policy [E105][E106][E107][E108]). Every upstream call counts against the budget: one symbol sweep costs ~7 requests (3 statement types × 2 frequencies + profile/price). Honest throughput: ≈1,100 symbols/day → the Europe tier cycles well inside a quarter while the worldwide tail refreshes best-effort (ADR-0004 states the full arithmetic). Daily prices for the whole universe deliberately do NOT ride this budget — bulk EOD prices come from the keyless Stooq path (FR-011); Yahoo prices are fetched only for priority symbols. A priority queue orders work Europe → US large caps → rest of world; statement revisits are freshness-driven (quarterly). Raw responses land as versioned Parquet (append-only raw layer). All sources sit behind one Provider interface; a keyed plugin with no key disables itself cleanly (zero-key contract). If Yahoo blocks for an extended period, the crawler parks politely and retries with capped backoff; the API keeps serving the last snapshot with staleness visible (degradation path).",
+      "description": "A continuous, resumable crawler fetches per-ticker fundamentals AND prices through yfinance under one hard, configurable request budget (default 330 upstream requests per rolling hour — a deliberately conservative crawl rate chosen because Yahoo aggressively rate-limits scrapers: 429s and YFRateLimitError are endemic [E105][E107][E108]). Every upstream call counts: a fundamentals sweep costs ~7 requests per symbol (3 statement types × 2 frequencies + profile/price). Honest throughput at default budget ≈ 7,900 requests/day: with ~2,000/day reserved for daily priority-tier prices (FR-011), ~5,900/day remain for fundamentals ≈ 840 symbols/day — the Europe tier cycles in roughly 5–7 weeks (inside the quarterly freshness contract) and the worldwide tail is explicitly best-effort (ADR-0004 states the full arithmetic). A priority queue orders work Europe → US large caps → rest of world; statement revisits are freshness-driven (quarterly). Raw responses land as versioned Parquet (append-only raw layer). All sources sit behind one Provider interface; a keyed plugin with no key disables itself cleanly (zero-key contract). If Yahoo blocks for an extended period, the crawler parks politely and retries with capped backoff; the API keeps serving the last snapshot with staleness visible (degradation path).",
       "priority": "must",
       "acceptance": [
         {
@@ -126,7 +126,6 @@
       ],
       "rationaleEvidence": [
         "E105",
-        "E106",
         "E107",
         "E108",
         "E52",
@@ -381,7 +380,7 @@
         {
           "given": "a machine with only Docker installed and no API keys in the environment",
           "when": "docker compose up runs",
-          "then": "both services report healthy within 120 seconds, the shared volume holds the DuckDB database and Parquet layers, and — with the default bootstrap sample (~100 symbols ≈ 700 budgeted requests) — a preset screen returns at least one row through UI or CLI within 4 hours of first boot"
+          "then": "both services report healthy within 120 seconds, the shared volume holds the DuckDB database and Parquet layers, and — with the default bootstrap sample (~100 symbols ≈ 700 budgeted requests) — a valid DSL screen (e.g. piotroski_f >= 0) returns at least one row through UI or CLI within 4 hours of first boot"
         },
         {
           "given": "the ingest container crashes or is killed",
@@ -499,19 +498,19 @@
     },
     {
       "id": "FR-011",
-      "title": "Stooq price fallback",
-      "description": "Stooq bulk daily prices: Stooq's keyless CSV endpoints provide EOD prices outside the Yahoo request budget — the primary bulk price path for valuation ratios, and the fallback when Yahoo throttles or hangs (a real, recurring failure mode [E36][E82][E105]). Switch rule: after 3 consecutive rate-limited Yahoo price attempts or a 30-second hang, the price refresher switches to Stooq for the remainder of the cycle. Bars carry provider='stooq' provenance.",
+      "title": "Price freshness tiering (budget-aware, provenance-dated)",
+      "description": "Prices ride the SAME Yahoo request budget as fundamentals — there is no free lunch: design-time verification (2026-07-07) found Stooq's CSV endpoints behind a JavaScript proof-of-work anti-bot wall, so no keyless bulk price path exists and none is assumed. Tiering: symbols in the priority price set (default: the bootstrap sample + European large caps, configurable size ~2,000) get daily price refreshes; all other symbols refresh opportunistically with leftover budget (weekly best-effort). Every price carries its as-of date; valuation ratios computed from a stale price expose price_asof provenance rather than pretending freshness. An optional stooq fallback plugin exists but ships DISABLED and is explicitly non-load-bearing (its wall may break it at any time). Yahoo price failures degrade politely (skip, keep last price, staleness visible) — the recurring hang/throttle failure modes are documented [E36][E82][E105].",
       "priority": "should",
       "acceptance": [
         {
-          "given": "Yahoo price requests hit 3 consecutive rate-limit errors or a 30-second hang",
-          "when": "the price refresher runs",
-          "then": "it switches to Stooq for the remainder of the cycle, updates OHLCV bars for Stooq-covered tickers with provider='stooq' provenance, and the dependent valuation ratios recompute on the next compute cycle"
+          "given": "the priority price set is configured (default bootstrap sample + European large caps)",
+          "when": "the price refresher runs its daily cycle within the global budget",
+          "then": "priority symbols end the cycle with prices at most one trading day old, non-priority symbols are refreshed only with leftover budget, and every snapshot valuation ratio exposes the price_asof date it was computed from"
         },
         {
-          "given": "a ticker unknown to Stooq",
-          "when": "the Stooq path attempts it",
-          "then": "the ticker is skipped with a single log line and remains scheduled for Yahoo on the next cycle — the fallback never blocks the queue"
+          "given": "Yahoo price fetches fail (3 consecutive rate-limit errors or a 30-second hang)",
+          "when": "the price refresher encounters the failures",
+          "then": "it skips politely for the remainder of the cycle, affected symbols keep their last known price with staleness visible in provenance and status, and nothing busy-loops — the optional stooq plugin, if explicitly enabled, may be tried but its failure never blocks the cycle"
         }
       ],
       "rationaleEvidence": [
@@ -711,11 +710,10 @@
     {
       "id": "NFR-007",
       "category": "rate-limit compliance",
-      "statement": "The crawler never exceeds its configured upstream request budget — polite crawling is a hard constraint of the keyless design, because Yahoo demonstrably rate-limits and blocks aggressive scrapers [E105][E107].",
+      "statement": "The crawler never exceeds its configured upstream request budget — polite crawling is a hard constraint of the keyless design, because Yahoo demonstrably rate-limits scrapers (429s and YFRateLimitError are endemic in the wild [E105][E107][E108]).",
       "metric": "Rolling 60-minute upstream request count ≤ budget (default 330 — a conservative design choice, configurable), counting every statement/profile/price request individually; enforced by a token bucket and asserted in tests under simulated load; 0 budget violations in a 24 h soak; on HTTP 429 the backoff doubles from 1 min to a 15 min cap with ±20% jitter (design parameters, property-tested).",
       "rationaleEvidence": [
         "E105",
-        "E106",
         "E107",
         "E108"
       ]
@@ -778,7 +776,7 @@
     }
   ],
   "architecture": {
-    "context": "crible serves a fundamental investor and self-hosting tinkerer screening European + worldwide equities. Pipeline: universe (FinanceDatabase CSVs → DuckDB) → ingest (rolling prioritized keyless crawler over yfinance + ESEF XBRL + Stooq behind a Provider plugin seam, raw versioned Parquet) → compute (financetoolkit ratios + Piotroski/Altman + in-house Beneish → wide snapshot Parquet) → store/query (DuckDB over Parquet; DSL → parametrized SQL) → surfaces (Typer CLI, FastAPI HTTP API, React/Vite SPA) — all packaged as two Docker Compose services (ingest, api) sharing one data volume. No external services are required in zero-key mode; each external data source is isolated behind the Provider Plugin API (ADR-0003, ADR-0004).",
+    "context": "crible serves a fundamental investor and self-hosting tinkerer screening European + worldwide equities. Pipeline: universe (FinanceDatabase CSVs → DuckDB) → ingest (rolling prioritized keyless crawler over yfinance — fundamentals AND prices under one request budget — plus ESEF XBRL audited figures joined via GLEIF ISIN→LEI, behind a Provider plugin seam; raw versioned Parquet) → compute (financetoolkit ratios + Piotroski/Altman + in-house Beneish → wide snapshot Parquet) → store/query (DuckDB over Parquet; DSL → parametrized SQL) → surfaces (Typer CLI, FastAPI HTTP API, React/Vite SPA) — all packaged as two Docker Compose services (ingest, api) sharing one data volume. Keyless external endpoints: FinanceDatabase, Yahoo, filings.xbrl.org, GLEIF (+ optional disabled Stooq fallback). Each external source is isolated behind the Provider Plugin API (ADR-0003, ADR-0004).",
     "dataModel": [
       {
         "name": "Company",
@@ -1089,7 +1087,7 @@
       {
         "name": "Provider Plugin API",
         "kind": "api",
-        "summary": "Internal contract every data source implements: capabilities() (statements/prices/coverage), fetch_statements(symbol), fetch_prices(symbols), health(). Keyless providers are always on; keyed providers self-disable without their env key (one log line, no crash). External endpoints behind it: Yahoo via yfinance, filings.xbrl.org JSON-API, Stooq CSV; phase 2: FinancialReports.eu, SimFin, FMP free, EODHD free; future: EODHD paid.",
+        "summary": "Internal contract every data source implements: capabilities() (statements/prices/coverage), fetch_statements(symbol), fetch_prices(symbols), health(). Keyless providers are always on; keyed providers self-disable without their env key (one log line, no crash). External endpoints behind it — keyless: Yahoo via yfinance, filings.xbrl.org JSON-API, GLEIF ISIN→LEI mapping files, optional Stooq fallback (disabled by default); phase 2 keyed: FinancialReports.eu, SimFin, FMP free, EODHD free; future: EODHD paid.",
         "relatedFRs": [
           "FR-002",
           "FR-010",
@@ -1128,7 +1126,7 @@
         "id": "0002",
         "title": "Self-hosting, zero-key contract and data ownership",
         "status": "accepted",
-        "context": "Every credible fundamental screener with European coverage is subscription SaaS with closed formulas (Stockopedia [E67], Simply Wall St [E58], Uncle Stock [E59]); data feeds worth using are paid (EODHD fundamentals start at €59.99/mo [E61]). The product's reason to exist is owning the screener: data, formulas, universe.",
+        "context": "Every credible fundamental screener with European coverage is subscription SaaS with closed formulas (Stockopedia [E67], Simply Wall St [E58], Uncle Stock [E59]); data feeds worth using are pay-gated — EODHD's free tier grants 20 API calls/day with paid plans required for more data [E111], the observed paid pricing being recorded to-revalidate in docs/prds/eodhd.md. The product's reason to exist is owning the screener: data, formulas, universe.",
         "decision": "Ship as a self-hosted Docker Compose deployment where the host owns all data. The zero-key mode (FinanceDatabase + yfinance + filings.xbrl.org + Stooq) is a permanent, CI-enforced contract — every core flow works with no account, no key, no external service. No auth layer: single operator, bound to the local network; no telemetry.",
         "consequences": "Data residency and polite-crawling compliance are the operator's responsibility (documented); the free path accepts Yahoo's shallow statement history (a handful of annual periods — observed behaviour, validated in integration tests, no contractual depth exists for a scraped source) and best-effort worldwide freshness as the price of €0; a hosted multi-tenant SaaS is explicitly out of scope. The zero-key guarantee is expressed as a testable contract: the release-gating CI job runs the E2E suite with no keys configured.",
         "alternatives": "Hosted SaaS — rejected: recreates the incumbents' model and their privacy/lock-in problems [E67][E58]. Mandatory free-tier keys (FMP/EODHD free) in v1 — rejected: their free tiers contribute nothing for Europe (US-only / no fundamentals [E61]) and would break the zero-key promise.",
@@ -1160,18 +1158,19 @@
         "id": "0004",
         "title": "Keyless ingestion: rolling prioritized crawl under a hard Yahoo rate budget",
         "status": "accepted",
-        "context": "Yahoo has no bulk fundamentals endpoint — statements are per-ticker, per-statement-type calls — and rate-limits scrapers aggressively: bulk downloads trip YFRateLimitError ('Too Many Requests. Rate limited. Try after a while.') [E107][E108], long-running pulls crash or hang [E36][E82], and maintainers closed the core rate-limit issue as Yahoo policy rather than a fixable bug [E105][E106]. yfinance now rides curl_cffi with impersonated sessions and must own its session [E52]. No public figure exists for a 'safe' rate — so the budget is a deliberately conservative design parameter, not a claimed tolerance.",
-        "decision": "A continuous priority-queue crawler with a global token bucket (default 330 upstream requests per rolling hour, configurable), counting every upstream call (a symbol sweep ≈ 7 requests: 3 statement types × 2 frequencies + profile). Jittered exponential backoff on 429 (1 min → 15 min cap), a per-request watchdog against hangs, persisted queue state for crash-resume, freshness-driven revisits (quarterly statements). Priority tiers: Europe → US large caps → rest of world. Bulk daily prices come from the keyless Stooq path outside this budget (FR-011); Europe's cross-sectional depth is compensated by the audited ESEF layer (FR-010).",
-        "consequences": "The honest arithmetic: 330 req/h ≈ 7,900 req/day ≈ ~1,100 symbol-sweeps/day. The Europe tier (tens of thousands of listings) completes in roughly 3–6 weeks — inside the quarterly freshness contract; the full ~161k worldwide universe takes ≈ 20 weeks per sweep, so rest-of-world coverage is explicitly best-effort (~2 refreshes/year) in zero-key mode. Coverage and freshness are always visible in crible status; the single-switch EODHD upgrade (FR-014) is the documented cure when worldwide quarterly freshness is wanted. The crawler is a long-lived, stateful, polite process rather than a batch job; an extended Yahoo block degrades to serving the last snapshot with staleness badges, never to hammering.",
-        "alternatives": "Parallel scraping with proxy rotation — rejected: hostile, fragile, and the documented blocking [E105] shows how it ends. Paid feed from day one — rejected: breaks the €0 v1 budget and the zero-key contract (ADR-0002). On-demand fetching only (no crawl) — rejected: screening needs the full cross-section precomputed. Pretending daily whole-universe price refresh fits the Yahoo budget — rejected by arithmetic; bulk prices belong to the keyless Stooq path (FR-011).",
+        "context": "Yahoo has no bulk fundamentals endpoint — statements are per-ticker, per-statement-type calls — and rate-limits scrapers aggressively: bulk downloads trip YFRateLimitError ('Too Many Requests. Rate limited. Try after a while.') [E107][E108], long-running pulls crash or hang [E36][E82], and the core rate-limit issue is documented at length [E105]. yfinance rides curl_cffi with impersonated sessions and must own its session [E52]. No public figure exists for a 'safe' rate — the budget is a deliberately conservative design parameter, not a claimed tolerance. Design-time verification (2026-07-07) also found Stooq's CSV endpoints behind a JavaScript proof-of-work wall: there is NO keyless bulk price alternative, so prices must share the Yahoo budget.",
+        "decision": "A continuous priority-queue crawler with a global token bucket (default 330 upstream requests per rolling hour, configurable), counting every upstream call (a fundamentals sweep ≈ 7 requests per symbol; every price request counts too). Jittered exponential backoff on 429 (1 min → 15 min cap), a per-request watchdog against hangs, persisted queue state for crash-resume, freshness-driven revisits (quarterly statements; daily prices for the priority tier only — FR-011). Priority tiers: Europe → US large caps → rest of world. Europe's cross-sectional depth is compensated by the audited ESEF layer (FR-010) joined via the keyless GLEIF ISIN→LEI mapping [E113][E114].",
+        "consequences": "The honest arithmetic at the default budget (7,900 req/day): ~2,000/day reserved for daily priority-tier prices leaves ~5,900/day ≈ 840 fundamentals sweeps/day — the Europe tier (tens of thousands of listings) completes in roughly 5–7 weeks, inside the quarterly contract; the full ~161k worldwide universe takes ≈ 6+ months per sweep, so rest-of-world coverage is explicitly best-effort in zero-key mode. Non-priority valuation ratios may rest on week-old prices — visible via price_asof provenance, never silent. Coverage and freshness are always visible in crible status; the single-switch EODHD upgrade (FR-014) is the documented cure when worldwide freshness is wanted. The crawler is a long-lived, stateful, polite process; an extended Yahoo block degrades to serving the last snapshot with staleness badges, never to hammering.",
+        "alternatives": "Parallel scraping with proxy rotation — rejected: hostile, fragile, and the documented blocking [E105] shows how it ends. Paid feed from day one — rejected: breaks the €0 v1 budget and the zero-key contract (ADR-0002). On-demand fetching only (no crawl) — rejected: screening needs the full cross-section precomputed. Stooq as a budget-free bulk price path — rejected after design-time verification (2026-07-07): its endpoints sit behind a JS proof-of-work wall; it survives only as an optional, disabled-by-default, non-load-bearing fallback plugin.",
         "evidence": [
           "E105",
-          "E106",
           "E107",
           "E108",
           "E52",
           "E36",
-          "E82"
+          "E82",
+          "E113",
+          "E114"
         ]
       }
     ]
@@ -1226,10 +1225,11 @@
       },
       {
         "name": "EODHD Screener API",
-        "note": "The data vendor's own screener endpoint. Fundamentals require the €59.99/mo tier (free tier: 20 calls/day, 1-year EOD, no fundamentals) — this is the single paid upgrade crible keeps on standby (FR-014), not a v1 dependency.",
+        "note": "The data vendor's own screener endpoint. Fundamentals are pay-gated: the free tier grants 20 API calls/day and more data requires a paid plan [E111][E112]; the Fundamentals-feed price observed during planning is recorded to-revalidate in docs/prds/eodhd.md (FR-014) — the single paid upgrade crible keeps on standby, not a v1 dependency.",
         "evidence": [
-          "E61",
-          "E62"
+          "E111",
+          "E112",
+          "E61"
         ]
       },
       {
@@ -1281,14 +1281,15 @@
       {
         "name": "ranaroussi/yfinance",
         "url": "https://github.com/ranaroussi/yfinance",
-        "note": "The fragile-but-free fundamentals link: curl_cffi sessions, ~360 req/h tolerance, per-ticker statements ~4y deep, hangs and 429s documented in issues — ADR-0004 designs around every one of these.",
+        "note": "The fragile-but-free fundamentals link: curl_cffi impersonated sessions [E52], endemic rate limiting (429 / YFRateLimitError on bulk pulls [E105][E107][E108]) and hangs [E36][E82]. Statement depth is shallow (a handful of annual periods — observed behaviour, validated in integration; no contractual depth exists). ADR-0004 designs around every one of these.",
         "evidence": [
           "E3",
           "E52",
+          "E105",
+          "E107",
+          "E108",
           "E36",
-          "E82",
-          "E98",
-          "E99"
+          "E82"
         ]
       },
       {
@@ -1315,11 +1316,11 @@
       {
         "name": "SimFin/simfin",
         "url": "https://github.com/SimFin/simfin",
-        "note": "Official Python client for SimFin's free bulk US fundamentals (~12-month delay). Library dormant since 2023 → crible's phase-2 simfin plugin calls the REST API directly.",
+        "note": "Official Python client for SimFin's free bulk US fundamentals (5,000 US stocks, 20+ years of history via API/bulk download [E115][E116]; free-tier limitations vs paid re-verified when the phase-2 plugin is built). Library dormant since 2023 → crible's plugin would call the REST API directly.",
         "evidence": [
           "E78",
-          "E83",
-          "E49"
+          "E115",
+          "E116"
         ]
       }
     ]
@@ -1772,7 +1773,6 @@
     "E80",
     "E81",
     "E82",
-    "E83",
     "E85",
     "E88",
     "E89",
@@ -1782,11 +1782,9 @@
     "E94",
     "E95",
     "E98",
-    "E99",
     "E100",
     "E104",
     "E105",
-    "E106",
     "E107",
     "E108",
     "E109",
