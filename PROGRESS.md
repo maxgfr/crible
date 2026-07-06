@@ -40,11 +40,12 @@ _Mise à jour : 2026-07-07 ~02:00. Mode autonome (Maxime dort). **BUILD COMPLET 
 
 ## Ce qui reste (optionnel / phase 2)
 
-- Brancher l'enrichissement ESEF dans la boucle ingest (les briques GLEIF/xBRL/réconciliation sont faites et testées ; le câblage scheduler = 1 fonction service).
-- Refresher prix branché sur la boucle (module fait + testé).
+- ~~Brancher l'enrichissement ESEF dans la boucle ingest~~ **FAIT** (`run_esef_cycle` : GLEIF→LEI→filings→raw esef, outage-safe, unmatched compté ; idle tant que `data/isin-lei.csv` n'est pas déposé — fichier GLEIF ~200 Mo, téléchargement volontaire de l'opérateur).
+- ~~Refresher prix branché sur la boucle~~ **FAIT** (`run_price_refresh` quotidien sur le sample prioritaire, budget partagé).
 - Plugin financialreports (MCP OAuth — à évaluer, cf. risques M3).
 - E2E zéro clé en nightly CI (manuel pour l'instant — budget réel).
 - Publication GitHub (privé→public) quand Maxime valide.
+- 81 tests pytest + 3 vitest au total après câblage.
 
 ## Comment vérifier
 
