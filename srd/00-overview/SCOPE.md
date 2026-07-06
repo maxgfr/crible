@@ -24,7 +24,8 @@
 - Mobile apps
 
 ## Assumptions
-- The team is: Solo developer (Maxime), TDD workflow (red-green-refactor).
-- The timeline is: v1 zero-key end-to-end first; phase 2 (free-key plugins) after.
-- The budget is: €0 for data in v1 (strict zero-key core; free-key plugins in phase 2; EODHD €59.99/mo is a documented future option, not a v1 dependency).
-- Compliance applies: MIT license, Respect Yahoo rate tolerance (~360 req/h budget with jitter+backoff), English codebase and docs.
+- Team: solo developer (Maxime), TDD workflow (red-green-refactor).
+- Timeline: v1 zero-key end-to-end first; phase 2 (free-key plugins) after.
+- Budget: €0 for data in v1; the zero-key mode is a permanent, CI-enforced contract (empty-env E2E gate), not a marketing absolute.
+- Compliance: MIT license; polite crawling under a hard request budget; English codebase and docs.
+- Zero-key mode depends on four external keyless endpoints (FinanceDatabase, Yahoo, filings.xbrl.org, Stooq); their availability is monitored, an extended outage degrades to serving the last snapshot with staleness visible — fundamentals have no keyless fallback for Yahoo (that is exactly the EODHD switch, FR-014).

@@ -20,8 +20,8 @@ crible's brand: dense, data-first, terminal-inspired; dark mode is the primary t
 
 | Token | Value | Notes |
 |---|---|---|
-| font.sans | 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif | UI chrome, labels. |
-| font.mono | 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace | All numerals (tabular-nums), DSL query bar, code. |
+| font.sans | 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif | UI chrome, labels. Bundled with the SPA (@font-face, no CDN — NFR-013 egress test). |
+| font.mono | 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace | All numerals (tabular-nums), DSL query bar, code. Bundled with the SPA (no CDN). |
 | scale.body | 13px / 1.45 | Dense default; grid cells. |
 | scale.h1 | 20px / 1.3 | Screen titles — chrome stays small. |
 | scale.small | 11px / 1.35 | Badges, provenance, freshness. |

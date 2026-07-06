@@ -58,4 +58,4 @@ _States: default, hover, focus, active, disabled, loading, empty, error · FRs: 
 
 First-run (universe loading, crawl progress with ETA), no-match (suggest loosening clauses), API-down and not-yet-crawled company states — each teaches the next action.
 
-_States: default, hover, focus, active, disabled, loading, empty, error · FRs: FR-007, FR-012, FR-001_
+_States: default, hover, focus, active, disabled, loading, empty, error · FRs: FR-007, FR-012, FR-006_

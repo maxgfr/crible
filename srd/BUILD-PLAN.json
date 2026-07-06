@@ -46,6 +46,10 @@
         {
           "frId": "FR-001",
           "index": 1
+        },
+        {
+          "frId": "FR-001",
+          "index": 2
         }
       ],
       "dependsOn": [
@@ -77,10 +81,19 @@
         {
           "frId": "FR-002",
           "index": 1
+        },
+        {
+          "frId": "FR-002",
+          "index": 2
+        },
+        {
+          "frId": "FR-002",
+          "index": 3
         }
       ],
       "dependsOn": [
-        "T-000"
+        "T-000",
+        "T-001"
       ],
       "artifacts": [
         "src/crible/ingest/crawler.py",
@@ -114,10 +127,14 @@
         {
           "frId": "FR-003",
           "index": 1
+        },
+        {
+          "frId": "FR-003",
+          "index": 2
         }
       ],
       "dependsOn": [
-        "T-000"
+        "T-002"
       ],
       "artifacts": [],
       "tests": [],
@@ -141,10 +158,18 @@
         {
           "frId": "FR-004",
           "index": 1
+        },
+        {
+          "frId": "FR-004",
+          "index": 2
+        },
+        {
+          "frId": "FR-004",
+          "index": 3
         }
       ],
       "dependsOn": [
-        "T-000"
+        "T-003"
       ],
       "artifacts": [],
       "tests": [],
@@ -168,10 +193,14 @@
         {
           "frId": "FR-005",
           "index": 1
+        },
+        {
+          "frId": "FR-005",
+          "index": 2
         }
       ],
       "dependsOn": [
-        "T-000"
+        "T-004"
       ],
       "artifacts": [],
       "tests": [],
@@ -195,10 +224,18 @@
         {
           "frId": "FR-006",
           "index": 1
+        },
+        {
+          "frId": "FR-006",
+          "index": 2
+        },
+        {
+          "frId": "FR-006",
+          "index": 3
         }
       ],
       "dependsOn": [
-        "T-000"
+        "T-004"
       ],
       "artifacts": [],
       "tests": [],
@@ -222,10 +259,14 @@
         {
           "frId": "FR-007",
           "index": 1
+        },
+        {
+          "frId": "FR-007",
+          "index": 2
         }
       ],
       "dependsOn": [
-        "T-000"
+        "T-006"
       ],
       "artifacts": [],
       "tests": [],
@@ -249,10 +290,15 @@
         {
           "frId": "FR-008",
           "index": 1
+        },
+        {
+          "frId": "FR-008",
+          "index": 2
         }
       ],
       "dependsOn": [
-        "T-000"
+        "T-005",
+        "T-006"
       ],
       "artifacts": [],
       "tests": [],
@@ -279,7 +325,7 @@
         }
       ],
       "dependsOn": [
-        "T-000"
+        "T-004"
       ],
       "artifacts": [],
       "tests": [],
@@ -303,10 +349,18 @@
         {
           "frId": "FR-010",
           "index": 1
+        },
+        {
+          "frId": "FR-010",
+          "index": 2
+        },
+        {
+          "frId": "FR-010",
+          "index": 3
         }
       ],
       "dependsOn": [
-        "T-000"
+        "T-002"
       ],
       "artifacts": [],
       "tests": [],
@@ -333,7 +387,7 @@
         }
       ],
       "dependsOn": [
-        "T-000"
+        "T-002"
       ],
       "artifacts": [],
       "tests": [],
@@ -360,7 +414,8 @@
         }
       ],
       "dependsOn": [
-        "T-000"
+        "T-006",
+        "T-007"
       ],
       "artifacts": [],
       "tests": [],
@@ -384,10 +439,14 @@
         {
           "frId": "FR-013",
           "index": 1
+        },
+        {
+          "frId": "FR-013",
+          "index": 2
         }
       ],
       "dependsOn": [
-        "T-000"
+        "T-002"
       ],
       "artifacts": [],
       "tests": [],
@@ -414,7 +473,7 @@
         }
       ],
       "dependsOn": [
-        "T-000"
+        "T-013"
       ],
       "artifacts": [],
       "tests": [],

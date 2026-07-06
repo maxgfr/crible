@@ -11,11 +11,11 @@
       "Technical tinkerer who self-hosts the stack, tunes the crawl priorities and writes custom screens via the DSL or SQL"
     ],
     "metrics": [
-      "Screen the full ~161k-equity worldwide universe on fundamentals in under 1 second locally (DuckDB over Parquet)",
-      "Europe as depth priority: EU companies enriched with audited ESEF XBRL figures and always crawled first",
-      "Zero-key guarantee: every core flow (ingest, compute, screen, UI) works with no API key configured, for life",
-      "Sustain a complete worldwide fundamentals sweep within Yahoo's free rate tolerance (~360 req/h, full cycle ≈ 19 days, quarterly freshness)",
-      "One-switch paid upgrade path: EODHD Fundamentals plugin specced and stubbed so paying €59.99/mo replaces the fragile yfinance link without touching the rest"
+      "Screen the full worldwide snapshot (~161k equities × ~200 columns) in under 1 second locally — enforced by a CI benchmark on a synthetic full-size snapshot",
+      "Europe as depth priority: European listings are always crawled first and, where an ISIN→LEI mapping resolves, enriched with audited ESEF XBRL figures (coverage partial until ESAP opens)",
+      "Zero-key contract: a dedicated CI job runs the full E2E suite with no API keys configured and must pass for every release",
+      "Rolling keyless crawl under a hard request budget: the Europe tier refreshes within a quarter; worldwide completes ≈ 2 sweeps/year; coverage and freshness are always visible in crible status",
+      "One-switch paid upgrade path: the EODHD Fundamentals plugin is specced and stubbed so a single key upgrade replaces the fragile yfinance link without touching the rest"
     ]
   },
   "scope": {
@@ -43,17 +43,18 @@
       "Mobile apps"
     ],
     "assumptions": [
-      "The team is: Solo developer (Maxime), TDD workflow (red-green-refactor).",
-      "The timeline is: v1 zero-key end-to-end first; phase 2 (free-key plugins) after.",
-      "The budget is: €0 for data in v1 (strict zero-key core; free-key plugins in phase 2; EODHD €59.99/mo is a documented future option, not a v1 dependency).",
-      "Compliance applies: MIT license, Respect Yahoo rate tolerance (~360 req/h budget with jitter+backoff), English codebase and docs."
+      "Team: solo developer (Maxime), TDD workflow (red-green-refactor).",
+      "Timeline: v1 zero-key end-to-end first; phase 2 (free-key plugins) after.",
+      "Budget: €0 for data in v1; the zero-key mode is a permanent, CI-enforced contract (empty-env E2E gate), not a marketing absolute.",
+      "Compliance: MIT license; polite crawling under a hard request budget; English codebase and docs.",
+      "Zero-key mode depends on four external keyless endpoints (FinanceDatabase, Yahoo, filings.xbrl.org, Stooq); their availability is monitored, an extended outage degrades to serving the last snapshot with staleness visible — fundamentals have no keyless fallback for Yahoo (that is exactly the EODHD switch, FR-014)."
     ]
   },
   "functional": [
     {
       "id": "FR-001",
       "title": "Worldwide universe built from FinanceDatabase",
-      "description": "Bootstrap the screening universe from FinanceDatabase (160,995 equities, 117 countries, 84 exchanges; Yahoo-suffixed symbols usable directly by yfinance [E2][E16]). Loaded into DuckDB with region tags that drive crawl priority (Europe first). market_cap arrives categorical (Large/Mid/Small) [E17]; numeric market cap is derived later from prices × shares. Known upstream data-quality caveats (CUSIP collisions [E25], stale exchange codes [E27]) are tolerated: the universe is metadata, not valuation input.",
+      "description": "Bootstrap the screening universe from FinanceDatabase — its README statistics table counts 160,995 equities across 117 countries and 84 exchanges [E109][E110]; symbols are Yahoo-suffixed tickers usable directly by yfinance [E2][E16]. Loaded into DuckDB with region tags that drive crawl priority (Europe first). market_cap arrives as a categorical class (Large/Mid/Small); numeric market cap is derived later from prices × shares. Known upstream data-quality caveats (CUSIP collisions [E25], stale exchange codes [E27], sparse ISINs [E35]) are tolerated: the universe is metadata, not valuation input. Universe refreshes also update the delisted flag from the source.",
       "priority": "must",
       "acceptance": [
         {
@@ -73,11 +74,13 @@
         }
       ],
       "rationaleEvidence": [
+        "E109",
+        "E110",
         "E2",
         "E16",
-        "E17",
         "E25",
         "E27",
+        "E35",
         "E40"
       ],
       "entities": [
@@ -97,13 +100,13 @@
     {
       "id": "FR-002",
       "title": "Rolling prioritized keyless ingestion (yfinance)",
-      "description": "A continuous, resumable crawler fetches per-ticker fundamentals (income/balance/cash-flow, ~4 annual periods and 4–5 quarters — Yahoo's ceiling [E98][E99]) and daily prices through yfinance, under a global rate budget with jittered exponential backoff on 429 (Yahoo tolerates roughly 360 req/h and rate-limiting is Yahoo policy, not a library bug [E3][E52]). A priority queue orders work Europe → US large caps → rest of world, revisit driven by expected reporting freshness (quarterly for statements, daily for prices). Raw responses land as versioned Parquet (append-only raw layer). All sources sit behind one Provider interface; a keyed plugin with no key disables itself cleanly (zero-key contract).",
+      "description": "A continuous, resumable crawler fetches per-ticker fundamentals through yfinance under a hard, configurable request budget (default 330 upstream requests per rolling hour — a deliberately conservative crawl rate chosen because Yahoo aggressively rate-limits scrapers: 429s and YFRateLimitError are endemic and treated by yfinance maintainers as Yahoo policy [E105][E106][E107][E108]). Every upstream call counts against the budget: one symbol sweep costs ~7 requests (3 statement types × 2 frequencies + profile/price). Honest throughput: ≈1,100 symbols/day → the Europe tier cycles well inside a quarter while the worldwide tail refreshes best-effort (ADR-0004 states the full arithmetic). Daily prices for the whole universe deliberately do NOT ride this budget — bulk EOD prices come from the keyless Stooq path (FR-011); Yahoo prices are fetched only for priority symbols. A priority queue orders work Europe → US large caps → rest of world; statement revisits are freshness-driven (quarterly). Raw responses land as versioned Parquet (append-only raw layer). All sources sit behind one Provider interface; a keyed plugin with no key disables itself cleanly (zero-key contract). If Yahoo blocks for an extended period, the crawler parks politely and retries with capped backoff; the API keeps serving the last snapshot with staleness visible (degradation path).",
       "priority": "must",
       "acceptance": [
         {
           "given": "the universe is loaded and no API keys are configured",
           "when": "the crawler runs for one hour",
-          "then": "it fetches statements and prices exclusively via keyless providers, issues at most 330 Yahoo requests in any rolling 60-minute window, persists each fetched company as versioned raw Parquet under the data directory, and updates its crawl queue (lastCrawledAt / nextDue) after every symbol"
+          "then": "it fetches statements exclusively via keyless providers, counts every upstream request (each statement/profile call individually) against the budget, never exceeds 330 upstream requests in any rolling 60-minute window, persists each fetched company as versioned raw Parquet under the data directory, and updates its crawl queue (lastCrawledAt / nextDue) after every symbol"
         },
         {
           "given": "Yahoo answers with HTTP 429 or a crumb/cookie failure",
@@ -113,7 +116,7 @@
         {
           "given": "the crawler process is killed mid-cycle",
           "when": "it restarts",
-          "then": "it resumes from the persisted queue and does not re-fetch symbols still inside their freshness window (quarterly for fundamentals, daily for prices)"
+          "then": "it resumes from the persisted queue and does not re-fetch symbols still inside their freshness window (quarterly for fundamentals)"
         },
         {
           "given": "a European listing and a rest-of-world listing are both due for crawl",
@@ -122,12 +125,13 @@
         }
       ],
       "rationaleEvidence": [
-        "E3",
+        "E105",
+        "E106",
+        "E107",
+        "E108",
         "E52",
         "E36",
-        "E82",
-        "E98",
-        "E99"
+        "E82"
       ],
       "entities": [
         "RawStatement",
@@ -156,7 +160,7 @@
         {
           "given": "raw statements exist for a sample of at least 100 companies",
           "when": "the compute step runs (crible compute)",
-          "then": "a snapshot Parquet is produced with one row per company × fiscal period, at least 150 ratio columns plus piotroski_f (0–9), altman_z and beneish_m with their components, and re-running on the same input produces byte-identical output"
+          "then": "a snapshot Parquet is produced with one row per company × fiscal period, at least 150 value columns (canonical fields, financetoolkit ratios, growth series) plus piotroski_f (0–9), altman_z and beneish_m with their components, and re-running on the same input yields identical values for every column except computed_at (file-level metadata excluded from the comparison)"
         },
         {
           "given": "a company lacks a field required by a ratio or score (e.g. no cash-flow statement)",
@@ -164,9 +168,9 @@
           "then": "the affected cells are NULL with a provenance note naming the missing input, the company still appears in the snapshot, and no value is imputed or fabricated"
         },
         {
-          "given": "the published Beneish test vectors (Beneish 1999 example set)",
+          "given": "the Beneish reference vectors (hand-derived from the published 1999 formula: an all-flat company and a fully worked example with analytically exact components)",
           "when": "M-Score is computed on them",
-          "then": "each of the 8 components (DSRI, GMI, AQI, SGI, DEPI, SGAI, LVGI, TATA) and the final M = -4.84 + weighted sum match the published values within 0.01"
+          "then": "each of the 8 components (DSRI, GMI, AQI, SGI, DEPI, SGAI, LVGI, TATA) matches its analytic value within 1e-6 and the final M = -4.84 + weighted sum matches within 0.01"
         }
       ],
       "rationaleEvidence": [
@@ -195,7 +199,7 @@
     {
       "id": "FR-004",
       "title": "Filter DSL compiled to DuckDB SQL",
-      "description": "A human-readable filter DSL — e.g. roe > 15 AND piotroski >= 7 AND country IN ('FR','DE') AND sector = 'Industrials' — compiled to parametrized DuckDB SQL over the snapshot. Strict column whitelist (parser rejects unknown fields with a hint), values always bound as parameters (injection impossible by construction), sorting and pagination built in. DuckDB over Parquet is the 'ultra-powerful engine': a full 161k × 200 screen runs in milliseconds [E4][E12]; the preset-filtering timeout that hit xang1234/stock-screener under Postgres [E88] is the anti-pattern this design avoids.",
+      "description": "A human-readable filter DSL — e.g. roe > 15 AND piotroski >= 7 AND country IN ('FR','DE') — compiled to parametrized DuckDB SQL over the snapshot. Strict column whitelist (parser rejects unknown fields with a hint), values always bound as parameters (injection impossible by construction), sorting and pagination built in. DuckDB is an in-process columnar analytics engine [E4]; the enforceable speed contract is NFR-008's CI benchmark on a synthetic full-size snapshot — not vendor copy. The preset-filtering timeout that hit xang1234/stock-screener on an operational database [E88] is the anti-pattern this design avoids.",
       "priority": "must",
       "acceptance": [
         {
@@ -214,9 +218,9 @@
           "then": "the input is either rejected or treated strictly as a literal value — property-based tests over generated inputs prove non-whitelisted SQL never reaches DuckDB"
         },
         {
-          "given": "the full ~161k-row snapshot",
-          "when": "any valid DSL screen runs on a development laptop",
-          "then": "the 95th-percentile end-to-end latency is under 1 second"
+          "given": "the synthetic full-size snapshot used by the NFR-008 CI benchmark (~161k rows × ~200 columns)",
+          "when": "any valid DSL screen runs in the benchmark environment",
+          "then": "the 95th-percentile end-to-end latency is under 1 second (this CI benchmark is the single normative performance environment; laptop figures are guidance)"
         }
       ],
       "rationaleEvidence": [
@@ -242,7 +246,7 @@
     {
       "id": "FR-005",
       "title": "CLI (crible)",
-      "description": "The crible CLI (Typer [E92]): crible screen \"<dsl>\" with table or CSV output; crible ingest (bootstrap / one cycle / continuous loop); crible compute; crible status (universe size, coverage %, freshness histogram, requests-per-hour, provider health); crible export. Exactly the same DSL and semantics as the API and UI.",
+      "description": "The crible CLI (Typer [E92]): crible screen \"<dsl>\" with table or CSV output; crible ingest (bootstrap / one cycle / continuous loop); crible compute; crible status (universe size, coverage %, freshness histogram, requests-per-hour, provider health, unmatched-EU-listings count); crible export \"<dsl>\" --out file.csv (writes the FULL result set of the query — identical rows to GET /screen.csv). Exactly the same DSL and semantics as the API and UI.",
       "priority": "must",
       "acceptance": [
         {
@@ -297,6 +301,11 @@
           "given": "the SPA build exists",
           "when": "a browser requests /",
           "then": "the built SPA is served (index.html + hashed assets) and every /api route remains reachable under the same origin"
+        },
+        {
+          "given": "a fresh install where no snapshot has been computed yet",
+          "when": "POST /screen or GET /presets is called",
+          "then": "the API returns 200 with an empty row set and a hint naming the ingest/compute progress (never a 5xx), and GET /status reports the bootstrap state"
         }
       ],
       "rationaleEvidence": [
@@ -327,7 +336,7 @@
         {
           "given": "the SPA is served and a snapshot exists",
           "when": "the user runs a DSL query from the query bar",
-          "then": "the grid renders the matching rows with sortable columns and a column picker, updates in under 1 second p95 for full-universe screens, and CSV export downloads exactly the rows and columns currently displayed"
+          "then": "the grid renders the matching rows with sortable columns and a column picker; the export button (labelled 'Export all results') downloads the FULL result set of the current query (all pages, currently visible columns) via GET /screen.csv"
         },
         {
           "given": "the API is unreachable or returns a DSL error",
@@ -366,13 +375,13 @@
     {
       "id": "FR-008",
       "title": "Docker Compose deployment",
-      "description": "Docker Compose deployment [E94]: service ingest (continuous crawler) + service api (FastAPI serving the built SPA), a shared volume for Parquet/DuckDB, healthchecks on both, .env consumed for optional phase-2 keys. docker compose up with zero keys yields a fully working system — the zero-key guarantee is exercised in CI.",
+      "description": "Docker Compose deployment [E94]: service ingest (continuous loop: universe bootstrap if empty → crawl cycle → compute → atomic snapshot publish, repeating; compute runs after every crawl cycle and at least every 30 minutes) + service api (FastAPI serving the built SPA), a shared volume for Parquet/DuckDB, healthchecks on both, .env consumed for optional phase-2 keys. On first boot the crawler front-loads the bootstrap sample — a built-in list of ~100 liquid symbols (CAC 40 + DAX 40 + 20 US mega-caps), overridable via CRIBLE_BOOTSTRAP_SAMPLE — so a first screen returns rows within hours, not weeks. docker compose up with zero keys yields a fully working system — the zero-key contract is exercised in CI.",
       "priority": "must",
       "acceptance": [
         {
           "given": "a machine with only Docker installed and no API keys in the environment",
           "when": "docker compose up runs",
-          "then": "both services report healthy within 120 seconds, the shared volume holds the DuckDB database and Parquet layers, and a screen executed through the UI or CLI returns rows once the bootstrap sample is ingested"
+          "then": "both services report healthy within 120 seconds, the shared volume holds the DuckDB database and Parquet layers, and — with the default bootstrap sample (~100 symbols ≈ 700 budgeted requests) — a preset screen returns at least one row through UI or CLI within 4 hours of first boot"
         },
         {
           "given": "the ingest container crashes or is killed",
@@ -407,7 +416,7 @@
     {
       "id": "FR-009",
       "title": "Preset screens",
-      "description": "Preset screens shipped as plain, visible, editable DSL strings — transparency is the product (the closed ranks of Stockopedia [E67] are the counter-model): piotroski-strong (piotroski >= 7 [E39]), altman-safe (altman_z > 2.99), beneish-red-flags (beneish_m > -1.78), classic-value (low EV/EBIT + high ROIC), quality (high ROE + low leverage). Available identically via CLI (--preset), API (GET /presets) and the SPA presets menu.",
+      "description": "Preset screens shipped as plain, visible, editable DSL strings — transparency is the product (the closed ranks of Stockopedia [E67] are the counter-model). Shipped presets with their exact DSL: piotroski-strong (piotroski_f >= 7), altman-safe (altman_z > 2.99), beneish-red-flags (beneish_m > -1.78), classic-value (price_to_earnings < 12 AND price_to_book < 1.5), quality (return_on_equity > 0.15 AND debt_to_equity < 1). Thresholds are visible in the DSL and editable — they are starting points, not hidden judgments. Available identically via CLI (--preset), API (GET /presets) and the SPA presets menu.",
       "priority": "should",
       "acceptance": [
         {
@@ -422,7 +431,6 @@
         }
       ],
       "rationaleEvidence": [
-        "E39",
         "E67",
         "E63"
       ],
@@ -443,29 +451,37 @@
     {
       "id": "FR-010",
       "title": "ESEF XBRL Europe enrichment",
-      "description": "Europe-depth enrichment from filings.xbrl.org — the free, keyless ESEF repository (4,000+ audited annual reports as xBRL-JSON, with a JSON-API; explicitly the interim source until ESAP opens in July 2027 [E5][E15][E74]). Audited annual figures are stored as provider='esef' facts; where an audited value and a scraped Yahoo value coexist for the same field/period, the audited value wins and material discrepancies are logged. Company detail links to the underlying filing.",
+      "description": "Europe-depth enrichment from filings.xbrl.org — the free, keyless ESEF repository (audited annual reports as xBRL-JSON with a JSON-API; explicitly an interim measure until ESAP, and NOT complete: some jurisdictions' filings, e.g. Germany and Ireland, are unavailable [E5][E15][E74]). Identity resolution: filings are indexed by LEI, the universe by Yahoo symbol + (sparse) ISIN — so enrichment applies to EU companies whose ISIN resolves to an LEI via GLEIF's free ISIN-to-LEI relationship files [E113][E114]; ISIN sparsity in FinanceDatabase is a known limitation [E35]. Audited figures are stored as provider='esef' facts; where audited and scraped values coexist for the same field/period, the audited value wins and material discrepancies are logged. Company detail links to the filing.",
       "priority": "should",
       "acceptance": [
         {
-          "given": "an EU company whose ESEF annual report exists on filings.xbrl.org",
+          "given": "an EU company whose universe ISIN resolves to an LEI (GLEIF mapping) with an ESEF annual report on filings.xbrl.org",
           "when": "the enrichment cycle processes it",
           "then": "audited annual figures parsed from xBRL-JSON are stored as provider='esef' facts for that company, the snapshot marks the enriched fields' provenance as audited, and the company detail view links to the filing URL"
         },
         {
-          "given": "filings.xbrl.org is unreachable",
+          "given": "filings.xbrl.org or the GLEIF mapping is unreachable",
           "when": "the enrichment cycle runs",
           "then": "yfinance-derived data remains intact, the cycle records the outage and resumes at the next cycle — no partial overwrite of existing facts"
         },
         {
-          "given": "an audited ESEF value and a Yahoo value differ by more than 5% for the same field and period",
+          "given": "an audited ESEF value and a Yahoo value differ by more than 5% (relative to the audited value) for the same field and period",
           "when": "reconciliation runs",
           "then": "the audited value is used in the snapshot and the discrepancy is logged with both values, the field, the period and the filing reference"
+        },
+        {
+          "given": "an EU company with no ISIN or no ISIN→LEI resolution",
+          "when": "the enrichment cycle considers it",
+          "then": "it is counted in an 'unmatched EU listings' metric visible in crible status (never an error) — making ESEF coverage honest and observable"
         }
       ],
       "rationaleEvidence": [
         "E5",
         "E15",
-        "E74"
+        "E74",
+        "E113",
+        "E114",
+        "E35"
       ],
       "entities": [
         "RawStatement",
@@ -484,24 +500,24 @@
     {
       "id": "FR-011",
       "title": "Stooq price fallback",
-      "description": "Stooq CSV fallback for prices: when Yahoo throttles or hangs (a real, recurring failure mode [E36][E82]), the price refresher falls back to Stooq's keyless CSV endpoints (~21k global tickers, prices only) so valuation ratios (P/E, EV multiples) stay refreshable during Yahoo outages. Fetched bars carry provider='stooq' provenance.",
+      "description": "Stooq bulk daily prices: Stooq's keyless CSV endpoints provide EOD prices outside the Yahoo request budget — the primary bulk price path for valuation ratios, and the fallback when Yahoo throttles or hangs (a real, recurring failure mode [E36][E82][E105]). Switch rule: after 3 consecutive rate-limited Yahoo price attempts or a 30-second hang, the price refresher switches to Stooq for the remainder of the cycle. Bars carry provider='stooq' provenance.",
       "priority": "should",
       "acceptance": [
         {
-          "given": "Yahoo price requests are being rate-limited or failing",
-          "when": "the price refresher runs its fallback path",
-          "then": "OHLCV bars for Stooq-covered tickers are updated from Stooq with provider='stooq' provenance and the dependent valuation ratios recompute on the next compute cycle"
+          "given": "Yahoo price requests hit 3 consecutive rate-limit errors or a 30-second hang",
+          "when": "the price refresher runs",
+          "then": "it switches to Stooq for the remainder of the cycle, updates OHLCV bars for Stooq-covered tickers with provider='stooq' provenance, and the dependent valuation ratios recompute on the next compute cycle"
         },
         {
           "given": "a ticker unknown to Stooq",
-          "when": "the fallback attempts it",
+          "when": "the Stooq path attempts it",
           "then": "the ticker is skipped with a single log line and remains scheduled for Yahoo on the next cycle — the fallback never blocks the queue"
         }
       ],
       "rationaleEvidence": [
         "E36",
         "E82",
-        "E3"
+        "E105"
       ],
       "entities": [
         "PriceBar",
@@ -556,7 +572,7 @@
     {
       "id": "FR-013",
       "title": "Phase-2 free-key provider plugins",
-      "description": "Phase-2 free-key provider plugins behind the same Provider interface: financialreports (FinancialReports.eu — free official MCP server, OAuth, EU filings + normalized financials [E72][E73]), simfin (free bulk US fundamentals, ~12-month delay [E65][E66][E78]), fmp_free and eodhd_free (schema validation against the future paid switch only). Strictly optional: without its key a plugin logs one 'disabled (no key)' line and the system behaves exactly as keyless.",
+      "description": "Phase-2 free-key provider plugins behind the same Provider interface: financialreports (FinancialReports.eu — free official MCP server, OAuth, EU filings + normalized financials [E72][E73]), simfin (free bulk fundamentals for ~5,000 US stocks with 20+ years of history via API/bulk download [E115][E116]; free-tier data is delayed relative to paid — exact lag re-verified when the plugin is built), fmp_free and eodhd_free (schema validation against the future paid switch only). Strictly optional: without its key a plugin logs one 'disabled (no key configured)' line and the system behaves exactly as keyless.",
       "priority": "could",
       "acceptance": [
         {
@@ -578,10 +594,10 @@
       "rationaleEvidence": [
         "E72",
         "E73",
+        "E115",
+        "E116",
         "E65",
-        "E66",
-        "E78",
-        "E83"
+        "E78"
       ],
       "entities": [
         "Provider",
@@ -600,13 +616,13 @@
     {
       "id": "FR-014",
       "title": "EODHD paid provider PRD + stub plugin",
-      "description": "The single planned paid upgrade, specced without paying: docs/prds/eodhd.md — a detailed PRD for EODHD's Fundamentals Data Feed (€59.99/mo, 100k calls/day, worldwide fundamentals; free tier confirmed to exclude fundamentals [E61][E62]) with endpoint schemas validated against the demo tickers using the existing free key, field mapping to crible's raw schema, and the switch plan (set EODHD_KEY → plugin activates). docs/prds/fmp-ultimate.md documents FMP Ultimate ($149/mo) as the evaluated-and-rejected alternative.",
+      "description": "The single planned paid upgrade, specced without paying: docs/prds/eodhd.md — a detailed PRD for EODHD's Fundamentals Data Feed. Grounded facts: the free tier grants 20 API calls/day and paid plans are required for more data [E111]; the pricing table is tier-based (free → paid, yearly discount) [E112]. The exact paid price/quota observed during planning (€59.99/mo, 100k calls/day on the 2026 pricing page) is recorded in the PRD as TO-REVALIDATE at purchase time, with endpoint schemas validated against the demo tickers using the existing free key, a field-by-field mapping to crible's raw schema, and the switch plan (set EODHD_KEY → plugin activates). docs/prds/fmp-ultimate.md documents FMP Ultimate as the evaluated-and-rejected alternative.",
       "priority": "could",
       "acceptance": [
         {
           "given": "the repository is checked out",
           "when": "a reader opens docs/prds/eodhd.md",
-          "then": "it contains the pricing and quota facts (€59.99/mo, 100k calls/day), recorded sample payloads for the fundamentals and EOD endpoints captured via the free key's demo tickers, a field-by-field mapping to crible's raw schema, and the exact activation steps — and docs/prds/fmp-ultimate.md documents the rejected FMP alternative with its pricing"
+          "then": "it contains the grounded free-tier facts (20 calls/day, paid upgrade required), the planning-time paid price/quota clearly marked to-revalidate, recorded sample payloads for the fundamentals and EOD endpoints captured via the free key's demo tickers, a field-by-field mapping to crible's raw schema, and the exact activation steps — and docs/prds/fmp-ultimate.md documents the rejected FMP alternative"
         },
         {
           "given": "an EODHD key is configured",
@@ -615,6 +631,8 @@
         }
       ],
       "rationaleEvidence": [
+        "E111",
+        "E112",
         "E61",
         "E62"
       ],
@@ -635,11 +653,11 @@
     {
       "id": "NFR-001",
       "category": "performance",
-      "statement": "Screening is interactive: any valid DSL screen over the full snapshot answers in about a second on ordinary hardware — the DuckDB-over-Parquet engine, not a job queue [E4][E12].",
-      "metric": "p95 < 1 s end-to-end for any DSL screen over the full ~161k-row × ~200-column snapshot on a 2020-class laptop; API POST /screen p95 < 500 ms warm; GET /company/{symbol} p95 < 300 ms.",
+      "statement": "Screening is interactive: any valid DSL screen over the full snapshot answers in about a second — the enforceable contract is the NFR-008 CI benchmark; local hardware figures are guidance.",
+      "metric": "In the NFR-008 CI benchmark environment: p95 < 1 s end-to-end for any DSL screen over the synthetic full-size snapshot; API POST /screen p95 < 500 ms warm; GET /company/{symbol} p95 < 300 ms.",
       "rationaleEvidence": [
         "E4",
-        "E12"
+        "E88"
       ]
     },
     {
@@ -665,7 +683,7 @@
       "id": "NFR-004",
       "category": "usability",
       "statement": "An operator reaches a first successful screen without reading source code; every error names the next action.",
-      "metric": "Clean machine → first successful screen in ≤ 3 commands (docker compose up; wait for bootstrap sample; run a preset); every CLI/API/UI error message names the failing input or the command to run next; presets give one-click value on first contact.",
+      "metric": "Clean machine → first successful screen in ≤ 3 commands (docker compose up; wait; run a preset) and ≤ 4 h on first boot with the default bootstrap sample; every CLI/API/UI error message names the failing input or the command to run next; presets give one-click value on first contact.",
       "rationaleEvidence": [
         "E75"
       ]
@@ -683,20 +701,23 @@
       "id": "NFR-006",
       "category": "cost",
       "statement": "Data cost is €0 in v1 and can only ever grow by one explicit, documented switch (EODHD).",
-      "metric": "Zero paid dependencies in v1 (keyless sources only [E61]); the only planned recurring cost is EODHD Fundamentals €59.99/mo behind the EODHD_KEY switch documented in docs/prds/eodhd.md; infra = any single Docker host.",
+      "metric": "Zero paid dependencies in v1 (keyless sources only; EODHD free tier is 20 calls/day with paid plans gated [E111]); the only planned recurring cost is the EODHD Fundamentals feed behind the EODHD_KEY switch, price recorded and re-validated in docs/prds/eodhd.md; infra = any single Docker host.",
       "rationaleEvidence": [
-        "E61",
-        "E65"
+        "E111",
+        "E112",
+        "E115"
       ]
     },
     {
       "id": "NFR-007",
       "category": "rate-limit compliance",
-      "statement": "The crawler never exceeds Yahoo's tolerated request rate — staying welcome is a hard constraint of the keyless design, not an optimisation [E3].",
-      "metric": "Rolling 60-minute Yahoo request count ≤ 330 (≈10% headroom under the ~360/h tolerance [E3]), enforced by a token bucket and asserted in tests under simulated load; 0 budget violations in a 24 h soak; on HTTP 429 the backoff doubles from 1 min to a 15 min cap with ±20% jitter [E52].",
+      "statement": "The crawler never exceeds its configured upstream request budget — polite crawling is a hard constraint of the keyless design, because Yahoo demonstrably rate-limits and blocks aggressive scrapers [E105][E107].",
+      "metric": "Rolling 60-minute upstream request count ≤ budget (default 330 — a conservative design choice, configurable), counting every statement/profile/price request individually; enforced by a token bucket and asserted in tests under simulated load; 0 budget violations in a 24 h soak; on HTTP 429 the backoff doubles from 1 min to a 15 min cap with ±20% jitter (design parameters, property-tested).",
       "rationaleEvidence": [
-        "E3",
-        "E52"
+        "E105",
+        "E106",
+        "E107",
+        "E108"
       ]
     },
     {
@@ -705,8 +726,6 @@
       "statement": "The filter engine keeps its millisecond-class promise as the snapshot grows.",
       "metric": "CI runs the DSL engine against a synthetic full-size snapshot (161k rows × 200 columns): every preset and a battery of generated screens must complete with p95 < 1 s; the DuckDB query plan for any DSL screen touches only the snapshot (no row-by-row Python loop).",
       "rationaleEvidence": [
-        "E4",
-        "E12",
         "E88"
       ]
     },
@@ -736,9 +755,7 @@
       "category": "security (DSL injection)",
       "statement": "No DSL input, however hostile, can execute unintended SQL.",
       "metric": "Property-based tests feed ≥ 1,000 generated/mutated inputs per run: any input that parses must compile to SQL referencing only whitelisted columns with every literal bound as a parameter; any input that does not parse must execute nothing. A curated corpus of injection payloads is asserted rejected.",
-      "rationaleEvidence": [
-        "E4"
-      ]
+      "rationaleEvidence": []
     },
     {
       "id": "NFR-012",
@@ -1090,7 +1107,7 @@
         "context": "Solo developer, TDD, zero-ops self-hosting, and a data problem shaped like: a 161k-symbol universe [E2], per-ticker scraping through a fragile rate-limited source [E3], columnar analytics over ~200 ratio columns, and a dense data UI. The stack must minimise moving parts while keeping every layer replaceable.",
         "decision": "Python 3.12 for universe/ingest/compute/API (the finance OSS ecosystem is Python: financetoolkit [E1][E8], financedatabase [E2], yfinance [E3][E98]); DuckDB over Parquet (pyarrow) as the only datastore — embedded, zero-ops, columnar, millisecond screens [E4][E12][E10]; FastAPI [E13] + Typer [E92] as the two entry points sharing one core; React 18 + Vite + TypeScript with TanStack Table for the SPA [E18][E19][E21]; pytest for TDD [E95]; Docker Compose for deployment [E94].",
         "consequences": "One language for the whole data path; no database server, migrations or queue to operate; the SPA is the only build step. DuckDB is single-writer — the ingest and API processes share data via Parquet files and an atomic snapshot swap rather than concurrent writes. Python-side compute must stay vectorised (pandas/DuckDB) to hold the performance NFRs.",
-        "alternatives": "OpenBB Platform as an aggregation façade — rejected: heavy dependency whose free path is still yfinance underneath, and its screener providers cannot screen Europe [E90][E91]. Postgres + Celery + React (the xang1234/stock-screener architecture) — rejected: real prior art shows preset-filter timeouts and index churn at exactly this workload, i.e. an operational database doing an analytical job [E77][E88]. A Rust custom engine — rejected: re-implements what DuckDB already does in-process.",
+        "alternatives": "OpenBB Platform as an aggregation façade [E90] — rejected: planning-time verification of its docs showed the free equity-fundamentals path routes through yfinance (same rate limits and shallow history as going direct) and its screener providers (finviz, fmp, nasdaq, yfinance) offer no European-first screening; recorded as a design-time verification, not a dossier citation. Postgres + Celery + React (the xang1234/stock-screener architecture) — rejected: real prior art shows preset-filter timeouts and index churn at exactly this workload [E77][E88]. A Rust custom engine — rejected: re-implements what DuckDB already does in-process.",
         "evidence": [
           "E1",
           "E2",
@@ -1113,7 +1130,7 @@
         "status": "accepted",
         "context": "Every credible fundamental screener with European coverage is subscription SaaS with closed formulas (Stockopedia [E67], Simply Wall St [E58], Uncle Stock [E59]); data feeds worth using are paid (EODHD fundamentals start at €59.99/mo [E61]). The product's reason to exist is owning the screener: data, formulas, universe.",
         "decision": "Ship as a self-hosted Docker Compose deployment where the host owns all data. The zero-key mode (FinanceDatabase + yfinance + filings.xbrl.org + Stooq) is a permanent, CI-enforced contract — every core flow works with no account, no key, no external service. No auth layer: single operator, bound to the local network; no telemetry.",
-        "consequences": "Data residency and Yahoo-tolerance compliance are the operator's responsibility (documented); the free path accepts Yahoo's shallow history (~4 annual periods [E98]) and ~19-day full-universe sweep as the price of €0; a hosted multi-tenant SaaS is explicitly out of scope.",
+        "consequences": "Data residency and polite-crawling compliance are the operator's responsibility (documented); the free path accepts Yahoo's shallow statement history (a handful of annual periods — observed behaviour, validated in integration tests, no contractual depth exists for a scraped source) and best-effort worldwide freshness as the price of €0; a hosted multi-tenant SaaS is explicitly out of scope. The zero-key guarantee is expressed as a testable contract: the release-gating CI job runs the E2E suite with no keys configured.",
         "alternatives": "Hosted SaaS — rejected: recreates the incumbents' model and their privacy/lock-in problems [E67][E58]. Mandatory free-tier keys (FMP/EODHD free) in v1 — rejected: their free tiers contribute nothing for Europe (US-only / no fundamentals [E61]) and would break the zero-key promise.",
         "evidence": [
           "E58",
@@ -1143,17 +1160,18 @@
         "id": "0004",
         "title": "Keyless ingestion: rolling prioritized crawl under a hard Yahoo rate budget",
         "status": "accepted",
-        "context": "Yahoo has no bulk fundamentals endpoint — statements are per-ticker calls — and tolerates roughly 360 req/h before 429s; maintainers treat rate-limiting as Yahoo policy, wontfix [E3]. Users report failures from ~950 tickers per session and intermittent hangs [E36][E82]. yfinance now rides curl_cffi with impersonated sessions and must own its session (no requests-cache injection) [E52][E99]. At ~330 req/h a full 161k-symbol fundamentals sweep takes ≈ 19 days — but fundamentals move quarterly, so a rolling crawl is sufficient by design.",
-        "decision": "A continuous priority-queue crawler with a global token bucket (≤ 330 req/h, 10% headroom), jittered exponential backoff on 429 (1 min → 15 min cap), a per-request watchdog against hangs, persisted queue state for crash-resume, and freshness-driven revisits (quarterly statements, daily prices). Priority tiers: Europe → US large caps → rest of world. Europe's cross-sectional gaps are compensated by the audited ESEF layer (FR-010); prices fail over to Stooq (FR-011).",
-        "consequences": "Full worldwide coverage builds progressively over ~3 weeks from first boot (Europe first, visible in crible status); the crawler must be a long-lived, stateful, polite process rather than a batch job; the single-switch EODHD upgrade (FR-014) replaces exactly this fragile link if the operator ever pays.",
-        "alternatives": "Parallel scraping with proxy rotation — rejected: hostile to Yahoo's tolerance, fragile, and against the polite-by-design constraint [E3]. Paid feed from day one — rejected: breaks the €0 v1 budget and the zero-key contract (ADR-0002). On-demand fetching only (no crawl) — rejected: screening needs the full cross-section precomputed; per-request fetching cannot fill a 161k universe interactively.",
+        "context": "Yahoo has no bulk fundamentals endpoint — statements are per-ticker, per-statement-type calls — and rate-limits scrapers aggressively: bulk downloads trip YFRateLimitError ('Too Many Requests. Rate limited. Try after a while.') [E107][E108], long-running pulls crash or hang [E36][E82], and maintainers closed the core rate-limit issue as Yahoo policy rather than a fixable bug [E105][E106]. yfinance now rides curl_cffi with impersonated sessions and must own its session [E52]. No public figure exists for a 'safe' rate — so the budget is a deliberately conservative design parameter, not a claimed tolerance.",
+        "decision": "A continuous priority-queue crawler with a global token bucket (default 330 upstream requests per rolling hour, configurable), counting every upstream call (a symbol sweep ≈ 7 requests: 3 statement types × 2 frequencies + profile). Jittered exponential backoff on 429 (1 min → 15 min cap), a per-request watchdog against hangs, persisted queue state for crash-resume, freshness-driven revisits (quarterly statements). Priority tiers: Europe → US large caps → rest of world. Bulk daily prices come from the keyless Stooq path outside this budget (FR-011); Europe's cross-sectional depth is compensated by the audited ESEF layer (FR-010).",
+        "consequences": "The honest arithmetic: 330 req/h ≈ 7,900 req/day ≈ ~1,100 symbol-sweeps/day. The Europe tier (tens of thousands of listings) completes in roughly 3–6 weeks — inside the quarterly freshness contract; the full ~161k worldwide universe takes ≈ 20 weeks per sweep, so rest-of-world coverage is explicitly best-effort (~2 refreshes/year) in zero-key mode. Coverage and freshness are always visible in crible status; the single-switch EODHD upgrade (FR-014) is the documented cure when worldwide quarterly freshness is wanted. The crawler is a long-lived, stateful, polite process rather than a batch job; an extended Yahoo block degrades to serving the last snapshot with staleness badges, never to hammering.",
+        "alternatives": "Parallel scraping with proxy rotation — rejected: hostile, fragile, and the documented blocking [E105] shows how it ends. Paid feed from day one — rejected: breaks the €0 v1 budget and the zero-key contract (ADR-0002). On-demand fetching only (no crawl) — rejected: screening needs the full cross-section precomputed. Pretending daily whole-universe price refresh fits the Yahoo budget — rejected by arithmetic; bulk prices belong to the keyless Stooq path (FR-011).",
         "evidence": [
-          "E3",
-          "E36",
+          "E105",
+          "E106",
+          "E107",
+          "E108",
           "E52",
-          "E82",
-          "E98",
-          "E99"
+          "E36",
+          "E82"
         ]
       }
     ]
@@ -1162,7 +1180,7 @@
     "competitors": [
       {
         "name": "Finviz",
-        "note": "The reference free screener — US-only. Rich presets and thematic filters, but no European exchange coverage at all; Europe is exactly the gap crible fills.",
+        "note": "The reference free screener, US-market presets and thematic filters [E63][E71]; planning research found no European exchange coverage — Europe is exactly the gap crible fills.",
         "evidence": [
           "E63",
           "E71"
@@ -1170,14 +1188,14 @@
       },
       {
         "name": "TradingView Stock Screener",
-        "note": "Broad multi-market SaaS screener; fundamental depth and export sit behind subscription tiers, formulas are opaque, and nothing is self-hostable.",
+        "note": "Broad multi-market SaaS screener [E76]; subscription-gated depth, closed formulas, not self-hostable (product model, not a snippet claim).",
         "evidence": [
           "E76"
         ]
       },
       {
         "name": "Simply Wall St",
-        "note": "Polished fundamental-analysis SaaS with genuinely global coverage (praised for value-investing breadth) — but closed data, closed methodology, subscription-gated. crible's company detail is the transparent answer to its snowflake pages.",
+        "note": "Fundamental-analysis SaaS with praised global coverage for value investors [E58][E64]; a closed subscription product — crible's company detail is the transparent, self-hosted answer.",
         "evidence": [
           "E58",
           "E64"
@@ -1216,7 +1234,7 @@
       },
       {
         "name": "Find My Moat",
-        "note": "EU-filings-based research tool built on the FinancialReports.eu data — evidence that the European-filings angle carries a product, and a pointer to the free MCP server crible integrates in phase 2 (FR-013).",
+        "note": "A curated directory of investment research tools [E104] that surfaced FinancialReports.eu in planning research — the pointer to the free EU-filings MCP server crible integrates in phase 2 (FR-013) [E69][E70].",
         "evidence": [
           "E104",
           "E69",
@@ -1225,10 +1243,9 @@
       },
       {
         "name": "OpenBB Platform",
-        "note": "Open-source multi-provider financial data platform (70k★). Considered as a foundation and rejected (ADR-0001): its free equity-fundamentals path is still yfinance underneath, and its screener providers (finviz et al.) cannot screen Europe.",
+        "note": "Open-source multi-provider financial data platform [E90]. Considered as a foundation and rejected (ADR-0001): planning-time docs verification showed its free fundamentals path is yfinance underneath and its screener providers cannot screen Europe.",
         "evidence": [
-          "E90",
-          "E91"
+          "E90"
         ]
       }
     ],
@@ -1321,7 +1338,11 @@
         "FR-007",
         "FR-008"
       ],
-      "risks": []
+      "risks": [
+        "Yahoo rate-limiting/blocking is the dominant hazard: 429s and YFRateLimitError are endemic [E105][E107]; mitigated by the hard token-bucket budget, capped backoff and the degradation path (serve last snapshot).",
+        "Snapshot atomicity under concurrent reader/writer processes (ADR-0003 write-then-swap) must be proven by tests before the API ships.",
+        "Keyless throughput arithmetic caps first-boot experience — the bootstrap sample (~100 symbols) is what makes M1 demoable within hours."
+      ]
     },
     {
       "title": "M2 — Rounded product (should-haves)",
@@ -1332,7 +1353,10 @@
         "FR-011",
         "FR-012"
       ],
-      "risks": []
+      "risks": [
+        "ESEF repository coverage is partial (e.g. German/Irish filings unavailable [E15]) and ISINs are sparse in FinanceDatabase [E35] — ESEF enrichment lands on a subset; the unmatched-EU metric keeps it honest.",
+        "Stooq has no formal API contract; its CSV endpoints may change without notice — provider isolation keeps the blast radius to one plugin."
+      ]
     },
     {
       "title": "M3 — Enhancements (could-haves)",
@@ -1341,7 +1365,10 @@
         "FR-013",
         "FR-014"
       ],
-      "risks": []
+      "risks": [
+        "EODHD paid quotas/pricing recorded at planning time must be re-validated with the free key before any purchase decision [E111][E112].",
+        "FinancialReports.eu MCP OAuth flow may not suit headless ingestion — evaluate during the plugin spike before committing."
+      ]
     }
   ],
   "traceability": [
@@ -1363,9 +1390,7 @@
       "interfaces": [
         "CLI"
       ],
-      "components": [
-        "Empty & Error States"
-      ],
+      "components": [],
       "screens": []
     },
     {
@@ -1484,7 +1509,8 @@
       ],
       "components": [
         "Status Dashboard",
-        "Feedback & Notifications"
+        "Feedback & Notifications",
+        "Empty & Error States"
       ],
       "screens": [
         "Ingest & coverage status"
@@ -1714,6 +1740,7 @@
     "E25",
     "E27",
     "E30",
+    "E35",
     "E36",
     "E39",
     "E40",
@@ -1729,7 +1756,6 @@
     "E63",
     "E64",
     "E65",
-    "E66",
     "E67",
     "E68",
     "E69",
@@ -1751,7 +1777,6 @@
     "E88",
     "E89",
     "E90",
-    "E91",
     "E92",
     "E93",
     "E94",
@@ -1759,7 +1784,19 @@
     "E98",
     "E99",
     "E100",
-    "E104"
+    "E104",
+    "E105",
+    "E106",
+    "E107",
+    "E108",
+    "E109",
+    "E110",
+    "E111",
+    "E112",
+    "E113",
+    "E114",
+    "E115",
+    "E116"
   ],
   "design": {
     "principles": [
@@ -1829,13 +1866,13 @@
         "category": "typography",
         "name": "font.sans",
         "value": "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif",
-        "note": "UI chrome, labels."
+        "note": "UI chrome, labels. Bundled with the SPA (@font-face, no CDN — NFR-013 egress test)."
       },
       {
         "category": "typography",
         "name": "font.mono",
         "value": "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
-        "note": "All numerals (tabular-nums), DSL query bar, code."
+        "note": "All numerals (tabular-nums), DSL query bar, code. Bundled with the SPA (no CDN)."
       },
       {
         "category": "typography",
@@ -2122,7 +2159,7 @@
         "relatedFRs": [
           "FR-007",
           "FR-012",
-          "FR-001"
+          "FR-006"
         ],
         "evidence": []
       }

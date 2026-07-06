@@ -4,15 +4,15 @@ No existing product or OSS project covers crible's target — worldwide fundamen
 
 ## Products
 
-- **Finviz** — The reference free screener — US-only. Rich presets and thematic filters, but no European exchange coverage at all; Europe is exactly the gap crible fills. [E63][E71]
-- **TradingView Stock Screener** — Broad multi-market SaaS screener; fundamental depth and export sit behind subscription tiers, formulas are opaque, and nothing is self-hostable. [E76]
-- **Simply Wall St** — Polished fundamental-analysis SaaS with genuinely global coverage (praised for value-investing breadth) — but closed data, closed methodology, subscription-gated. crible's company detail is the transparent answer to its snowflake pages. [E58][E64]
+- **Finviz** — The reference free screener, US-market presets and thematic filters [E63][E71]; planning research found no European exchange coverage — Europe is exactly the gap crible fills. [E63][E71]
+- **TradingView Stock Screener** — Broad multi-market SaaS screener [E76]; subscription-gated depth, closed formulas, not self-hostable (product model, not a snippet claim). [E76]
+- **Simply Wall St** — Fundamental-analysis SaaS with praised global coverage for value investors [E58][E64]; a closed subscription product — crible's company detail is the transparent, self-hosted answer. [E58][E64]
 - **Stockopedia** — Quality/Value/Momentum ranks over European + global markets, subscription SaaS. Its StockRanks are precisely the kind of closed composite score crible replaces with visible, editable DSL presets. [E67][E68]
 - **Uncle Stock** — 'Professional stock screening for DIY investors' — the closest functional cousin for European fundamental screening, with backtesting; subscription, closed, not self-hostable. [E59][E60]
 - **screener.in** — India's fundamental screener — the UX benchmark: information-dense tables, transparent query language, fast. crible aims for this feel over a worldwide, Europe-deep universe. [E75]
 - **EODHD Screener API** — The data vendor's own screener endpoint. Fundamentals require the €59.99/mo tier (free tier: 20 calls/day, 1-year EOD, no fundamentals) — this is the single paid upgrade crible keeps on standby (FR-014), not a v1 dependency. [E61][E62]
-- **Find My Moat** — EU-filings-based research tool built on the FinancialReports.eu data — evidence that the European-filings angle carries a product, and a pointer to the free MCP server crible integrates in phase 2 (FR-013). [E104][E69][E70]
-- **OpenBB Platform** — Open-source multi-provider financial data platform (70k★). Considered as a foundation and rejected (ADR-0001): its free equity-fundamentals path is still yfinance underneath, and its screener providers (finviz et al.) cannot screen Europe. [E90][E91]
+- **Find My Moat** — A curated directory of investment research tools [E104] that surfaced FinancialReports.eu in planning research — the pointer to the free EU-filings MCP server crible integrates in phase 2 (FR-013) [E69][E70]. [E104][E69][E70]
+- **OpenBB Platform** — Open-source multi-provider financial data platform [E90]. Considered as a foundation and rejected (ADR-0001): planning-time docs verification showed its free fundamentals path is yfinance underneath and its screener providers cannot screen Europe. [E90]
 
 ## Open-source prior art
 

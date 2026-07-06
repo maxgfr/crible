@@ -2382,3 +2382,258 @@ Checking
 Monday, July 6, 2026
 ```
 
+## Folded drill evidence
+
+### [E105] Docs — https://github.com/ranaroussi/yfinance/issues/2128
+ref: `https://github.com/ranaroussi/yfinance/issues/2128` · loc: `https://github.com/ranaroussi/yfinance/issues/2128#~55` · score: 8
+url: https://github.com/ranaroussi/yfinance/issues/2128
+
+```
+opened on Nov 15, 2024
+Issue body actions
+Describe bug
+I have used yfinance for the last year to pull 7 day, 1 minute granularity data on 7000 equity stocks at the end of each market day. This has always worked fine, and the rate limits have never been a problem. On Wednesday 13/11/24, everything changed [when the fire nation attacked]. Now, it pulls data for about 950 tickers, then gives me 429 (rate limit error) responses after that. Has Yahoo started to crack down on free API users? On the API documentation it says there are no more than 360 requests per hour, which 950 goes over anyway. Why were there no problems before? What has suddenly changed?
+Simple code that reproduces your problem
+import yfinance as yf
+tick_string = "A AAPL TSLA ALAB" # example. This actually has 7000 tickers in it
+data = yf.download(tick_string, period='7d', interval='1m', threads=True, keepna=True, prepost=False)
+Debug log
+DEBUG Failed to find "csrfToken" in response
+DEBUG Exiting _get_crumb_csrf()
+DEBUG toggling cookie strategy csrf -> basic
+DEBUG Entering _get_cookie_and_crumb_basic()
+DEBUG loaded persistent cookie
+DEBUG reusing cookie
+```
+
+### [E106] Docs — https://github.com/ranaroussi/yfinance/issues/2128 (lines 4–18)
+ref: `https://github.com/ranaroussi/yfinance/issues/2128` · loc: `https://github.com/ranaroussi/yfinance/issues/2128#~4` · score: 2
+url: https://github.com/ranaroussi/yfinance/issues/2128
+
+```
+Sign in
+Appearance settings
+Search or jump to...
+Search code, repositories, users, issues, pull requests...
+Search
+Clear
+Search syntax tips
+Provide feedback
+We read every piece of feedback, and take your input very seriously.
+Include my email address so I can be contacted
+Cancel
+Submit feedback
+Saved searches
+Use saved searches to filter your results more quickly
+Name
+```
+
+### [E107] Docs — https://github.com/ranaroussi/yfinance/issues/2614
+ref: `https://github.com/ranaroussi/yfinance/issues/2614` · loc: `https://github.com/ranaroussi/yfinance/issues/2614#~41` · score: 5
+url: https://github.com/ranaroussi/yfinance/issues/2614
+
+```
+3.4k
+Star
+24.6k
+Bulk download multiple tickers got YFRateLimitError('Too Many Requests. Rate limited. Try after a while.')   #2614
+New issue
+Copy link
+New issue
+Copy link
+Closed
+Closed
+Bulk download multiple tickers got YFRateLimitError('Too Many Requests. Rate limited. Try after a while.') #2614
+Copy link
+Description
+XJTLUmedia
+opened on Oct 26, 2025
+```
+
+### [E108] Docs — https://github.com/ranaroussi/yfinance/issues/2614 (lines 57–71)
+ref: `https://github.com/ranaroussi/yfinance/issues/2614` · loc: `https://github.com/ranaroussi/yfinance/issues/2614#~57` · score: 4
+url: https://github.com/ranaroussi/yfinance/issues/2614
+
+```
+Describe bug
+The code here for download 100 tickers got errors
+80 Failed downloads:
+['ISRG ', 'BKNG ', 'DLTR ', 'INTC ', 'VRTX ', 'NFLX ', 'AVGO ', 'GILD ', 'DXCM ', 'XEL ', 'INTU ', 'KHC ', 'AEP ', 'CSCO ', 'GFS ', 'QCOM ', 'TSLA ', 'MNST ', 'CMCSA ', 'CHTR ', 'AMAT ', 'MRNA ', 'CTAS ', 'CDNS ', 'PYPL ', 'LRCX ', 'EXC ', 'AZN ', 'NXPI ', 'CTSH ', 'MRVL ', 'META ', 'CPRT ', 'MAR ', 'TMUS ', 'NVDA ', 'MU ', 'GOOGL ', 'FTNT ', 'PEP ', 'COST ', 'BIIB ', 'AMZN ', 'PAYX ', 'KLAC ', 'GOOG ', 'MDLZ ', 'PCAR ', 'ADBE ', 'IDXX ', 'LULU ', 'FISV ', 'ATVI ', 'WBD ', 'ADP ', 'AAPL ', 'MELI ', 'ORLY ', 'AMGN ', 'PANW ', 'ASML ', 'MSFT ', 'CSX ', 'PDD ', 'TXN ', 'ADI ', 'REGN ', 'SBUX ', 'ADSK ', 'HON ', 'KDP ', 'AMD ', 'WBA ', 'ODFL ', 'ILMN ', 'ABNB ', 'MCHP ', 'ROST ', 'WDAY ', 'SNPS ']: YFRateLimitError('Too Many Requests. Rate limited. Try after a while.')
+but it should allow 100 download per day right? I don't understand why this issue raised
+Simple code that reproduces your problem
+def download_with_yfinance(symbols_list):
+# download in chunks to avoid memory issues / API limits
+# yfinance download returns a DataFrame with columns (Open, High, Low, Close, Adj Close, Volume)
+out = {}
+chunk_size = 80 # tune this number if you hit network/timeout issues
+for i in range(0, len(symbols_list), chunk_size):
+chunk = symbols_list[i:i+chunk_size]
+# use auto_adjust=False to keep raw Close/High/Low/Open
+raw = yf.download(chunk, start=START_DATE, end=END_DATE, group_by='ticker', threads=True, pro
+```
+
+### [E109] Docs — https://github.com/JerBouma/FinanceDatabase
+ref: `https://github.com/JerBouma/FinanceDatabase` · loc: `https://github.com/JerBouma/FinanceDatabase#~98` · score: 3
+url: https://github.com/JerBouma/FinanceDatabase
+
+```
+Countries
+Exchanges
+Equities
+160.995
+11
+68
+117
+84
+Product
+Quantity
+Families
+Categories
+Exchanges
+ETFs
+36.483
+```
+
+### [E110] Docs — https://github.com/JerBouma/FinanceDatabase (lines 129–143)
+ref: `https://github.com/JerBouma/FinanceDatabase` · loc: `https://github.com/JerBouma/FinanceDatabase#~129` · score: 2
+url: https://github.com/JerBouma/FinanceDatabase
+
+```
+351 Cryptocurrencies
+Indices
+91.181
+63 Exchanges
+Money Markets
+1.367
+2 Exchanges
+Installation
+Before installation, consider starring the project on GitHub, which helps others find the project as well.
+To install the FinanceDatabase, simply use the following:
+pip install financedatabase -U
+Then within Python use:
+import financedatabase as fd
+Usage
+This section explains in detail how the database can be queried with the related financedatabase package. Note that examples here are purposely cut off to a maximum of 10 entries due to the sheer size of the database. Furthermore, the summary column is also omitted for readability. For the full detailed results, see the Notebook here . Let's start by importing the package:
+```
+
+### [E111] Web — https://eodhd.com/pricing
+ref: `https://eodhd.com/pricing` · loc: `https://eodhd.com/pricing#~440` · score: 7
+url: https://eodhd.com/pricing
+
+```
+Documentation to
+find
+solutions to the most commonly asked questions, tutorials, and guidance on how to utilize our APIs.
+Once you have registered, you will be granted 20 free API calls per day. The only exception
+is – you can’t access certain data types. To utilize more data, you can upgrade to one of
+our paid plans.
+Students can take advantage of a 50% discount for 12 months on all our subscriptions for the development
+of internal projects and for educational or scientific purposes. After 12 months, the full subscription
+price will be applied automatically.
+Please contact our
+support team
+and provide proof of student status to apply for the discount.
+Send the request
+Leave your email and our team will contact you ASAP.
+Your email
+```
+
+### [E112] Web — https://eodhd.com/pricing (lines 64–78)
+ref: `https://eodhd.com/pricing` · loc: `https://eodhd.com/pricing#~64` · score: 5
+url: https://eodhd.com/pricing
+
+```
+yearly
+save 20%
+Features
+API Calls per Day
+API Requests per Minute
+Welcome Bonus API Calls
+Additional API Calls
+Data Range
+Type of Usage
+AI & Developer Tools
+New
+EODHD ChatGPT Assistant
+MCP Server
+Stocks, ETF, Funds Data
+US and Worldwide exchange
+```
+
+### [E113] Docs — https://www.gleif.org/en/lei-data/lei-mapping/download-isin-to-lei-relationship-files
+ref: `https://www.gleif.org/en/lei-data/lei-mapping/download-isin-to-lei-relationship-files` · loc: `https://www.gleif.org/en/lei-data/lei-mapping/download-isin-to-lei-relationship-files#~116` · score: 6
+url: https://www.gleif.org/en/lei-data/lei-mapping/download-isin-to-lei-relationship-files
+
+```
+GLEIF API
+LEI Mapping
+Download BIC-to-LEI Relationship Files
+Download ISIN-to-LEI Relationship Files
+Download MIC-to-LEI Relationship Files
+S&P CIQ Company ID-to-LEI Relationship
+Download OpenCorporates ID-to-LEI Relationship Files
+Open Ownership Register ID-to-LEI relationship
+Download QCC Code-to-LEI Relationship Files
+Download GEM Entity ID-to-LEI Relationship Files
+GLEIF Certification Process
+LEI Linking to Registration Authorities
+GLEIF Data Quality Management
+Proactive Management
+XML Schema
+```
+
+### [E114] Docs — https://www.gleif.org/en/lei-data/lei-mapping/download-isin-to-lei-relationship-files (lines 173–187)
+ref: `https://www.gleif.org/en/lei-data/lei-mapping/download-isin-to-lei-relationship-files` · loc: `https://www.gleif.org/en/lei-data/lei-mapping/download-isin-to-lei-relationship-files#~173` · score: 6
+url: https://www.gleif.org/en/lei-data/lei-mapping/download-isin-to-lei-relationship-files
+
+```
+Feedback
+LEI Data
+LEI Mapping
+Download ISIN-to-LEI Relationship Files
+Tweet
+I herewith confirm that I read, understood and accepted the privacy policy . I hereby confirm that data which I typed and clicked might be sent to social network owners and saved and electronically processed by them.
+In April 2019, the Global Legal Entity Identifier Foundation (GLEIF) and the Association of National Numbering Agencies (ANNA) piloted the first daily open-source relationship files that link newly issued International Securities Identification Numbers (ISINs) and Legal Entity Identifiers (LEIs) . ANNA is the registration authority for the ISIN.
+The daily ISIN-to-LEI relationship files, which are publicly available on the GLEIF website, currently include new ISINs issued by early mover national numbering agencies (NNAs). It is expected that other NNAs will join the program going forward. Altogether, there are 116 NNAs responsible for issuing ISINs. Information on the participating NNAs is published on the ANNA website .
+This cooperation between GLEIF and ANNA was created to improve the transparency of exposure by linking the issuer and issuance of securities. This enables firms to aggregate data which clearly shows their securities exposure in relation to an individual issuer and its related entities.
+The ISIN is the recognized global standard for unique identification of financial instruments, e.g. securities. According to Wikipedia: “A security is a tradable financial asset. The term co
+```
+
+### [E115] Docs — https://www.simfin.com/en/fundamental-data-download/
+ref: `https://www.simfin.com/en/fundamental-data-download/` · loc: `https://www.simfin.com/en/fundamental-data-download/#~2` · score: 5
+url: https://www.simfin.com/en/fundamental-data-download/
+
+```
+English Deutsch
+Log-in Get free account
+Download quality financial data
+Why waste time scraping and homogenizing data. Simply download all the financials you need. Get fundamentals and metrics via the data API or bulk download for 20+ years of history.
+Get free data
+Fundamental finance data via API
+620K+
+financial statements
+7,000+
+stock metrics per day
+5,000
+US stocks
+20+
+years of history
+Do you need fundamentals & metrics?
+```
+
+### [E116] Docs — https://www.simfin.com/en/fundamental-data-download/ (lines 65–79)
+ref: `https://www.simfin.com/en/fundamental-data-download/` · loc: `https://www.simfin.com/en/fundamental-data-download/#~65` · score: 5
+url: https://www.simfin.com/en/fundamental-data-download/
+
+```
+How good is the quality of SimFin's fundamental data?
+SimFin's finance data fulfils the highest quality standards. How we achieve that? SimFin extracts and structures the financial data directly from the original company reports. There is an automatic QA process applied which is supported by machine learning to find and eliminate potential errors. Issues that cannot be fixed by AI, will be separately reviewed and corrected by finance experts.
+What is the price for data downloads?
+You can download fundamental data for free from SimFin. However, if you require a larger data history period, you can subscribe to a higher version. To find the fees for subscribing to the Data API, please visit the Prices Page .
+Which data is actually included in the data sets?
+The SimFin dataset consists of quarterly and annual fundamental data with balance sheet, profit and loss (P&L) and cash flow statement. So far, nearly 5,000 U.S. stocks are covered, and other major markets (Canada, EU and Asia) will be made available successively in the coming quarters. More than 7,000 key figures per day are calculated for each stock. The history covers more than 20 years back to 2003 and before.
+When are new financial statements available in the API?
+SimFin checks the stock market every day for new financial statements of companies. After a quality assessment, the new aggregated data is added to the database. Usually this happens within 24 - 48 hours.
+Why there are recently more US than European stocks list
+```
+

@@ -2,9 +2,9 @@
 
 ## NFR-001 — performance
 
-Screening is interactive: any valid DSL screen over the full snapshot answers in about a second on ordinary hardware — the DuckDB-over-Parquet engine, not a job queue [E4][E12]. [E4][E12]
+Screening is interactive: any valid DSL screen over the full snapshot answers in about a second — the enforceable contract is the NFR-008 CI benchmark; local hardware figures are guidance. [E4][E88]
 
-**Metric:** p95 < 1 s end-to-end for any DSL screen over the full ~161k-row × ~200-column snapshot on a 2020-class laptop; API POST /screen p95 < 500 ms warm; GET /company/{symbol} p95 < 300 ms.
+**Metric:** In the NFR-008 CI benchmark environment: p95 < 1 s end-to-end for any DSL screen over the synthetic full-size snapshot; API POST /screen p95 < 500 ms warm; GET /company/{symbol} p95 < 300 ms.
 
 ## NFR-002 — security
 
@@ -22,7 +22,7 @@ The system degrades gracefully and recovers from transient failures without data
 
 An operator reaches a first successful screen without reading source code; every error names the next action. [E75]
 
-**Metric:** Clean machine → first successful screen in ≤ 3 commands (docker compose up; wait for bootstrap sample; run a preset); every CLI/API/UI error message names the failing input or the command to run next; presets give one-click value on first contact.
+**Metric:** Clean machine → first successful screen in ≤ 3 commands (docker compose up; wait; run a preset) and ≤ 4 h on first boot with the default bootstrap sample; every CLI/API/UI error message names the failing input or the command to run next; presets give one-click value on first contact.
 
 ## NFR-005 — observability
 
@@ -32,19 +32,19 @@ The operator can answer 'what is the crawler doing, how fresh is my data, am I i
 
 ## NFR-006 — cost
 
-Data cost is €0 in v1 and can only ever grow by one explicit, documented switch (EODHD). [E61][E65]
+Data cost is €0 in v1 and can only ever grow by one explicit, documented switch (EODHD). [E111][E112][E115]
 
-**Metric:** Zero paid dependencies in v1 (keyless sources only [E61]); the only planned recurring cost is EODHD Fundamentals €59.99/mo behind the EODHD_KEY switch documented in docs/prds/eodhd.md; infra = any single Docker host.
+**Metric:** Zero paid dependencies in v1 (keyless sources only; EODHD free tier is 20 calls/day with paid plans gated [E111]); the only planned recurring cost is the EODHD Fundamentals feed behind the EODHD_KEY switch, price recorded and re-validated in docs/prds/eodhd.md; infra = any single Docker host.
 
 ## NFR-007 — rate-limit compliance
 
-The crawler never exceeds Yahoo's tolerated request rate — staying welcome is a hard constraint of the keyless design, not an optimisation [E3]. [E3][E52]
+The crawler never exceeds its configured upstream request budget — polite crawling is a hard constraint of the keyless design, because Yahoo demonstrably rate-limits and blocks aggressive scrapers [E105][E107]. [E105][E106][E107][E108]
 
-**Metric:** Rolling 60-minute Yahoo request count ≤ 330 (≈10% headroom under the ~360/h tolerance [E3]), enforced by a token bucket and asserted in tests under simulated load; 0 budget violations in a 24 h soak; on HTTP 429 the backoff doubles from 1 min to a 15 min cap with ±20% jitter [E52].
+**Metric:** Rolling 60-minute upstream request count ≤ budget (default 330 — a conservative design choice, configurable), counting every statement/profile/price request individually; enforced by a token bucket and asserted in tests under simulated load; 0 budget violations in a 24 h soak; on HTTP 429 the backoff doubles from 1 min to a 15 min cap with ±20% jitter (design parameters, property-tested).
 
 ## NFR-008 — performance (screening engine)
 
-The filter engine keeps its millisecond-class promise as the snapshot grows. [E4][E12][E88]
+The filter engine keeps its millisecond-class promise as the snapshot grows. [E88]
 
 **Metric:** CI runs the DSL engine against a synthetic full-size snapshot (161k rows × 200 columns): every preset and a battery of generated screens must complete with p95 < 1 s; the DuckDB query plan for any DSL screen touches only the snapshot (no row-by-row Python loop).
 
@@ -62,7 +62,7 @@ Every number can explain itself: formula, source and fetch time. Audited beats s
 
 ## NFR-011 — security (DSL injection)
 
-No DSL input, however hostile, can execute unintended SQL. [E4]
+No DSL input, however hostile, can execute unintended SQL.
 
 **Metric:** Property-based tests feed ≥ 1,000 generated/mutated inputs per run: any input that parses must compile to SQL referencing only whitelisted columns with every literal bound as a parameter; any input that does not parse must execute nothing. A curated corpus of injection payloads is asserted rejected.
 

@@ -13,7 +13,7 @@
     "market"
   ],
   "semantic": false,
-  "evidenceCount": 104,
+  "evidenceCount": 116,
   "builtAt": "2026-07-06T21:25:24.742Z",
   "notes": [
     "Only the first 3 of 13 candidate technologies were grounded; skipped: financetoolkit (150+ transparent ratios, Piotroski F-Score, Altman Z-Score; enforce_source YahooFinance), financedatabase (universe: 160,995 equities, Yahoo-suffixed symbols), yfinance 1.x (curl_cffi default; per-ticker fundamentals ~4y annual / 4-5 quarters), FastAPI + uvicorn (HTTP API serving screens, presets, company detail, CSV export, and the built SPA), Typer (CLI: crible screen/ingest/status/export), React 18 + Vite + TypeScript SPA with TanStack Table (filterable/sortable results grid), Docker Compose (ingest service + api service, healthchecks, shared volume), pytest (TDD, FR-tagged tests), xbrl-JSON from filings.xbrl.org JSON-API (ESEF audited EU annual figures, keyless), Stooq CSV endpoints (keyless worldwide EOD price fallback). Drill them with `construct tech --out <run> --q \"<tech>\"`.",
@@ -26,6 +26,7 @@
     "No StackOverflow questions matched.",
     "Market angle grounded manually: 19 web item(s) fetched via `construct web --url --source market` (keyless engines returned nothing) and merged by the orchestrating agent.",
     "Folded 15 drill item(s) (oss, issue, pr, market) gathered via construct oss/web drills and merged by the orchestrating agent.",
-    "Folded 13 drill item(s) (docs, market) gathered via construct oss/web drills and merged by the orchestrating agent."
+    "Folded 13 drill item(s) (docs, market) gathered via construct oss/web drills and merged by the orchestrating agent.",
+    "Folded 12 drill item(s) (docs, market) gathered via construct oss/web drills and merged by the orchestrating agent."
   ]
 }

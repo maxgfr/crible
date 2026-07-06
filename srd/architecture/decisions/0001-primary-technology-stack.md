@@ -16,6 +16,6 @@ One language for the whole data path; no database server, migrations or queue to
 
 ## Alternatives considered
 
-OpenBB Platform as an aggregation façade — rejected: heavy dependency whose free path is still yfinance underneath, and its screener providers cannot screen Europe [E90][E91]. Postgres + Celery + React (the xang1234/stock-screener architecture) — rejected: real prior art shows preset-filter timeouts and index churn at exactly this workload, i.e. an operational database doing an analytical job [E77][E88]. A Rust custom engine — rejected: re-implements what DuckDB already does in-process.
+OpenBB Platform as an aggregation façade [E90] — rejected: planning-time verification of its docs showed the free equity-fundamentals path routes through yfinance (same rate limits and shallow history as going direct) and its screener providers (finviz, fmp, nasdaq, yfinance) offer no European-first screening; recorded as a design-time verification, not a dossier citation. Postgres + Celery + React (the xang1234/stock-screener architecture) — rejected: real prior art shows preset-filter timeouts and index churn at exactly this workload [E77][E88]. A Rust custom engine — rejected: re-implements what DuckDB already does in-process.
 
 **Evidence:** [E1][E2][E3][E4][E12][E13][E19][E77][E88][E90][E92][E94][E95]

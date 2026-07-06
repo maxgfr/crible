@@ -13,8 +13,8 @@ Serious fundamental screening across ALL of Europe (and the world) is locked beh
 A screener you own: worldwide universe with Europe-depth, 100% functional with zero API keys (guaranteed forever), transparent formulas (financetoolkit + published score definitions), audited ESEF figures for EU names, DuckDB-fast filtering, and a single optional paid switch (EODHD) ready when deeper history is wanted — never required.
 
 ## Success metrics
-- Screen the full ~161k-equity worldwide universe on fundamentals in under 1 second locally (DuckDB over Parquet)
-- Europe as depth priority: EU companies enriched with audited ESEF XBRL figures and always crawled first
-- Zero-key guarantee: every core flow (ingest, compute, screen, UI) works with no API key configured, for life
-- Sustain a complete worldwide fundamentals sweep within Yahoo's free rate tolerance (~360 req/h, full cycle ≈ 19 days, quarterly freshness)
-- One-switch paid upgrade path: EODHD Fundamentals plugin specced and stubbed so paying €59.99/mo replaces the fragile yfinance link without touching the rest
+- Screen the full worldwide snapshot (~161k equities × ~200 columns) in under 1 second locally — enforced by a CI benchmark on a synthetic full-size snapshot
+- Europe as depth priority: European listings are always crawled first and, where an ISIN→LEI mapping resolves, enriched with audited ESEF XBRL figures (coverage partial until ESAP opens)
+- Zero-key contract: a dedicated CI job runs the full E2E suite with no API keys configured and must pass for every release
+- Rolling keyless crawl under a hard request budget: the Europe tier refreshes within a quarter; worldwide completes ≈ 2 sweeps/year; coverage and freshness are always visible in crible status
+- One-switch paid upgrade path: the EODHD Fundamentals plugin is specced and stubbed so a single key upgrade replaces the fragile yfinance link without touching the rest

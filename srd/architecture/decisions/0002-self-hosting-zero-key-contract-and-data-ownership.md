@@ -12,7 +12,7 @@ Ship as a self-hosted Docker Compose deployment where the host owns all data. Th
 
 ## Consequences
 
-Data residency and Yahoo-tolerance compliance are the operator's responsibility (documented); the free path accepts Yahoo's shallow history (~4 annual periods [E98]) and ~19-day full-universe sweep as the price of €0; a hosted multi-tenant SaaS is explicitly out of scope.
+Data residency and polite-crawling compliance are the operator's responsibility (documented); the free path accepts Yahoo's shallow statement history (a handful of annual periods — observed behaviour, validated in integration tests, no contractual depth exists for a scraped source) and best-effort worldwide freshness as the price of €0; a hosted multi-tenant SaaS is explicitly out of scope. The zero-key guarantee is expressed as a testable contract: the release-gating CI job runs the E2E suite with no keys configured.
 
 ## Alternatives considered
 
