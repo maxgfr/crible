@@ -136,12 +136,20 @@
       "dependsOn": [
         "T-002"
       ],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "src/crible/compute/canonical.py",
+        "src/crible/compute/ratios.py",
+        "src/crible/compute/scores.py",
+        "src/crible/compute/beneish.py",
+        "src/crible/compute/snapshot.py"
+      ],
+      "tests": [
+        "tests/test_fr003_compute.py"
+      ],
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-004",
