@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 
-import pytest
 
 from crible.providers.base import ProviderRegistry
 from crible.providers.eodhd import EodhdProvider

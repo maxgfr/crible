@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    # NFR-009 zero-key gate: NO provider keys are configured in this job —
+    # the entire suite must pass with an empty environment.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - run: uv sync
+      - run: uv run pytest -q
+      - run: uv run ruff check src tests
+
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm --prefix ui install --no-audit --no-fund
+      - run: npm --prefix ui run test -- --run
+      - run: npm --prefix ui run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose build
+      # the live zero-key E2E (compose up → real Yahoo crawl → first screen)
+      # is run manually / nightly, not per-push: it spends real request budget

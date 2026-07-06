@@ -11,7 +11,7 @@ import pytest
 
 from crible.ingest.backoff import BackoffPolicy
 from crible.ingest.budget import TokenBucket
-from crible.ingest.crawler import Crawler, CrawlOutcome
+from crible.ingest.crawler import Crawler
 from crible.ingest.queue import CrawlQueue
 from crible.ingest.raw import write_raw_statement
 from crible.providers.base import (

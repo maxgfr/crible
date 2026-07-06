@@ -5,7 +5,6 @@ audited-wins reconciliation with >5% discrepancy logging, unmatched counting.
 from __future__ import annotations
 
 import pandas as pd
-import pytest
 
 from crible.compute.reconcile import reconcile
 from crible.compute.snapshot import build_symbol_snapshot
