@@ -40,6 +40,7 @@ class FetchResult:
 class Provider(Protocol):
     id: str
     kind: str  # keyless | free-key | paid
+    requests_per_fetch: int  # upstream requests one fetch_statements costs (budget charge)
 
     def enabled(self, env: dict[str, str]) -> bool: ...
 

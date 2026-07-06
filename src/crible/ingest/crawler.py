@@ -51,16 +51,21 @@ class Crawler:
         self.now = now
         self.sleep = sleep
 
-    def _acquire_budget(self) -> None:
-        while not self.budget.try_acquire():
+    def _acquire_budget(self, n: int = 1) -> None:
+        while not self.budget.try_acquire(n):
             wait = max(self.budget.seconds_until_available(), 1.0)
             log.info("rate budget exhausted — sleeping %.0fs", wait)
             self.sleep(wait)
 
     def crawl_symbol(self, symbol: str) -> bool:
-        """Fetch one symbol with in-place backoff on 429. True on success."""
+        """Fetch one symbol with in-place backoff on 429. True on success.
+
+        The budget is charged with the provider's per-fetch request estimate
+        BEFORE fetching: every upstream call counts (NFR-007), not every symbol.
+        """
+        cost = getattr(self.provider, "requests_per_fetch", 1)
         for attempt in range(1, MAX_RATE_LIMIT_RETRIES + 1):
-            self._acquire_budget()
+            self._acquire_budget(cost)
             try:
                 result = self.provider.fetch_statements(symbol)
             except RateLimitedError as exc:

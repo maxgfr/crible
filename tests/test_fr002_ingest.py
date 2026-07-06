@@ -44,9 +44,11 @@ class FakeProvider:
 
     id = "fake"
     kind = "keyless"
+    requests_per_fetch = 1
 
     def __init__(self, rate_limited_first_n: dict[str, int] | None = None) -> None:
         self.calls: list[str] = []
+        self.call_times: list[float] = []
         self._limited = dict(rate_limited_first_n or {})
 
     def enabled(self, env: dict[str, str]) -> bool:
@@ -70,6 +72,7 @@ class KeyedProvider:
     id = "needs_key"
     kind = "free-key"
     key_env_var = "NEEDS_KEY_TOKEN"
+    requests_per_fetch = 1
 
     def __init__(self) -> None:
         self.calls: list[str] = []
@@ -119,6 +122,31 @@ def test_fr002_token_bucket_enforces_rolling_hour_budget() -> None:
 
     clock.advance(3600.01)  # window rolls over
     assert bucket.try_acquire()
+
+
+def test_fr002_budget_charges_per_upstream_request_not_per_symbol(con, tmp_path) -> None:
+    """NFR-007: a 7-requests-per-fetch provider on a 20-token budget fits only
+    2 symbols per rolling window; the 3rd waits for the window to roll."""
+    clock = FakeClock()
+
+    class ExpensiveProvider(FakeProvider):
+        requests_per_fetch = 7
+
+        def fetch_statements(self, symbol: str) -> FetchResult:
+            self.call_times.append(clock.now())
+            return super().fetch_statements(symbol)
+
+    provider = ExpensiveProvider()
+    # sleeper advances the fake clock so budget waits actually release
+    crawler, _ = make_crawler(
+        con, provider, clock, tmp_path, budget_capacity=20, sleeper=clock.advance
+    )
+    crawler.run_cycle(limit=3)
+
+    assert len(provider.call_times) == 3
+    first_window = [t for t in provider.call_times if t <= provider.call_times[0] + 3600]
+    assert len(first_window) == 2  # 3 × 7 = 21 > 20 → third fetch waited out the window
+    assert provider.call_times[2] > 3600
 
 
 def test_fr002_europe_is_crawled_before_us_before_world(con, tmp_path) -> None:

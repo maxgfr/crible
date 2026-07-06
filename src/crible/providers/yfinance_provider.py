@@ -27,6 +27,8 @@ def _normalise(frame: pd.DataFrame | None) -> pd.DataFrame | None:
 class YFinanceProvider:
     id = "yfinance"
     kind = "keyless"
+    # 3 statement types × 2 freqs + 1 history call — charged against the budget up front
+    requests_per_fetch = 7
 
     def enabled(self, env: dict[str, str]) -> bool:
         return True

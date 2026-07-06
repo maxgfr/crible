@@ -32,11 +32,14 @@ class TokenBucket:
         while self._stamps and self._stamps[0] <= horizon:
             self._stamps.popleft()
 
-    def try_acquire(self) -> bool:
+    def try_acquire(self, n: int = 1) -> bool:
+        """Atomically reserve ``n`` upstream requests (all or nothing)."""
         self._evict()
-        if len(self._stamps) >= self.capacity:
+        if len(self._stamps) + n > self.capacity:
             return False
-        self._stamps.append(self._now())
+        stamp = self._now()
+        for _ in range(n):
+            self._stamps.append(stamp)
         return True
 
     def seconds_until_available(self) -> float:
