@@ -73,6 +73,8 @@ def build_canonical(frames: dict[tuple[str, str], pd.DataFrame], freq: str = "an
         frame = frames.get((statement_type, freq))
         if frame is None or frame.empty:
             continue
+        # drop raw-layer metadata columns (_symbol, _provider, …) before joining
+        frame = frame[[c for c in frame.columns if not str(c).startswith("_")]]
         indexed = frame.set_index("period")
         indexed = indexed[~indexed.index.duplicated(keep="last")]
         merged = indexed if merged is None else merged.join(indexed, how="outer", rsuffix="_dup")

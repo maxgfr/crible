@@ -129,7 +129,9 @@ def run_compute() -> int:
     return len(snapshot)
 
 
-def run_loop(cycle_limit: int = 50, compute_every_seconds: float = 1800.0) -> None:  # pragma: no cover — long-lived loop
+def run_loop(cycle_limit: int = 40, compute_every_seconds: float = 1800.0) -> None:  # pragma: no cover — long-lived loop
+    # cycle_limit × ~7 requests must stay under the hourly budget so a cycle
+    # never stalls mid-way on the token bucket before its compute runs
     con = _connect()
     has_universe = con.execute(
         "SELECT count(*) FROM information_schema.tables WHERE table_name = 'companies'"
@@ -139,9 +141,14 @@ def run_loop(cycle_limit: int = 50, compute_every_seconds: float = 1800.0) -> No
         log.info("first boot — bootstrapping universe")
         run_bootstrap()
 
+    first_cycle = not (config.data_dir() / "snapshot").exists()
     last_compute = 0.0
     while True:
-        outcome = run_once(limit=cycle_limit)
+        # first boot: crawl exactly the bootstrap sample, then publish
+        # immediately — a first screen must return rows within hours (FR-008)
+        limit = max(10, len(bootstrap_sample())) if first_cycle else cycle_limit
+        outcome = run_once(limit=limit)
+        first_cycle = False
         now = time.time()
         if outcome.fetched or now - last_compute >= compute_every_seconds:
             run_compute()

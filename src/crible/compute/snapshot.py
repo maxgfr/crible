@@ -42,8 +42,21 @@ def build_symbol_snapshot(
     price: pd.Series | None = None,
     provider: str = "yfinance",
     computed_at: float | None = None,
+    audited_frames: dict[tuple[str, str], pd.DataFrame] | None = None,
 ) -> pd.DataFrame:
     canonical = build_canonical(frames)
+    audited_fields: dict[str, list[str]] = {}
+    if audited_frames:
+        from crible.compute.reconcile import reconcile
+
+        audited = build_canonical(audited_frames)
+        if canonical.empty:
+            canonical = audited
+            audited_fields = {str(p): [c for c in audited.columns if pd.notna(audited.loc[p, c])] for p in audited.index}
+        elif not audited.empty:
+            result = reconcile(canonical, audited, symbol=symbol)
+            canonical = result.merged
+            audited_fields = result.audited_fields
     if canonical.empty:
         return pd.DataFrame()
 
@@ -69,16 +82,21 @@ def build_symbol_snapshot(
     out.insert(1, "period", out.index.astype(str))
     out["provider"] = provider
     out["price_asof"] = price_asof
+    out["audited_fields"] = [
+        ",".join(audited_fields.get(str(p), [])) or None for p in out["period"]
+    ]
     out["computed_at"] = computed_at if computed_at is not None else time.time()
     return out.reset_index(drop=True)
 
 
-def latest_raw_frames(data_dir: Path | str, symbol: str) -> dict[tuple[str, str], pd.DataFrame]:
+def latest_raw_frames(
+    data_dir: Path | str, symbol: str, provider: str = "*"
+) -> dict[tuple[str, str], pd.DataFrame]:
     """Pick the newest raw Parquet per (statement_type, freq) for a symbol."""
     safe_symbol = symbol.replace("/", "_")
     frames: dict[tuple[str, str], pd.DataFrame] = {}
     root = Path(data_dir) / "raw"
-    for directory in root.glob(f"provider=*/symbol={safe_symbol}"):
+    for directory in root.glob(f"provider={provider}/symbol={safe_symbol}"):
         for file in sorted(directory.glob("*.parquet")):
             statement_type, freq, _ = file.stem.split("-", 2)
             frames[(statement_type, freq)] = pd.read_parquet(file)
@@ -113,10 +131,16 @@ def build_snapshot(data_dir: Path | str, symbols: list[str] | None = None) -> pd
     todo = symbols if symbols is not None else crawled_symbols(data_dir)
     parts = []
     for symbol in todo:
-        frames = latest_raw_frames(data_dir, symbol)
-        if not frames:
+        scraped = {
+            **latest_raw_frames(data_dir, symbol, provider="yfinance"),
+            **latest_raw_frames(data_dir, symbol, provider="stooq"),
+        }
+        audited = latest_raw_frames(data_dir, symbol, provider="esef")
+        if not scraped and not audited:
             continue
-        part = build_symbol_snapshot(symbol, frames)
+        part = build_symbol_snapshot(
+            symbol, scraped or audited, audited_frames=audited if scraped else None
+        )
         if not part.empty:
             parts.append(part)
     if not parts:

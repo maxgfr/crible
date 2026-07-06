@@ -15,6 +15,15 @@ from crible.runtime import Runtime, SnapshotMissingError
 app = typer.Typer(name="crible", help="Self-hosted fundamental stock screener.", no_args_is_help=True)
 
 
+@app.callback()
+def _configure_logging() -> None:
+    import logging
+
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s"
+    )
+
+
 def _fail(message: str) -> None:
     typer.secho(f"error: {message}", err=True, fg=typer.colors.RED)
     raise typer.Exit(code=1)

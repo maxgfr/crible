@@ -203,3 +203,24 @@ def test_fr003_snapshot_wide_row_deterministic_and_150_plus_columns(tmp_path) ->
     loaded = read_snapshot(tmp_path)
     assert len(loaded) == 3
     assert loaded["symbol"].unique().tolist() == ["TEST.PA"]
+
+
+def test_fr003_raw_layer_round_trip_builds_snapshot(tmp_path) -> None:
+    """Full round-trip through the raw layer: write_raw_statement adds meta
+    columns (_symbol, _provider, …) that must never break canonical joins —
+    regression test for the compute crash found in the zero-key E2E."""
+    from crible.compute.snapshot import build_snapshot, latest_raw_frames
+    from crible.ingest.raw import write_raw_statement
+
+    for stmt, rows in IMPROVING.items():
+        write_raw_statement(
+            tmp_path, symbol="RT.PA", provider="yfinance", statement_type=stmt,
+            freq="annual", frame=income_frame(rows, ["2023", "2024", "2025"]),
+            fetched_at=1000.0,
+        )
+    frames = latest_raw_frames(tmp_path, "RT.PA", provider="yfinance")
+    assert len(frames) == 3
+    snapshot = build_snapshot(tmp_path)
+    assert len(snapshot) == 3
+    assert snapshot["symbol"].unique().tolist() == ["RT.PA"]
+    assert snapshot.loc[snapshot["period"] == "2025", "piotroski_f"].iloc[0] == 9
