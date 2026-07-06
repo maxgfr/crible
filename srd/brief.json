@@ -31,33 +31,39 @@
     "team": "Solo developer (Maxime), TDD workflow (red-green-refactor)",
     "timeline": "v1 zero-key end-to-end first; phase 2 (free-key plugins) after",
     "deployment": "Self-hosted via Docker Compose only (ingest worker + API/UI services, shared Parquet/DuckDB volume); repo private until v1 then public",
-    "compliance": "MIT license; respect Yahoo rate tolerance (~360 req/h budget with jitter+backoff); English codebase and docs",
+    "compliance": [
+      "MIT license",
+      "Respect Yahoo rate tolerance (~360 req/h budget with jitter+backoff)",
+      "English codebase and docs"
+    ],
     "dataQuality": "Every computed ratio/score traceable to source fields and a published formula; Beneish M-Score implemented in-house and tested against published examples"
   },
   "candidateTech": [
-    "Python 3.12 (ingestion, compute, API)",
-    "DuckDB (embedded columnar query engine over Parquet)",
-    "Apache Parquet + pyarrow (versioned raw and snapshot layers)",
-    "financetoolkit (150+ transparent ratios, Piotroski F-Score, Altman Z-Score; enforce_source YahooFinance)",
-    "financedatabase (universe: 160,995 equities, Yahoo-suffixed symbols)",
-    "yfinance 1.x (curl_cffi default; per-ticker fundamentals ~4y annual / 4-5 quarters)",
-    "FastAPI + uvicorn (HTTP API serving screens, presets, company detail, CSV export, and the built SPA)",
-    "Typer (CLI: crible screen/ingest/status/export)",
-    "React 18 + Vite + TypeScript SPA with TanStack Table (filterable/sortable results grid)",
-    "Docker Compose (ingest service + api service, healthchecks, shared volume)",
-    "pytest (TDD, FR-tagged tests)",
-    "xbrl-JSON from filings.xbrl.org JSON-API (ESEF audited EU annual figures, keyless)",
-    "Stooq CSV endpoints (keyless worldwide EOD price fallback)"
+    "Python 3.12",
+    "DuckDB",
+    "Parquet with pyarrow",
+    "financetoolkit",
+    "financedatabase",
+    "yfinance",
+    "FastAPI",
+    "Typer",
+    "React 18 + Vite + TypeScript",
+    "TanStack Table",
+    "Docker Compose",
+    "pytest",
+    "filings.xbrl.org xBRL-JSON API",
+    "Stooq CSV endpoints"
   ],
   "competitors": [
-    "Finviz (free US screener, no European exchange coverage)",
-    "TradingView Stock Screener (broad but SaaS, opaque formulas, fundamental depth paywalled)",
-    "Simply Wall St (fundamental analysis SaaS, Europe covered, closed and subscription-based)",
-    "Stockopedia (quality/value/momentum ranks incl. Europe, subscription SaaS)",
-    "Uncle Stock (European fundamental screener, subscription, closed)",
-    "screener.in (India-focused fundamental screener, the self-hosted-feel benchmark for UX)",
-    "EODHD built-in screener API (paid, €59.99+/mo)",
-    "Find My Moat (EU filings-based research tool built on FinancialReports.eu)"
+    "Finviz",
+    "TradingView Stock Screener",
+    "Simply Wall St",
+    "Stockopedia",
+    "Uncle Stock",
+    "screener.in",
+    "EODHD Screener API",
+    "Find My Moat",
+    "OpenBB Platform"
   ],
   "ossSeeds": [
     "JerBouma/FinanceToolkit",
@@ -65,8 +71,6 @@
     "ranaroussi/yfinance",
     "xang1234/stock-screener",
     "astro30/valinvest",
-    "OpenBB-finance/OpenBB",
-    "Open-Dev-Society/OpenStock",
     "SimFin/simfin"
   ],
   "featureWishlist": [
