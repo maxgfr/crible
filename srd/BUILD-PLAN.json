@@ -216,12 +216,20 @@
       "dependsOn": [
         "T-004"
       ],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "src/crible/cli.py",
+        "src/crible/presets.py",
+        "src/crible/runtime.py",
+        "src/crible/config.py",
+        "src/crible/ingest/service.py"
+      ],
+      "tests": [
+        "tests/test_fr005_cli.py"
+      ],
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-006",

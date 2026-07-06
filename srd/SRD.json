@@ -795,7 +795,11 @@
           },
           {
             "name": "country",
-            "type": "string (ISO)"
+            "type": "string (ISO-3166 alpha-2 — the DSL filter code)"
+          },
+          {
+            "name": "country_name",
+            "type": "string (original FinanceDatabase name)"
           },
           {
             "name": "region",

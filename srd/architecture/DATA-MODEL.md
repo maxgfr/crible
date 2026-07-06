@@ -9,7 +9,8 @@ Three storage layers (ADR-0003): an immutable **raw layer** (versioned Parquet p
 | symbol | identifier (Yahoo-suffixed ticker, PK) |
 | name | string |
 | isin | string (nullable) |
-| country | string (ISO) |
+| country | string (ISO-3166 alpha-2 — the DSL filter code) |
+| country_name | string (original FinanceDatabase name) |
 | region | string (europe | us | world — drives crawl priority) |
 | sector | string |
 | industry | string |

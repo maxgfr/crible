@@ -28,12 +28,32 @@ EUROPE_COUNTRIES = {
 
 REGION_PRIORITY = {"europe": 0, "us": 1, "world": 2}
 
+# FinanceDatabase country names → ISO-3166 alpha-2. The DSL filters on these
+# codes (country IN ('FR','DE')); unmapped names fall back to the full name so
+# filtering stays possible either way (country_name always keeps the original).
+COUNTRY_TO_ISO = {
+    "Austria": "AT", "Belgium": "BE", "Bulgaria": "BG", "Croatia": "HR", "Cyprus": "CY",
+    "Czech Republic": "CZ", "Czechia": "CZ", "Denmark": "DK", "Estonia": "EE", "Finland": "FI",
+    "France": "FR", "Germany": "DE", "Greece": "GR", "Hungary": "HU", "Iceland": "IS",
+    "Ireland": "IE", "Italy": "IT", "Latvia": "LV", "Liechtenstein": "LI", "Lithuania": "LT",
+    "Luxembourg": "LU", "Malta": "MT", "Monaco": "MC", "Netherlands": "NL", "Norway": "NO",
+    "Poland": "PL", "Portugal": "PT", "Romania": "RO", "Slovakia": "SK", "Slovenia": "SI",
+    "Spain": "ES", "Sweden": "SE", "Switzerland": "CH", "United Kingdom": "GB",
+    "United States": "US", "Canada": "CA", "Japan": "JP", "China": "CN", "Hong Kong": "HK",
+    "Taiwan": "TW", "South Korea": "KR", "India": "IN", "Australia": "AU", "New Zealand": "NZ",
+    "Brazil": "BR", "Mexico": "MX", "Argentina": "AR", "Chile": "CL", "South Africa": "ZA",
+    "Israel": "IL", "Turkey": "TR", "Saudi Arabia": "SA", "United Arab Emirates": "AE",
+    "Singapore": "SG", "Malaysia": "MY", "Indonesia": "ID", "Thailand": "TH",
+    "Philippines": "PH", "Vietnam": "VN", "Russia": "RU", "Ukraine": "UA",
+}
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS companies (
     symbol           VARCHAR PRIMARY KEY,
     name             VARCHAR,
     isin             VARCHAR,
     country          VARCHAR,
+    country_name     VARCHAR,
     region           VARCHAR NOT NULL,
     crawl_priority   TINYINT NOT NULL,
     sector           VARCHAR,
@@ -85,6 +105,8 @@ def bootstrap_universe(con: duckdb.DuckDBPyConnection, frame: pd.DataFrame) -> B
 
     rows["region"] = rows["country"].map(region_for)
     rows["crawl_priority"] = rows["region"].map(REGION_PRIORITY)
+    rows["country_name"] = rows["country"]
+    rows["country"] = rows["country_name"].map(lambda n: COUNTRY_TO_ISO.get(n, n))
     if "isin" not in rows.columns:
         rows["isin"] = None
     if "delisted" not in rows.columns:
@@ -94,7 +116,7 @@ def bootstrap_universe(con: duckdb.DuckDBPyConnection, frame: pd.DataFrame) -> B
 
     staged = rows[
         [
-            "symbol", "name", "isin", "country", "region", "crawl_priority",
+            "symbol", "name", "isin", "country", "country_name", "region", "crawl_priority",
             "sector", "industry", "exchange", "currency", "market_cap_class", "delisted",
         ]
     ]
@@ -106,10 +128,10 @@ def bootstrap_universe(con: duckdb.DuckDBPyConnection, frame: pd.DataFrame) -> B
         con.execute(
             """
             INSERT INTO companies (
-                symbol, name, isin, country, region, crawl_priority,
+                symbol, name, isin, country, country_name, region, crawl_priority,
                 sector, industry, exchange, currency, market_cap_class, delisted, updated_at
             )
-            SELECT symbol, name, isin, country, region, crawl_priority,
+            SELECT symbol, name, isin, country, country_name, region, crawl_priority,
                    sector, industry, exchange, currency, market_cap_class,
                    coalesce(delisted, FALSE), now()
             FROM staged_universe
@@ -117,6 +139,7 @@ def bootstrap_universe(con: duckdb.DuckDBPyConnection, frame: pd.DataFrame) -> B
                 name = excluded.name,
                 isin = excluded.isin,
                 country = excluded.country,
+                country_name = excluded.country_name,
                 region = excluded.region,
                 crawl_priority = excluded.crawl_priority,
                 sector = excluded.sector,
