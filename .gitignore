@@ -1,0 +1,21 @@
+# python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+
+# node / ui
+node_modules/
+ui/dist/
+
+# data (parquet/duckdb live outside git)
+data/
+*.duckdb
+*.duckdb.wal
+
+# env & os
+.env
+.DS_Store

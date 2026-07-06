@@ -4,8 +4,8 @@
   "generatedAt": "2026-07-06T21:32:15.981Z",
   "conventions": {
     "frTagPattern": "FR-\\d{3}",
-    "testCommand": null,
-    "appDir": null
+    "testCommand": "uv run pytest -q",
+    "appDir": ".."
   },
   "tasks": [
     {
@@ -15,12 +15,21 @@
       "frIds": [],
       "acceptance": [],
       "dependsOn": [],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "pyproject.toml",
+        "src/crible/__init__.py",
+        "tests/test_smoke.py",
+        ".gitignore",
+        "LICENSE",
+        "README.md"
+      ],
+      "tests": [
+        "tests/test_smoke.py"
+      ],
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-001",
