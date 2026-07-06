@@ -1,0 +1,82 @@
+// FR-007 — SPA behaviour: grid renders results, errors show inline while
+// previous results stay visible, export targets the FULL result set.
+
+import { render, screen as rtl, waitFor, fireEvent } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import App from "../App";
+import { exportCsvUrl } from "../api";
+
+const ROWS = [
+  { symbol: "AIR.PA", name: "Airbus", country: "FR", sector: "Industrials", piotroski_f: 8, altman_z: 3.2, beneish_m: -2.5, return_on_equity: 0.18 },
+  { symbol: "SAP.DE", name: "SAP", country: "DE", sector: "Tech", piotroski_f: 7, altman_z: 4.1, beneish_m: -2.9, return_on_equity: 0.22 },
+];
+
+function mockFetch(handler: (url: string, init?: RequestInit) => unknown) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => handler(url, init)),
+  );
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return {
+    ok: status < 400,
+    status,
+    json: async () => body,
+  };
+}
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("FR-007 results grid", () => {
+  it("FR-007: renders matching rows with sortable columns after a screen", async () => {
+    mockFetch((url) => {
+      if (url === "/api/screen") return jsonResponse({ rows: ROWS, total: 2, page: 1, tookMs: 12 });
+      if (url === "/api/presets") return jsonResponse([]);
+      if (url === "/api/status") return jsonResponse({ universe: 8, snapshot: true });
+      return jsonResponse({}, 404);
+    });
+    render(<App />);
+    await waitFor(() => expect(rtl.getByText("AIR.PA")).toBeInTheDocument());
+    expect(rtl.getByText("SAP.DE")).toBeInTheDocument();
+    expect(rtl.getByText(/2 of 2 rows/)).toBeInTheDocument();
+  });
+
+  it("FR-007: a DSL error shows inline with hint and previous results stay visible", async () => {
+    let calls = 0;
+    mockFetch((url) => {
+      if (url === "/api/screen") {
+        calls += 1;
+        if (calls === 1) return jsonResponse({ rows: ROWS, total: 2, page: 1, tookMs: 5 });
+        return jsonResponse(
+          { detail: { error: "unknown field 'piotroski'", position: 0, hint: "did you mean 'piotroski_f'?" } },
+          422,
+        );
+      }
+      if (url === "/api/presets") return jsonResponse([]);
+      if (url === "/api/status") return jsonResponse({ universe: 8, snapshot: true });
+      return jsonResponse({}, 404);
+    });
+    render(<App />);
+    await waitFor(() => expect(rtl.getByText("AIR.PA")).toBeInTheDocument());
+
+    fireEvent.change(rtl.getByLabelText("DSL query"), { target: { value: "piotroski > 7" } });
+    fireEvent.click(rtl.getByText("Screen"));
+
+    await waitFor(() => expect(rtl.getByRole("alert")).toBeInTheDocument());
+    expect(rtl.getByRole("alert").textContent).toContain("piotroski_f");
+    // previous results remain on screen (no blank state)
+    expect(rtl.getByText("AIR.PA")).toBeInTheDocument();
+  });
+});
+
+describe("FR-007 export", () => {
+  it("FR-007: the export URL carries the executed query (full result set endpoint)", () => {
+    expect(exportCsvUrl("piotroski_f >= 7", null)).toBe(
+      "/api/screen.csv?query=piotroski_f+%3E%3D+7",
+    );
+    expect(exportCsvUrl("roe > 15", "-roe")).toContain("sort=-roe");
+  });
+});

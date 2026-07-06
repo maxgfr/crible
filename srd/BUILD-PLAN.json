@@ -296,12 +296,27 @@
         "T-006",
         "T-015"
       ],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "ui/package.json",
+        "ui/vite.config.ts",
+        "ui/src/App.tsx",
+        "ui/src/api.ts",
+        "ui/src/tokens.css",
+        "ui/src/components/QueryBar.tsx",
+        "ui/src/components/ResultsGrid.tsx",
+        "ui/src/components/PresetsMenu.tsx",
+        "ui/src/components/ColumnPicker.tsx",
+        "ui/src/components/CompanyDrawer.tsx"
+      ],
+      "tests": [
+        "ui/src/__tests__/fr007.test.tsx"
+      ],
       "verify": {
-        "commands": []
+        "commands": [
+          "npm --prefix ui run test -- --run"
+        ]
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-008",
@@ -523,12 +538,17 @@
       "dependsOn": [
         "T-000"
       ],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "ui/src/tokens.css",
+        "ui/src/styles.css"
+      ],
+      "tests": [
+        "ui/src/__tests__/fr007.test.tsx"
+      ],
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     }
   ]
 }

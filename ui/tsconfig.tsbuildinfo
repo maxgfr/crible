@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/test-setup.ts","./src/__tests__/fr007.test.tsx","./src/components/columnpicker.tsx","./src/components/companydrawer.tsx","./src/components/presetsmenu.tsx","./src/components/querybar.tsx","./src/components/resultsgrid.tsx"],"version":"5.9.3"}
