@@ -259,12 +259,17 @@
       "dependsOn": [
         "T-004"
       ],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "src/crible/api/main.py",
+        "src/crible/runtime.py"
+      ],
+      "tests": [
+        "tests/test_fr006_api.py"
+      ],
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-007",
@@ -350,12 +355,17 @@
       "dependsOn": [
         "T-004"
       ],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "src/crible/presets.py"
+      ],
+      "tests": [
+        "tests/test_fr005_cli.py",
+        "tests/test_fr006_api.py"
+      ],
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-010",

@@ -11,7 +11,7 @@ from typer.testing import CliRunner
 
 from crible.cli import app
 from crible.compute.snapshot import publish_snapshot
-from crible.universe import bootstrap_universe
+from crible.universe import bootstrap_universe, export_universe_parquet
 
 from tests.test_fr001_universe import fixture_frame
 
@@ -23,7 +23,9 @@ def data_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
     con = duckdb.connect(str(tmp_path / "crible.duckdb"))
     bootstrap_universe(con, fixture_frame())
+    export_universe_parquet(con, tmp_path)
     con.close()
+    # self-contained snapshot: universe metadata embedded (ADR-0003)
     snapshot = pd.DataFrame(
         {
             "symbol": ["AIR.PA", "SAP.DE", "AAPL", "7203.T"],
@@ -32,6 +34,9 @@ def data_dir(tmp_path, monkeypatch):
             "altman_z": [3.2, 4.1, 6.0, 2.2],
             "beneish_m": [-2.5, -2.9, -2.7, -2.1],
             "return_on_equity": [0.18, 0.22, 0.45, 0.11],
+            "name": ["Airbus", "SAP", "Apple", "Toyota"],
+            "country": ["FR", "DE", "US", "JP"],
+            "sector": ["Industrials", "Information Technology", "Information Technology", "Consumer Discretionary"],
             "computed_at": [time.time()] * 4,
         }
     )

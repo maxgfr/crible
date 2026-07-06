@@ -1,5 +1,6 @@
-"""The shared runtime: one place that opens DuckDB, mounts the snapshot and
-exposes the exact same screening surface to the CLI and the API (FR-005/FR-006).
+"""The shared runtime: readers (CLI screen / API) touch ONLY published Parquet
+(snapshot + universe) — never the ingest-owned DuckDB file (ADR-0003, single
+writer per layer). One implementation of screening for CLI, API and UI.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import duckdb
+import pandas as pd
 
 from crible import config
 from crible.compute.snapshot import SNAPSHOT_NAME
@@ -35,50 +37,30 @@ class Runtime:
     def snapshot_path(self) -> Path:
         return self.data_dir / "snapshot" / SNAPSHOT_NAME
 
-    def connect(self, read_only: bool = False) -> duckdb.DuckDBPyConnection:
-        path = self.data_dir / "crible.duckdb"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if read_only and not path.exists():
-            raise SnapshotMissingError(
-                "no database yet — run `crible ingest --bootstrap` first"
-            )
-        return duckdb.connect(str(path), read_only=read_only)
+    def universe_path(self) -> Path:
+        return self.data_dir / "universe.parquet"
 
     def mount_snapshot(self, con: duckdb.DuckDBPyConnection) -> None:
-        """Expose ``snapshot_latest``: latest period per symbol + universe metadata."""
+        """Expose ``snapshot_latest``: the latest fiscal period per symbol.
+
+        The snapshot is self-contained (universe metadata embedded at compute
+        time), so this only ever reads Parquet.
+        """
         snapshot = self.snapshot_path()
         if not snapshot.exists():
             raise SnapshotMissingError(
                 "no snapshot yet — run `crible ingest` then `crible compute` first"
             )
-        has_companies = con.execute(
-            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'companies'"
-        ).fetchone()[0]
-        join = (
-            """
-            JOIN companies c USING (symbol)
-            """
-            if has_companies
-            else ""
-        )
-        extra = (
-            "c.name, c.country, c.country_name, c.region, c.sector, c.industry, c.exchange, c.currency,"
-            if has_companies
-            else ""
-        )
         con.execute(
             f"""
             CREATE OR REPLACE TEMP VIEW snapshot_latest AS
             SELECT * EXCLUDE (_rn) FROM (
-                SELECT s.*, {extra}
+                SELECT s.*,
                        row_number() OVER (PARTITION BY s.symbol ORDER BY s.period DESC) AS _rn
-                FROM read_parquet('{snapshot.as_posix()}') s {join}
+                FROM read_parquet('{snapshot.as_posix()}') s
             ) WHERE _rn = 1
             """
         )
-
-    def whitelist(self, con: duckdb.DuckDBPyConnection) -> set[str]:
-        return whitelist_from_relation(con, "snapshot_latest")
 
     # -------------------------------------------------------------- surface
 
@@ -89,11 +71,11 @@ class Runtime:
         sort: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ):
-        con = self.connect()
+    ) -> tuple[pd.DataFrame, int]:
+        con = duckdb.connect()
         try:
             self.mount_snapshot(con)
-            whitelist = self.whitelist(con)
+            whitelist = whitelist_from_relation(con, "snapshot_latest")
             rows = store_screen(
                 con, query, whitelist=whitelist, sort=sort, limit=limit, offset=offset
             )
@@ -102,43 +84,55 @@ class Runtime:
         finally:
             con.close()
 
+    def company(self, symbol: str) -> dict | None:
+        """Profile (universe) + full period history (snapshot) for one symbol."""
+        profile: dict | None = None
+        if self.universe_path().exists():
+            con = duckdb.connect()
+            try:
+                rows = con.execute(
+                    f"SELECT * FROM read_parquet('{self.universe_path().as_posix()}') WHERE symbol = ?",
+                    [symbol],
+                ).fetchdf()
+            finally:
+                con.close()
+            if len(rows):
+                profile = rows.iloc[0].to_dict()
+
+        periods: list[dict] = []
+        if self.snapshot_path().exists():
+            con = duckdb.connect()
+            try:
+                history = con.execute(
+                    f"SELECT * FROM read_parquet('{self.snapshot_path().as_posix()}')"
+                    " WHERE symbol = ? ORDER BY period DESC",
+                    [symbol],
+                ).fetchdf()
+            finally:
+                con.close()
+            periods = json.loads(history.to_json(orient="records"))
+            if profile is None and periods:
+                profile = {k: periods[0].get(k) for k in ("symbol", "name", "country", "region", "sector")}
+
+        if profile is None:
+            return None
+        clean_profile = {k: (None if pd.isna(v) else v) for k, v in profile.items()}
+        return {"profile": clean_profile, "periods": periods}
+
     def status(self) -> dict:
         out: dict = {"data_dir": str(self.data_dir)}
-        db = self.data_dir / "crible.duckdb"
-        if db.exists():
-            con = duckdb.connect(str(db), read_only=True)
+        if self.universe_path().exists():
+            con = duckdb.connect()
             try:
-                tables = {
-                    r[0]
-                    for r in con.execute(
-                        "SELECT table_name FROM information_schema.tables"
+                path = self.universe_path().as_posix()
+                out["universe"] = con.execute(
+                    f"SELECT count(*) FROM read_parquet('{path}')"
+                ).fetchone()[0]
+                out["by_region"] = dict(
+                    con.execute(
+                        f"SELECT region, count(*) FROM read_parquet('{path}') GROUP BY region"
                     ).fetchall()
-                }
-                if "companies" in tables:
-                    out["universe"] = con.execute("SELECT count(*) FROM companies").fetchone()[0]
-                    out["by_region"] = dict(
-                        con.execute("SELECT region, count(*) FROM companies GROUP BY region").fetchall()
-                    )
-                if "crawl_tasks" in tables:
-                    crawled = con.execute(
-                        "SELECT count(*) FROM crawl_tasks WHERE last_crawled_at IS NOT NULL"
-                    ).fetchone()[0]
-                    out["crawled"] = crawled
-                    if out.get("universe"):
-                        out["coverage_pct"] = round(100.0 * crawled / out["universe"], 2)
-                    out["freshness"] = dict(
-                        con.execute(
-                            """
-                            SELECT CASE
-                                WHEN last_crawled_at IS NULL THEN 'never'
-                                WHEN last_crawled_at > epoch(now()) - 7*86400 THEN '<7d'
-                                WHEN last_crawled_at > epoch(now()) - 30*86400 THEN '<30d'
-                                WHEN last_crawled_at > epoch(now()) - 90*86400 THEN '<90d'
-                                ELSE 'stale' END AS bucket, count(*)
-                            FROM crawl_tasks GROUP BY bucket
-                            """
-                        ).fetchall()
-                    )
+                )
             finally:
                 con.close()
         heartbeat = self.data_dir / "status.json"
