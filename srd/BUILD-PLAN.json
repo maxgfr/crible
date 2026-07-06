@@ -51,12 +51,16 @@
       "dependsOn": [
         "T-000"
       ],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "src/crible/universe.py"
+      ],
+      "tests": [
+        "tests/test_fr001_universe.py"
+      ],
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-002",
