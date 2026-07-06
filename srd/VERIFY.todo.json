@@ -12,16 +12,6 @@
       "note": ""
     },
     {
-      "claimId": "NFR-012",
-      "kind": "NFR",
-      "claim": "maintainability: Components stay isolated (universe / ingest / compute / store / api / ui) and the provider seam is the extension point — adding a source never touches the core. (Adding a data provider = one plugin module implementing the Provider interface + its tests, zero changes to scheduler/compute/API; every FR has at least one test whose name carries the FR id (verified by construct verify ",
-      "evidenceId": "E77",
-      "source": "oss",
-      "digest": "Languages: py:944, jsx:176, js:84, md:67, json:50, csv:13 · files: 1397.\n\n![Market Health and Exposure](docs/screenshots/health-exposure.jpg)\n*Market Health and Exposure*\n\n![Scan results with composite scores, RS sparklines, multi-screener ratings, and classification columns](docs/screenshots/scan-results.png)\n*Scan results table*\n\n![Relative Rotation Graph — sector rotation with direction-arrowed weekly tails](docs/screenshots/rrg-rotation.png)\n*RRG: sector rotation with direction-arrowed weekly tails; full 197-group scope available from the same view*\n\n**Typical flow:** sign in → bootstrap m",
-      "verdict": null,
-      "note": ""
-    },
-    {
       "claimId": "OSS-4",
       "kind": "oss",
       "claim": "xang1234/stock-screener: Closest architectural prior art (FastAPI + Postgres + Celery + React, multi-exchange refresh queues). Its preset-filtering timeout fix is the cautionary tale that justified DuckDB-over-Parquet instead of an operational DB.",
@@ -65,16 +55,6 @@
       "claimId": "NFR-010",
       "kind": "NFR",
       "claim": "data quality & transparency: Every number can explain itself: formula, source and fetch time. Audited beats scraped. This is the product's moat against closed SaaS ranks [E67]. (Every snapshot cell is traceable to (provider, fetchedAt) and a published formula (financetoolkit's open implementations [E1] or crible's own tested code); Piotroski/Altman/Beneish are unit-tested against published example",
-      "evidenceId": "E1",
-      "source": "oss",
-      "digest": "Languages: csv:614, py:148, json:58, ipynb:12, pickle:7, md:6 · files: 862.\n\n\nFor example, Microsoft's Price-to-Earnings (PE) ratio on the 6th of May, 2023 is reported to be 28.93 (Stockopedia), 32.05 (Morningstar), 32.66 (Macrotrends), 33.09 (Finance Charts), 33.66 (Y Charts), 33.67 (Wall Street Journal), 33.80 (Yahoo Finance) and 34.4 (Companies Market Cap). All of these calculations are correct, however the method of calculation varies leading to different results. Therefore, collecting data from multiple sources can lead to wrong interpretation of the results given that one source could ap",
-      "verdict": null,
-      "note": ""
-    },
-    {
-      "claimId": "NFR-012",
-      "kind": "NFR",
-      "claim": "maintainability: Components stay isolated (universe / ingest / compute / store / api / ui) and the provider seam is the extension point — adding a source never touches the core. (Adding a data provider = one plugin module implementing the Provider interface + its tests, zero changes to scheduler/compute/API; every FR has at least one test whose name carries the FR id (verified by construct verify ",
       "evidenceId": "E1",
       "source": "oss",
       "digest": "Languages: csv:614, py:148, json:58, ipynb:12, pickle:7, md:6 · files: 862.\n\n\nFor example, Microsoft's Price-to-Earnings (PE) ratio on the 6th of May, 2023 is reported to be 28.93 (Stockopedia), 32.05 (Morningstar), 32.66 (Macrotrends), 33.09 (Finance Charts), 33.66 (Y Charts), 33.67 (Wall Street Journal), 33.80 (Yahoo Finance) and 34.4 (Companies Market Cap). All of these calculations are correct, however the method of calculation varies leading to different results. Therefore, collecting data from multiple sources can lead to wrong interpretation of the results given that one source could ap",
@@ -398,6 +378,26 @@
       "evidenceId": "E7",
       "source": "docs",
       "digest": "46718.5\n43178.3\nMCP Server\nThe Finance Toolkit MCP Server exposes 200+ financial metrics, models, and economic indicators directly to any AI assistant that supports the Model Context Protocol (MCP). Ask questions in plain English — the AI fetches live financial data on your behalf, backed by the transparent, open-source calculation methods of the Finance Toolkit.\nSee an example of the Finance Toolkit MCP server in action in Claude Desktop below:\nFinance.Toolkit.-.MCP.Demo.mp4\nRemote server\nConnect directly to the hosted server at https://financetoolkit.jeroenbouma.com/mcp . Nothing needs to be",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "FR-003",
+      "kind": "FR",
+      "claim": "Ratio and score computation into a wide snapshot: Compute the wide screening snapshot: financetoolkit (with the Yahoo source enforced) supplies 150+ transparently-defined ratios plus Piotroski F-Score and Altman Z-Score [E1][E6][E8]; Beneish M-Score is implemented in-house (absent from financetoolkit — verified by full-source grep) with its 8 components, unit-tested against published examples. Out",
+      "evidenceId": "E8",
+      "source": "docs",
+      "digest": "Project description\nWhile browsing a variety of websites, I repeatedly observed significant fluctuations in the same financial metric among different sources. Similarly, the reported financial statements often didn't line up, and there was limited information on the methodology used to calculate each metric.\nFor example, Microsoft's Price-to-Earnings (PE) ratio on the 6th of May, 2023 is reported to be 28.93 (Stockopedia), 32.05 (Morningstar), 32.66 (Macrotrends), 33.09 (Finance Charts), 33.66 (Y Charts), 33.67 (Wall Street Journal), 33.80 (Yahoo Finance) and 34.4 (Companies Market Cap). All o",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "FR-003",
+      "kind": "FR",
+      "claim": "Ratio and score computation into a wide snapshot: Compute the wide screening snapshot: financetoolkit (with the Yahoo source enforced) supplies 150+ transparently-defined ratios plus Piotroski F-Score and Altman Z-Score [E1][E6][E8]; Beneish M-Score is implemented in-house (absent from financetoolkit — verified by full-source grep) with its 8 components, unit-tested against published examples. Out",
+      "evidenceId": "E9",
+      "source": "docs",
+      "digest": "46718.5\n43178.3\nMCP Server\nThe Finance Toolkit MCP Server exposes 200+ financial metrics, models, and economic indicators directly to any AI assistant that supports the Model Context Protocol (MCP). Ask questions in plain English — the AI fetches live financial data on your behalf, backed by the transparent, open-source calculation methods of the Finance Toolkit.\nSee an example of the Finance Toolkit MCP server in action in Claude Desktop below:\nhttps://github.com/user-attachments/assets/96ad5288-d83d-4497-a345-1841c48c29d5\nRemote server\nConnect directly to the hosted server at https://finance",
       "verdict": null,
       "note": ""
     }

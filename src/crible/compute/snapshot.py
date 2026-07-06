@@ -66,6 +66,22 @@ def crawled_symbols(data_dir: Path | str) -> list[str]:
     return sorted(symbols)
 
 
+UNIVERSE_COLUMNS = [
+    "name", "country", "country_name", "region", "sector", "industry", "exchange", "currency", "isin",
+]
+
+
+def attach_universe(snapshot: pd.DataFrame, data_dir: Path | str) -> pd.DataFrame:
+    """Embed universe metadata so the snapshot is self-contained: readers
+    (API/CLI) never open the ingest-owned DuckDB file (ADR-0003)."""
+    universe_path = Path(data_dir) / "universe.parquet"
+    if snapshot.empty or not universe_path.exists():
+        return snapshot
+    universe = pd.read_parquet(universe_path)
+    keep = ["symbol"] + [c for c in UNIVERSE_COLUMNS if c in universe.columns]
+    return snapshot.merge(universe[keep], on="symbol", how="left")
+
+
 def build_snapshot(data_dir: Path | str, symbols: list[str] | None = None) -> pd.DataFrame:
     todo = symbols if symbols is not None else crawled_symbols(data_dir)
     parts = []
@@ -78,7 +94,7 @@ def build_snapshot(data_dir: Path | str, symbols: list[str] | None = None) -> pd
             parts.append(part)
     if not parts:
         return pd.DataFrame()
-    return pd.concat(parts, ignore_index=True)
+    return attach_universe(pd.concat(parts, ignore_index=True), data_dir)
 
 
 def publish_snapshot(snapshot: pd.DataFrame, data_dir: Path | str) -> Path:

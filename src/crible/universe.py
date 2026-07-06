@@ -164,6 +164,19 @@ def bootstrap_universe(con: duckdb.DuckDBPyConnection, frame: pd.DataFrame) -> B
     return BootstrapReport(loaded=len(staged), dropped=dropped, by_region=by_region)
 
 
+def export_universe_parquet(con: duckdb.DuckDBPyConnection, data_dir) -> None:
+    """Publish the universe as Parquet (atomic) so readers never open the
+    ingest-owned DuckDB file (ADR-0003: single writer per layer)."""
+    from pathlib import Path
+
+    directory = Path(data_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    tmp = directory / ".tmp-universe.parquet"
+    final = directory / "universe.parquet"
+    con.execute(f"COPY companies TO '{tmp.as_posix()}' (FORMAT parquet)")
+    tmp.rename(final)
+
+
 def fetch_financedatabase() -> pd.DataFrame:
     """Download the full FinanceDatabase equity universe (network)."""
     try:

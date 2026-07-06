@@ -2,26 +2,10 @@
 
 For each pair, open the cited evidence and judge whether it **supports** the claim. In `VERIFY.todo.json`, set each `verdict` to one of supported · partial · refuted · unsupported, add a short `note`, save it (e.g. as `verdicts.json`), then run `construct review --apply verdicts.json --out <run>`.
 
-_Showing 40 of 162 pair(s) — capped at the highest-score evidence._
+_Showing 40 of 160 pair(s) — capped at the highest-score evidence._
 
 ## ADR-0001 · E77 (oss)
 **Claim (ADR):** Primary technology stack: Python 3.12 for universe/ingest/compute/API (the finance OSS ecosystem is Python: financetoolkit [E1][E8], financedatabase [E2], yfinance [E3][E98]); DuckDB over Parquet (pyarrow) as the only datastore — embedded, zero-ops, columnar, millisecond screens [E4][E12][E10]; FastAPI [E13] + Typer [E92] as the two entry points sharing one core; React 18 + Vite + TypeScript with 
-**Cited evidence:** Languages: py:944, jsx:176, js:84, md:67, json:50, csv:13 · files: 1397.
-
-![Market Health and Exposure](docs/screenshots/health-exposure.jpg)
-*Market Health and Exposure*
-
-![Scan results with composite scores, RS sparklines, multi-screener ratings, and classification columns](docs/screenshots/scan-results.png)
-*Scan results table*
-
-![Relative Rotation Graph — sector rotation with direction-arrowed weekly tails](docs/screenshots/rrg-rotation.png)
-*RRG: sector rotation with direction-arrowed weekly tails; full 197-group scope available from the same view*
-
-**Typical flow:** sign in → bootstrap m
-**Verdict:** _____ · **Note:** _____
-
-## NFR-012 · E77 (oss)
-**Claim (NFR):** maintainability: Components stay isolated (universe / ingest / compute / store / api / ui) and the provider seam is the extension point — adding a source never touches the core. (Adding a data provider = one plugin module implementing the Provider interface + its tests, zero changes to scheduler/compute/API; every FR has at least one test whose name carries the FR id (verified by construct verify 
 **Cited evidence:** Languages: py:944, jsx:176, js:84, md:67, json:50, csv:13 · files: 1397.
 
 ![Market Health and Exposure](docs/screenshots/health-exposure.jpg)
@@ -78,14 +62,6 @@ For example, Microsoft's Price-to-Earnings (PE) ratio on the 6th of May, 2023 is
 
 ## NFR-010 · E1 (oss)
 **Claim (NFR):** data quality & transparency: Every number can explain itself: formula, source and fetch time. Audited beats scraped. This is the product's moat against closed SaaS ranks [E67]. (Every snapshot cell is traceable to (provider, fetchedAt) and a published formula (financetoolkit's open implementations [E1] or crible's own tested code); Piotroski/Altman/Beneish are unit-tested against published example
-**Cited evidence:** Languages: csv:614, py:148, json:58, ipynb:12, pickle:7, md:6 · files: 862.
-
-
-For example, Microsoft's Price-to-Earnings (PE) ratio on the 6th of May, 2023 is reported to be 28.93 (Stockopedia), 32.05 (Morningstar), 32.66 (Macrotrends), 33.09 (Finance Charts), 33.66 (Y Charts), 33.67 (Wall Street Journal), 33.80 (Yahoo Finance) and 34.4 (Companies Market Cap). All of these calculations are correct, however the method of calculation varies leading to different results. Therefore, collecting data from multiple sources can lead to wrong interpretation of the results given that one source could ap
-**Verdict:** _____ · **Note:** _____
-
-## NFR-012 · E1 (oss)
-**Claim (NFR):** maintainability: Components stay isolated (universe / ingest / compute / store / api / ui) and the provider seam is the extension point — adding a source never touches the core. (Adding a data provider = one plugin module implementing the Provider interface + its tests, zero changes to scheduler/compute/API; every FR has at least one test whose name carries the FR id (verified by construct verify 
 **Cited evidence:** Languages: csv:614, py:148, json:58, ipynb:12, pickle:7, md:6 · files: 862.
 
 
@@ -526,4 +502,23 @@ See an example of the Finance Toolkit MCP server in action in Claude Desktop bel
 Finance.Toolkit.-.MCP.Demo.mp4
 Remote server
 Connect directly to the hosted server at https://financetoolkit.jeroenbouma.com/mcp . Nothing needs to be
+**Verdict:** _____ · **Note:** _____
+
+## FR-003 · E8 (docs)
+**Claim (FR):** Ratio and score computation into a wide snapshot: Compute the wide screening snapshot: financetoolkit (with the Yahoo source enforced) supplies 150+ transparently-defined ratios plus Piotroski F-Score and Altman Z-Score [E1][E6][E8]; Beneish M-Score is implemented in-house (absent from financetoolkit — verified by full-source grep) with its 8 components, unit-tested against published examples. Out
+**Cited evidence:** Project description
+While browsing a variety of websites, I repeatedly observed significant fluctuations in the same financial metric among different sources. Similarly, the reported financial statements often didn't line up, and there was limited information on the methodology used to calculate each metric.
+For example, Microsoft's Price-to-Earnings (PE) ratio on the 6th of May, 2023 is reported to be 28.93 (Stockopedia), 32.05 (Morningstar), 32.66 (Macrotrends), 33.09 (Finance Charts), 33.66 (Y Charts), 33.67 (Wall Street Journal), 33.80 (Yahoo Finance) and 34.4 (Companies Market Cap). All o
+**Verdict:** _____ · **Note:** _____
+
+## FR-003 · E9 (docs)
+**Claim (FR):** Ratio and score computation into a wide snapshot: Compute the wide screening snapshot: financetoolkit (with the Yahoo source enforced) supplies 150+ transparently-defined ratios plus Piotroski F-Score and Altman Z-Score [E1][E6][E8]; Beneish M-Score is implemented in-house (absent from financetoolkit — verified by full-source grep) with its 8 components, unit-tested against published examples. Out
+**Cited evidence:** 46718.5
+43178.3
+MCP Server
+The Finance Toolkit MCP Server exposes 200+ financial metrics, models, and economic indicators directly to any AI assistant that supports the Model Context Protocol (MCP). Ask questions in plain English — the AI fetches live financial data on your behalf, backed by the transparent, open-source calculation methods of the Finance Toolkit.
+See an example of the Finance Toolkit MCP server in action in Claude Desktop below:
+https://github.com/user-attachments/assets/96ad5288-d83d-4497-a345-1841c48c29d5
+Remote server
+Connect directly to the hosted server at https://finance
 **Verdict:** _____ · **Note:** _____

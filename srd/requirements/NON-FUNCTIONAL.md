@@ -68,7 +68,7 @@ No DSL input, however hostile, can execute unintended SQL.
 
 ## NFR-012 — maintainability
 
-Components stay isolated (universe / ingest / compute / store / api / ui) and the provider seam is the extension point — adding a source never touches the core. [E1][E77]
+Components stay isolated (universe / ingest / compute / store / api / ui) and the provider seam is the extension point — adding a source never touches the core. (A pure design commitment, verified by construct verify --strict and the plugin test suite.)
 
 **Metric:** Adding a data provider = one plugin module implementing the Provider interface + its tests, zero changes to scheduler/compute/API; every FR has at least one test whose name carries the FR id (verified by construct verify --strict); TDD red-green-refactor throughout.
 
