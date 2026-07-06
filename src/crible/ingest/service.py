@@ -120,6 +120,20 @@ def run_once(limit: int = 50) -> CrawlOutcome:
 
 def run_compute() -> int:
     data = config.data_dir()
+    if not (data / "universe.parquet").exists() and config.database_path().exists():
+        # self-heal installs bootstrapped before universe export existed
+        con = _connect()
+        try:
+            from crible.universe import export_universe_parquet
+
+            has = con.execute(
+                "SELECT count(*) FROM information_schema.tables WHERE table_name = 'companies'"
+            ).fetchone()[0]
+            if has:
+                export_universe_parquet(con, data)
+                log.info("compute: exported missing universe.parquet")
+        finally:
+            con.close()
     snapshot = build_snapshot(data)
     if snapshot.empty:
         log.info("compute: no raw data yet — skipping publish")

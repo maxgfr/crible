@@ -416,12 +416,18 @@
       "dependsOn": [
         "T-002"
       ],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "src/crible/providers/esef.py",
+        "src/crible/providers/gleif.py",
+        "src/crible/compute/reconcile.py"
+      ],
+      "tests": [
+        "tests/test_fr010_esef.py"
+      ],
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-011",
@@ -513,12 +519,18 @@
       "dependsOn": [
         "T-002"
       ],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "src/crible/providers/simfin.py",
+        "src/crible/providers/fmp_free.py",
+        "src/crible/providers/base.py"
+      ],
+      "tests": [
+        "tests/test_fr013_plugins.py"
+      ],
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-014",
@@ -540,12 +552,19 @@
       "dependsOn": [
         "T-013"
       ],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "docs/prds/eodhd.md",
+        "docs/prds/fmp-ultimate.md",
+        "src/crible/providers/eodhd.py"
+      ],
+      "tests": [
+        "tests/test_fr014_prds.py",
+        "tests/test_fr013_plugins.py"
+      ],
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-015",
