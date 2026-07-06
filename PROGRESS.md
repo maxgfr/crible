@@ -1,6 +1,21 @@
-# crible — état d'avancement
+# crible — état FINAL
 
-_Mise à jour : 2026-07-07 ~02:00. Mode autonome (Maxime dort). **BUILD COMPLET — E2E ZÉRO CLÉ VALIDÉ SUR DONNÉES RÉELLES.**_
+_Mise à jour : 2026-07-07 ~03:15. Mode autonome terminé. **BUILD COMPLET, E2E ZÉRO CLÉ VALIDÉ, REVUE MILESTONE TRAITÉE.** Le cron de reprise a été supprimé._
+
+## Revue milestone (dernier gate) — traitée
+
+Un reviewer hostile a audité la couverture AC↔tests : 10 gaps, 6 tests faibles, 3 e2e-only. **Tout ce qui était réel a été corrigé** (commit `e71fa5f`) :
+- `crible status` expose désormais coverage %, histogramme de fraîcheur, req/h, santé par provider, et `esef_unmatched` (FR-005 AC-3, FR-010 AC-4).
+- Export CSV restreint aux **colonnes visibles** (`columns=` API + UI) — FR-007 AC-1.
+- **Save-as-preset** implémenté (localStorage, testé) — FR-009 AC-2.
+- `missing_inputs` : chaque NULL du snapshot nomme les champs canoniques manquants — FR-003 AC-2.
+- Fiche société non crawlée → `queue` (état/région/note) — FR-012 AC-2.
+- Test du mount SPA à `/`, benchmark p95 API < 500 ms sur snapshot synthétique plein format, resume mid-cycle partiel, lien crawler→raw sur disque, hypothesis 1000 exemples, 2 tautologies et 4 tests faibles réécrits.
+- NFR-009 aligné sur la réalité : gate CI zéro clé offline à chaque push ; E2E live = procédure manuelle/nightly documentée (elle dépense du vrai budget).
+
+Résiduels assumés (documentés, non bloquants) : séquencement de `run_loop` couvert par l'E2E live uniquement (test statique sinon) ; rendu du drawer UI non testé (l'API l'est) ; plugin financialreports = spike phase 2.
+
+**Total final : 87 tests pytest + 4 vitest, ruff clean, `construct check` + `check --semantic` + `verify --run-tests --strict` tous verts.**
 
 ## Résultat
 
