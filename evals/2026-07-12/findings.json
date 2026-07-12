@@ -1,0 +1,151 @@
+{
+  "findings": [
+    {
+      "id": "F1",
+      "kind": "defect",
+      "dimension": "maintainability",
+      "severity": "P2",
+      "title": "L'inventaire /api/providers réimplémente la règle d'activation du registre",
+      "statement": "L'endpoint /api/providers code en dur la liste des 4 classes provider et recalcule l'activation avec `True if key_var is None else bool(env)`, au lieu de consommer ProviderRegistry.activate / provider.enabled(env) qui est la source de vérité. Sa propre docstring dit « mirrors ProviderRegistry.activate ». Toute évolution de la règle d'activation (provider à deux clés, keyed avec repli keyless) fait diverger silencieusement l'écran Providers de la réalité.",
+      "evidence": [
+        {
+          "ref": "src/crible/api/main.py:119-145",
+          "note": "liste hardcodée + règle d'activation dupliquée"
+        },
+        {
+          "ref": "src/crible/providers/base.py:54-60",
+          "note": "ProviderRegistry.activate = source de vérité"
+        }
+      ],
+      "failureScenario": "Un provider futur exige deux variables d'env ; activate() gère les deux, l'endpoint continue de tester une seule → l'UI affiche « enabled » alors que le provider est inactif.",
+      "recommendation": "Dériver l'inventaire depuis le registre (itérer les providers enregistrés, appeler enabled(env)) plutôt que de réénumérer et recalculer côté API.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F2",
+      "kind": "defect",
+      "dimension": "maintainability",
+      "severity": "P2",
+      "title": "ingest/service.py concentre trop de responsabilités (hotspot 370 LOC, nesting 14)",
+      "statement": "Le service d'ingestion est le plus gros fichier source (370 LOC) avec la profondeur d'imbrication la plus élevée du repo (14), churn 5 — signal d'un module qui orchestre bootstrap, crawl budgété, prix et reconciliation dans une seule unité. Analysable mais coûteux à faire évoluer sans régression.",
+      "evidence": [
+        {
+          "ref": "src/crible/ingest/service.py:1",
+          "note": "370 LOC, nesting 14 (analyze hotspot #1)"
+        },
+        {
+          "ref": "run:analysis.json",
+          "note": "hotspot déterministe"
+        }
+      ],
+      "failureScenario": "Ajouter un provider de prix impose de modifier une fonction profondément imbriquée ; un cas d'erreur non couvert passe entre les branches.",
+      "recommendation": "Extraire les étapes (bootstrap / crawl / prix / reconcile) en collaborateurs testables ; le SRD décrit déjà ces frontières.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F3",
+      "kind": "defect",
+      "dimension": "security",
+      "severity": "P2",
+      "title": "compose expose l'API sans auth ni avertissement « réseau privé »",
+      "statement": "docker-compose.yml publie l'API sur l'hôte (${CRIBLE_PORT:-8000}:8000) sans authentification et sans caveat documenté. Acceptable pour un usage mono-utilisateur en réseau privé (OWASP A05 Security Misconfiguration), mais un self-hoster qui l'expose derrière une IP publique ouvre l'API en clair. L'absence de note d'install est le vrai risque pour la cible self-host.",
+      "evidence": [
+        {
+          "ref": "docker-compose.yml:28",
+          "note": "ports publiés, aucune auth, pas de caveat"
+        }
+      ],
+      "failureScenario": "Un utilisateur mappe le port sur 0.0.0.0 d'un VPS sans reverse-proxy → API et données lisibles par quiconque scanne le port.",
+      "recommendation": "Documenter « réseau privé / reverse-proxy uniquement » dans le README d'install (répond aussi à la demande self-host [S23]) ; envisager un bind loopback par défaut ou une auth optionnelle.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F4",
+      "kind": "opportunity",
+      "dimension": "maintainability",
+      "severity": "P1",
+      "impact": "high",
+      "effort": "S",
+      "title": "README go-to-market : pitch, comparatif honnête, listing awesome-selfhosted",
+      "statement": "Le README actuel est technique et neutre ; il ne vend pas le seul créneau vide du marché (screener fondamental self-hosted, zéro clé, alternative à un abonnement à €550/an). Le canal de distribution du cœur de cible (awesome-selfhosted, catégorie Money) n'a aucun screener.",
+      "evidence": [
+        {
+          "ref": "README.md:1",
+          "note": "README technique, sans pitch marché"
+        },
+        {
+          "ref": "docs/market/2026-07-12/REPORT.md:1",
+          "note": "[S24] aucun screener dans awesome-selfhosted ; [S21] €550/an ; [S23] demande self-host"
+        }
+      ],
+      "recommendation": "Réécrire le README : pitch « garde tes €550/an », screenshots dark/light, table comparative honnête (Stockopedia/TIKR/SWS/OpenBB/Ghostfolio), quickstart compose one-liner ; soumettre à awesome-selfhosted.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F5",
+      "kind": "opportunity",
+      "dimension": "maintainability",
+      "severity": "P2",
+      "impact": "med",
+      "effort": "S",
+      "title": "Guide d'install self-host NAS/Synology",
+      "statement": "Une question explicite « puis-je self-héberger cet outil de recherche actions sur mon Synology ? » reste sans réponse depuis 2023 chez le leader OSS OpenBB. crible peut y répondre par un guide d'install NAS/compose one-liner — friction d'adoption levée pour le cœur de cible.",
+      "evidence": [
+        {
+          "ref": "README.md:20",
+          "note": "install dev-oriented (uv), pas de guide NAS"
+        },
+        {
+          "ref": "docs/market/2026-07-12/REPORT.md:1",
+          "note": "[S23] demande self-host non servie"
+        }
+      ],
+      "recommendation": "Ajouter une section install NAS/Docker (Synology, compose, volume, port) au README/docs.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F6",
+      "kind": "opportunity",
+      "dimension": "maintainability",
+      "severity": "P2",
+      "impact": "med",
+      "effort": "S",
+      "title": "Dériver /api/providers du registre (résout F1)",
+      "statement": "Transformer la duplication F1 en amélioration : l'endpoint consomme le registre au lieu de réénumérer et recalculer, supprimant le risque de dérive UI↔réalité.",
+      "evidence": [
+        {
+          "ref": "src/crible/api/main.py:119-145",
+          "note": "cible du refactor"
+        },
+        {
+          "ref": "src/crible/providers/base.py:54",
+          "note": "registre à consommer"
+        }
+      ],
+      "recommendation": "Refactor de l'endpoint pour itérer les providers enregistrés et appeler enabled(env).",
+      "status": "confirmed"
+    },
+    {
+      "id": "F7",
+      "kind": "opportunity",
+      "dimension": "correctness",
+      "severity": "P1",
+      "impact": "high",
+      "effort": "M",
+      "title": "Rang composite qualité/valeur/momentum (façon StockRanks) — GATÉ marché",
+      "statement": "Le différenciateur n°1 du leader payant Stockopedia est le StockRank composite (qualité/valeur/momentum), cité par les reviews comme la raison d'abonnement. crible a déjà les scores en base (Piotroski, Altman, ratios) pour le calculer, sans clé.",
+      "evidence": [
+        {
+          "ref": "src/crible/compute/scores.py:1",
+          "note": "scores déjà calculés, base du rang"
+        },
+        {
+          "ref": "docs/market/2026-07-12/REPORT.md:1",
+          "note": "[S21][S22] StockRanks = différenciateur du leader payant"
+        }
+      ],
+      "recommendation": "Spécifier via construct (FR + acceptance) un rang composite classant l'univers ; NE PAS développer avant la spec. Évidence marché forte → passe le gate, dev cycle 2.",
+      "status": "confirmed"
+    }
+  ]
+}

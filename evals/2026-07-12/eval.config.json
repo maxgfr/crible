@@ -1,0 +1,95 @@
+{
+  "target": ".",
+  "targetAbs": "/Users/maxime/Downloads/crible",
+  "kind": "codebase",
+  "category": "self-hosted fintech tool",
+  "mode": "deep",
+  "dimensions": [
+    {
+      "id": "correctness",
+      "name": "Correctness",
+      "weight": 0.3,
+      "whatPerfectLooksLike": "correct on happy AND edge paths; no logic bugs",
+      "anchors": [
+        {
+          "standard": "ISO/IEC 25010:2023",
+          "ref": "Functional suitability — functional correctness"
+        },
+        {
+          "standard": "ISO/IEC 25010:2023",
+          "ref": "Reliability — faultlessness"
+        }
+      ]
+    },
+    {
+      "id": "tests",
+      "name": "Test quality",
+      "weight": 0.2,
+      "whatPerfectLooksLike": "tests fail when the code is wrong (not just coverage %)",
+      "anchors": [
+        {
+          "standard": "ISO/IEC 25010:2023",
+          "ref": "Maintainability — testability"
+        }
+      ]
+    },
+    {
+      "id": "security",
+      "name": "Security",
+      "weight": 0.2,
+      "whatPerfectLooksLike": "no exploitable source->sink flows; inputs validated",
+      "anchors": [
+        {
+          "standard": "ISO/IEC 25010:2023",
+          "ref": "Security — confidentiality, integrity, resistance"
+        },
+        {
+          "standard": "OWASP Top 10 (2021)",
+          "ref": "categories A01–A10",
+          "note": "informative"
+        }
+      ]
+    },
+    {
+      "id": "maintainability",
+      "name": "Maintainability",
+      "weight": 0.2,
+      "whatPerfectLooksLike": "clear boundaries, low duplication",
+      "anchors": [
+        {
+          "standard": "ISO/IEC 25010:2023",
+          "ref": "Maintainability — modularity, analysability, modifiability"
+        }
+      ]
+    },
+    {
+      "id": "performance",
+      "name": "Performance",
+      "weight": 0.1,
+      "whatPerfectLooksLike": "no hot-path waste; scales to realistic inputs",
+      "anchors": [
+        {
+          "standard": "ISO/IEC 25010:2023",
+          "ref": "Performance efficiency — time behaviour, resource utilization, capacity"
+        }
+      ]
+    }
+  ],
+  "note": "starter dimensions — the research stage refines them",
+  "version": "1.8.1",
+  "provenance": {
+    "engineVersion": "1.8.1",
+    "protocolVersion": "2",
+    "rubricVersion": "1",
+    "createdAt": "2026-07-12T12:15:59.008Z",
+    "mode": "deep",
+    "kind": "codebase",
+    "category": "self-hosted fintech tool",
+    "dimensionsHash": "953323803265",
+    "targetGit": {
+      "commit": "286c7c4a74ce1f287c0e7bcf9c0abf194ce5ab6a",
+      "branch": "main",
+      "dirty": true
+    }
+  }
+}

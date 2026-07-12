@@ -1,0 +1,133 @@
+{
+  "run": "evals/2026-07-12",
+  "pairs": [
+    {
+      "claimId": "F4",
+      "evidenceRef": "README.md:1",
+      "claim": "Le README actuel est technique et neutre ; il ne vend pas le seul créneau vide du marché (screener fondamental self-hosted, zéro clé, alternative à un abonnement à €550/an). Le canal de distribution du cœur de cible (awesome-selfhosted, catégorie Money) n'a aucun screener.",
+      "digest": "1: # crible\n2: \n3: Self-hosted fundamental stock screener. Worldwide universe (~161k equities), Europe-depth",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F4",
+      "evidenceRef": "docs/market/2026-07-12/REPORT.md:1",
+      "claim": "Le README actuel est technique et neutre ; il ne vend pas le seul créneau vide du marché (screener fondamental self-hosted, zéro clé, alternative à un abonnement à €550/an). Le canal de distribution du cœur de cible (awesome-selfhosted, catégorie Money) n'a aucun screener.",
+      "digest": "1: # REPORT — self-hosted / zero-key fundamental stock screeners (mode startup)\n2: \n3: ## Executive summary",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F7",
+      "evidenceRef": "src/crible/compute/scores.py:1",
+      "claim": "Le différenciateur n°1 du leader payant Stockopedia est le StockRank composite (qualité/valeur/momentum), cité par les reviews comme la raison d'abonnement. crible a déjà les scores en base (Piotroski, Altman, ratios) pour le calculer, sans clé.",
+      "digest": "1: \"\"\"FR-003 — the three headline scores.\n2: \n3: Piotroski F-Score and Altman Z-Score are computed through financetoolkit's",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F8",
+      "evidenceRef": "docker-compose.yml:28",
+      "claim": "Une question explicite « puis-je self-héberger cet outil de recherche actions sur mon Synology ? » reste sans réponse depuis 2023 chez le leader OSS OpenBB. crible peut y répondre par un guide d'install NAS/compose one-liner — friction d'adoption levée pour le cœur de cible.",
+      "digest": "26:   api:\n27:     build: .\n28:     ports:\n29:       - \"${CRIBLE_PORT:-8000}:8000\"\n30:     volumes:",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F7",
+      "evidenceRef": "docs/market/2026-07-12/REPORT.md:1",
+      "claim": "Le différenciateur n°1 du leader payant Stockopedia est le StockRank composite (qualité/valeur/momentum), cité par les reviews comme la raison d'abonnement. crible a déjà les scores en base (Piotroski, Altman, ratios) pour le calculer, sans clé.",
+      "digest": "1: # REPORT — self-hosted / zero-key fundamental stock screeners (mode startup)\n2: \n3: ## Executive summary",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F1",
+      "evidenceRef": "src/crible/api/main.py:119-145",
+      "claim": "L'endpoint /api/providers code en dur la liste des 4 classes provider et recalcule l'activation avec `True if key_var is None else bool(env)`, au lieu de consommer ProviderRegistry.activate / provider.enabled(env) qui est la source de vérité. Sa propre docstring dit « mirrors ProviderRegistry.activate ». Toute évolution de la règle d'activation (provider à deux clés, keyed avec repli keyless) fait diverger silencieusement l'écran Providers de la réalité.",
+      "digest": "117:         return runtime().status()\n118: \n119:     @app.get(\"/api/providers\")\n120:     def providers() -> list[dict]:\n121:         \"\"\"FR-013/FR-014 — read-only provider inventory for the settings view.\n122: \n123:         Enablement mirrors ProviderRegistry.activate: keyless is always on,\n124:         a keyed provider is on iff its env var is set. No instantiation —\n125:         id/kind/key_env_var are class attributes.\n126:         \"\"\"\n127:         import os as env_os\n128: \n129:         from crible.providers.eodhd import EodhdProvider\n130:         from crible.providers.fmp_free import FmpFreeProvider\n131:         from crible.providers.simfin import SimFinProvider\n132:         from crible.providers.yfinance_provider import YFinanceProvider\n133: \n134:         inventory = []\n135:         for cls in (YFinanceProvider, SimFinProvider, FmpFreeProvider, EodhdProvider):\n136:             key_var = getattr(cls, \"key_env_var\", None)\n137:             inventory.append(\n138:                 {\n139:                     \"id\": cls.id,\n140:                     \"kind\": cls.kind,\n141:                     \"key_env_var\": key_var,\n142:                     \"enabled\": True if key_var is None else bool(env_os.environ.get(key_var)),\n143:                 }\n144:             )\n145:         return inventory\n146: \n147:     @app.get(\"/healthz\")",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F1",
+      "evidenceRef": "src/crible/providers/base.py:54-60",
+      "claim": "L'endpoint /api/providers code en dur la liste des 4 classes provider et recalcule l'activation avec `True if key_var is None else bool(env)`, au lieu de consommer ProviderRegistry.activate / provider.enabled(env) qui est la source de vérité. Sa propre docstring dit « mirrors ProviderRegistry.activate ». Toute évolution de la règle d'activation (provider à deux clés, keyed avec repli keyless) fait diverger silencieusement l'écran Providers de la réalité.",
+      "digest": "52:     env: dict[str, str] = field(default_factory=dict)\n53: \n54:     def activate(self, providers: Iterable[Provider]) -> list[Provider]:\n55:         active: list[Provider] = []\n56:         for provider in providers:\n57:             if provider.enabled(self.env):\n58:                 active.append(provider)\n59:                 continue\n60:             key_var = getattr(provider, \"key_env_var\", None)\n61:             log.info(\n62:                 \"provider %s disabled (no key configured)%s\",",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F9",
+      "evidenceRef": "docs/market/2026-07-12/REPORT.md:1",
+      "claim": "Le service d'ingestion est le plus gros fichier source (370 LOC) avec la profondeur d'imbrication la plus élevée du repo (14), churn 5 — signal d'un module qui orchestre bootstrap, crawl budgété, prix et reconciliation dans une seule unité. Analysable mais coûteux à faire évoluer sans régression.",
+      "digest": "1: # REPORT — self-hosted / zero-key fundamental stock screeners (mode startup)\n2: \n3: ## Executive summary",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F2",
+      "evidenceRef": "src/crible/ingest/service.py:1",
+      "claim": "Le service d'ingestion est le plus gros fichier source (370 LOC) avec la profondeur d'imbrication la plus élevée du repo (14), churn 5 — signal d'un module qui orchestre bootstrap, crawl budgété, prix et reconciliation dans une seule unité. Analysable mais coûteux à faire évoluer sans régression.",
+      "digest": "1: \"\"\"FR-008 — the ingest service loop: bootstrap → crawl → compute → publish.\n2: \n3: Runs as the `ingest` Docker service. On first boot the bootstrap sample",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F10",
+      "evidenceRef": "README.md:20",
+      "claim": "L'endpoint /api/providers code en dur la liste des 4 classes provider et recalcule l'activation avec `True if key_var is None else bool(env)`, au lieu de consommer ProviderRegistry.activate / provider.enabled(env) qui est la source de vérité. Sa propre docstring dit « mirrors ProviderRegistry.activate ». Toute évolution de la règle d'activation (provider à deux clés, keyed avec repli keyless) fait diverger silencieusement l'écran Providers de la réalité.",
+      "digest": "18: crible screen \"roe > 15 AND piotroski >= 7 AND country IN ('FR','DE')\"\n19: ```\n20: \n21: ## Status\n22: ",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F2",
+      "evidenceRef": "run:analysis.json",
+      "claim": "Le service d'ingestion est le plus gros fichier source (370 LOC) avec la profondeur d'imbrication la plus élevée du repo (14), churn 5 — signal d'un module qui orchestre bootstrap, crawl budgété, prix et reconciliation dans une seule unité. Analysable mais coûteux à faire évoluer sans régression.",
+      "digest": "{\n  \"target\": \"/Users/maxime/Downloads/crible\",\n  \"files\": 74,\n  \"loc\": 6485,\n  \"languages\": {\n    \".py\": 52,\n    \".tsx\": 14,\n    \".ts\": 8\n  },\n  \"hotspots\": [\n    {\n      \"path\": \"src/crible/ingest/service.py\",",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F3",
+      "evidenceRef": "docker-compose.yml:28",
+      "claim": "docker-compose.yml publie l'API sur l'hôte (${CRIBLE_PORT:-8000}:8000) sans authentification et sans caveat documenté. Acceptable pour un usage mono-utilisateur en réseau privé (OWASP A05 Security Misconfiguration), mais un self-hoster qui l'expose derrière une IP publique ouvre l'API en clair. L'absence de note d'install est le vrai risque pour la cible self-host.",
+      "digest": "26:   api:\n27:     build: .\n28:     ports:\n29:       - \"${CRIBLE_PORT:-8000}:8000\"\n30:     volumes:",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F5",
+      "evidenceRef": "README.md:20",
+      "claim": "Une question explicite « puis-je self-héberger cet outil de recherche actions sur mon Synology ? » reste sans réponse depuis 2023 chez le leader OSS OpenBB. crible peut y répondre par un guide d'install NAS/compose one-liner — friction d'adoption levée pour le cœur de cible.",
+      "digest": "18: crible screen \"roe > 15 AND piotroski >= 7 AND country IN ('FR','DE')\"\n19: ```\n20: \n21: ## Status\n22: ",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F5",
+      "evidenceRef": "docs/market/2026-07-12/REPORT.md:1",
+      "claim": "Une question explicite « puis-je self-héberger cet outil de recherche actions sur mon Synology ? » reste sans réponse depuis 2023 chez le leader OSS OpenBB. crible peut y répondre par un guide d'install NAS/compose one-liner — friction d'adoption levée pour le cœur de cible.",
+      "digest": "1: # REPORT — self-hosted / zero-key fundamental stock screeners (mode startup)\n2: \n3: ## Executive summary",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F6",
+      "evidenceRef": "src/crible/api/main.py:119-145",
+      "claim": "Transformer la duplication F1 en amélioration : l'endpoint consomme le registre au lieu de réénumérer et recalculer, supprimant le risque de dérive UI↔réalité.",
+      "digest": "117:         return runtime().status()\n118: \n119:     @app.get(\"/api/providers\")\n120:     def providers() -> list[dict]:\n121:         \"\"\"FR-013/FR-014 — read-only provider inventory for the settings view.\n122: \n123:         Enablement mirrors ProviderRegistry.activate: keyless is always on,\n124:         a keyed provider is on iff its env var is set. No instantiation —\n125:         id/kind/key_env_var are class attributes.\n126:         \"\"\"\n127:         import os as env_os\n128: \n129:         from crible.providers.eodhd import EodhdProvider\n130:         from crible.providers.fmp_free import FmpFreeProvider\n131:         from crible.providers.simfin import SimFinProvider\n132:         from crible.providers.yfinance_provider import YFinanceProvider\n133: \n134:         inventory = []\n135:         for cls in (YFinanceProvider, SimFinProvider, FmpFreeProvider, EodhdProvider):\n136:             key_var = getattr(cls, \"key_env_var\", None)\n137:             inventory.append(\n138:                 {\n139:                     \"id\": cls.id,\n140:                     \"kind\": cls.kind,\n141:                     \"key_env_var\": key_var,\n142:                     \"enabled\": True if key_var is None else bool(env_os.environ.get(key_var)),\n143:                 }\n144:             )\n145:         return inventory\n146: \n147:     @app.get(\"/healthz\")",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F6",
+      "evidenceRef": "src/crible/providers/base.py:54",
+      "claim": "Transformer la duplication F1 en amélioration : l'endpoint consomme le registre au lieu de réénumérer et recalculer, supprimant le risque de dérive UI↔réalité.",
+      "digest": "52:     env: dict[str, str] = field(default_factory=dict)\n53: \n54:     def activate(self, providers: Iterable[Provider]) -> list[Provider]:\n55:         active: list[Provider] = []\n56:         for provider in providers:",
+      "verdict": null,
+      "note": ""
+    }
+  ]
+}

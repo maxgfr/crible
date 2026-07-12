@@ -1,0 +1,101 @@
+{
+ "run": "evals/2026-07-12",
+ "pairs": [
+  {
+   "claimId": "F4",
+   "evidenceRef": "README.md:1",
+   "verdict": "supported",
+   "note": "l'extrait cité porte la claim"
+  },
+  {
+   "claimId": "F4",
+   "evidenceRef": "docs/market/2026-07-12/REPORT.md:1",
+   "verdict": "supported",
+   "note": "l'extrait cité porte la claim"
+  },
+  {
+   "claimId": "F7",
+   "evidenceRef": "src/crible/compute/scores.py:1",
+   "verdict": "supported",
+   "note": "l'extrait cité porte la claim"
+  },
+  {
+   "claimId": "F8",
+   "evidenceRef": "docker-compose.yml:28",
+   "verdict": "unsupported",
+   "note": "paire claim↔evidence permutée"
+  },
+  {
+   "claimId": "F7",
+   "evidenceRef": "docs/market/2026-07-12/REPORT.md:1",
+   "verdict": "supported",
+   "note": "l'extrait cité porte la claim"
+  },
+  {
+   "claimId": "F1",
+   "evidenceRef": "src/crible/api/main.py:119-145",
+   "verdict": "supported",
+   "note": "l'extrait cité porte la claim"
+  },
+  {
+   "claimId": "F1",
+   "evidenceRef": "src/crible/providers/base.py:54-60",
+   "verdict": "supported",
+   "note": "l'extrait cité porte la claim"
+  },
+  {
+   "claimId": "F9",
+   "evidenceRef": "docs/market/2026-07-12/REPORT.md:1",
+   "verdict": "unsupported",
+   "note": "paire claim↔evidence permutée"
+  },
+  {
+   "claimId": "F2",
+   "evidenceRef": "src/crible/ingest/service.py:1",
+   "verdict": "supported",
+   "note": "l'extrait cité porte la claim"
+  },
+  {
+   "claimId": "F10",
+   "evidenceRef": "README.md:20",
+   "verdict": "unsupported",
+   "note": "paire claim↔evidence permutée"
+  },
+  {
+   "claimId": "F2",
+   "evidenceRef": "run:analysis.json",
+   "verdict": "supported",
+   "note": "l'extrait cité porte la claim"
+  },
+  {
+   "claimId": "F3",
+   "evidenceRef": "docker-compose.yml:28",
+   "verdict": "supported",
+   "note": "l'extrait cité porte la claim"
+  },
+  {
+   "claimId": "F5",
+   "evidenceRef": "README.md:20",
+   "verdict": "supported",
+   "note": "l'extrait cité porte la claim"
+  },
+  {
+   "claimId": "F5",
+   "evidenceRef": "docs/market/2026-07-12/REPORT.md:1",
+   "verdict": "supported",
+   "note": "l'extrait cité porte la claim"
+  },
+  {
+   "claimId": "F6",
+   "evidenceRef": "src/crible/api/main.py:119-145",
+   "verdict": "supported",
+   "note": "l'extrait cité porte la claim"
+  },
+  {
+   "claimId": "F6",
+   "evidenceRef": "src/crible/providers/base.py:54",
+   "verdict": "supported",
+   "note": "l'extrait cité porte la claim"
+  }
+ ]
+}

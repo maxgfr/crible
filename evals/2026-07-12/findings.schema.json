@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "findings"
+  ],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "severity",
+          "title",
+          "statement",
+          "evidence",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^F\\d+$"
+          },
+          "kind": {
+            "enum": [
+              "defect",
+              "opportunity"
+            ],
+            "description": "defect (default) or opportunity — the gate requires impact+effort for opportunities"
+          },
+          "dimension": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "P0",
+              "P1",
+              "P2"
+            ],
+            "description": "P0 — Critical (Critical/High): breaks trust, correctness, safety, or data integrity of the primary deliverable; the documented main path fails; gate: caps meets-expectations at false while unresolved | P1 — Major (Medium): materially degrades a scored dimension (fidelity, coverage, robustness); a workaround or secondary path exists; gate: weighs on the dimension score and leads the backlog after P0 | P2 — Minor (Low): polish, consistency, or documentation drift; no scored dimension materially degraded; gate: informs the backlog tail; never blocks the verdict"
+          },
+          "impact": {
+            "enum": [
+              "high",
+              "med",
+              "low"
+            ],
+            "description": "opportunities: value axis"
+          },
+          "effort": {
+            "enum": [
+              "S",
+              "M",
+              "L"
+            ],
+            "description": "opportunities: cost axis"
+          },
+          "title": {
+            "type": "string"
+          },
+          "statement": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "ref"
+              ],
+              "properties": {
+                "ref": {
+                  "type": "string",
+                  "description": "path:line | path:start-end | run:relpath#Lnn | url:..."
+                },
+                "note": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "failureScenario": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "confirmed",
+              "dismissed"
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "opportunity"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "required": [
+                "impact",
+                "effort"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}
