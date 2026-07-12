@@ -586,6 +586,195 @@
         "commands": []
       },
       "status": "done"
+    },
+    {
+      "id": "T-016",
+      "title": "Shell & navigation — sieve wordmark SVG, view-switcher pills (hash routes #/, #/status, #/providers, #/company/:symbol), persisted theme toggle (dark ⇄ paper-terminal light), keyboard: / focuses DSL bar, Esc closes drawer",
+      "milestone": "M2",
+      "frIds": [
+        "FR-007"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-007",
+          "index": 0
+        }
+      ],
+      "dependsOn": [
+        "T-015"
+      ],
+      "artifacts": [
+        "ui/src/App.tsx",
+        "ui/src/router.ts",
+        "ui/src/theme.ts",
+        "ui/src/components/Wordmark.tsx",
+        "ui/src/components/ThemeToggle.tsx",
+        "ui/index.html"
+      ],
+      "tests": [
+        "ui/src/__tests__/router.test.ts",
+        "ui/src/__tests__/theme.test.ts",
+        "ui/src/__tests__/shell.test.tsx"
+      ],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-017",
+      "title": "Component restyle on terminal-phosphore tokens — on-primary on filled buttons, glow focus (query bar), full-border row selection (no side-stripes), semantic z-index scale, complete interactive states",
+      "milestone": "M2",
+      "frIds": [
+        "FR-007"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-007",
+          "index": 0
+        }
+      ],
+      "dependsOn": [
+        "T-016"
+      ],
+      "artifacts": [
+        "ui/src/styles.css"
+      ],
+      "tests": [
+        "ui/src/__tests__/fr007.test.tsx"
+      ],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-018",
+      "title": "Teaching first-run empty state — screener shows bootstrap/crawl progress inline (coverage %, ETA) with a link to #/status; never a blank grid",
+      "milestone": "M2",
+      "frIds": [
+        "FR-002",
+        "FR-007"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-002",
+          "index": 0
+        },
+        {
+          "frId": "FR-007",
+          "index": 0
+        }
+      ],
+      "dependsOn": [
+        "T-016"
+      ],
+      "artifacts": [
+        "ui/src/App.tsx",
+        "ui/src/components/ResultsGrid.tsx"
+      ],
+      "tests": [
+        "ui/src/__tests__/shell.test.tsx"
+      ],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-019",
+      "title": "Status / coverage screen — coverage %, freshness histogram (hand-rolled SVG on tokens), req/h vs budget gauge, provider health, last-cycle failures, ESEF matched/unmatched; skeleton loading, teaching empty state",
+      "milestone": "M2",
+      "frIds": [
+        "FR-002",
+        "FR-006",
+        "FR-013"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-002",
+          "index": 0
+        },
+        {
+          "frId": "FR-006",
+          "index": 0
+        },
+        {
+          "frId": "FR-013",
+          "index": 0
+        }
+      ],
+      "dependsOn": [
+        "T-016"
+      ],
+      "artifacts": [
+        "ui/src/components/StatusView.tsx",
+        "ui/src/api.ts"
+      ],
+      "tests": [
+        "ui/src/__tests__/views.test.tsx"
+      ],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-020",
+      "title": "Providers & settings screen + /api/providers inventory endpoint — keyless / free-key (keyed-off/on) / paid with health, .env pointer, EODHD upgrade path, theme preference",
+      "milestone": "M2",
+      "frIds": [
+        "FR-013",
+        "FR-014"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-013",
+          "index": 0
+        },
+        {
+          "frId": "FR-014",
+          "index": 0
+        }
+      ],
+      "dependsOn": [
+        "T-016"
+      ],
+      "artifacts": [
+        "ui/src/components/ProvidersView.tsx",
+        "src/crible/api/main.py"
+      ],
+      "tests": [
+        "ui/src/__tests__/views.test.tsx",
+        "tests/test_api_providers.py"
+      ],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-021",
+      "title": "Design-refresh verification — ui build+tests+tsc green, pytest green, dark & light screenshots of Screener / Status / Providers reviewed against DESIGN.md",
+      "milestone": "M2",
+      "frIds": [],
+      "acceptance": [],
+      "dependsOn": [
+        "T-017",
+        "T-018",
+        "T-019",
+        "T-020"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": [
+          "cd ui && npm run build",
+          "cd ui && npx vitest run",
+          "uv run pytest -q"
+        ]
+      },
+      "status": "todo"
     }
   ]
 }
