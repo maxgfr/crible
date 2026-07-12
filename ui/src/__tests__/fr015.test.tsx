@@ -36,6 +36,13 @@ beforeEach(() => {
   );
 });
 
+describe("FR-015 rank visibility (F9)", () => {
+  it("ships composite_rank in the default grid columns", async () => {
+    const { DEFAULT_COLUMNS } = await import("../App");
+    expect(DEFAULT_COLUMNS).toContain("composite_rank");
+  });
+});
+
 describe("FR-015 rank breakdown in the drawer", () => {
   it("shows composite + pillar ranks, their component values and the peer group", async () => {
     render(<CompanyDrawer symbol="AIR.PA" onClose={() => {}} />);

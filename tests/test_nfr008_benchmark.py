@@ -87,6 +87,36 @@ def test_nfr008_adhoc_screen_battery_p95_under_1s(con) -> None:
     assert p95(timings) < 1.0, f"battery p95 {p95(timings):.3f}s ≥ 1s"
 
 
+def test_nfr008_rank_build_cost_bounded_on_full_universe() -> None:
+    """FR-015 write-path guard: attach_ranks over the full synthetic universe
+    stays bounded (< 5 s) so a compute regression is caught before the crawl."""
+    import numpy as np
+    import pandas as pd
+
+    from crible.compute.ranks import attach_ranks
+
+    rng = np.random.default_rng(15)
+    n = ROWS
+    frame = pd.DataFrame(
+        {
+            "symbol": [f"SYM{i}" for i in range(n)],
+            "period": ["2025-12-31"] * n,
+            "region": np.take(["europe", "us", "asia", "world"], rng.integers(0, 4, n)),
+            "sector": np.take(["Industrials", "Tech", "Financials", "Health", "Energy"], rng.integers(0, 5, n)),
+            "piotroski_f": rng.integers(0, 10, n),
+            "altman_z": rng.uniform(-1, 7, n),
+            "earnings_yield": rng.uniform(-0.05, 0.15, n),
+            "price_to_book_ratio": rng.uniform(0.2, 8, n),
+            "return_6m": rng.uniform(-0.5, 0.8, n),
+        }
+    )
+    started = time.perf_counter()
+    ranked = attach_ranks(frame)
+    elapsed = time.perf_counter() - started
+    assert ranked["composite_rank"].notna().all()
+    assert elapsed < 5.0, f"attach_ranks on {n} rows took {elapsed:.2f}s ≥ 5s"
+
+
 def test_nfr008_api_layer_p95_under_500ms_warm(con, tmp_path_factory, monkeypatch) -> None:
     """FR-006 AC-1 / NFR-001: the API layer itself (FastAPI + engine) answers
     full-universe screens in p95 < 500 ms warm, measured on the synthetic

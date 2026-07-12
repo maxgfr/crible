@@ -26,9 +26,9 @@ import { Wordmark } from "./components/Wordmark";
 import { useHashRoute } from "./router";
 import { applyTheme, loadTheme, saveTheme, toggled } from "./theme";
 
-const DEFAULT_COLUMNS = [
+export const DEFAULT_COLUMNS = [
   "symbol", "name", "country", "sector",
-  "piotroski_f", "altman_z", "beneish_m",
+  "composite_rank", "piotroski_f", "altman_z", "beneish_m",
   "return_on_equity", "net_profit_margin", "debt_to_equity_ratio",
 ];
 const DEFAULT_QUERY = "piotroski_f >= 7";
