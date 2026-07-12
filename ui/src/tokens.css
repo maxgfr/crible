@@ -41,6 +41,7 @@
     0 0 12px color-mix(in oklch, var(--color-primary) 25%, transparent);
 
   --z-sticky: 10;
+  --z-dropdown: 15;
   --z-backdrop: 20;
   --z-drawer: 30;
   --z-toast: 40;

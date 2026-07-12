@@ -16,6 +16,7 @@ type Row = Record<string, unknown>;
 interface Props {
   rows: Row[];
   columns: string[];
+  selected?: string | null;
   onSelect: (symbol: string) => void;
 }
 
@@ -38,7 +39,7 @@ function formatCell(column: string, value: unknown): { text: string; className: 
   return { text: String(value), className: "" };
 }
 
-export function ResultsGrid({ rows, columns, onSelect }: Props) {
+export function ResultsGrid({ rows, columns, selected, onSelect }: Props) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const helper = createColumnHelper<Row>();
   const tableColumns = useMemo(
@@ -90,7 +91,11 @@ export function ResultsGrid({ rows, columns, onSelect }: Props) {
         </thead>
         <tbody>
           {table.getRowModel().rows.map((row) => (
-            <tr key={row.id} onClick={() => onSelect(String(row.original.symbol))}>
+            <tr
+              key={row.id}
+              className={String(row.original.symbol) === selected ? "selected" : undefined}
+              onClick={() => onSelect(String(row.original.symbol))}
+            >
               {row.getVisibleCells().map((cell) => (
                 <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
               ))}

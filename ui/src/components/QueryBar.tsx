@@ -1,6 +1,7 @@
 // FR-007 / FR-004 — the DSL query bar: monospaced, run-on-Enter, inline error
 // with position + hint; previous results stay visible while an error shows.
 
+import type { RefObject } from "react";
 import type { DslErrorDetail } from "../api";
 
 interface Props {
@@ -9,13 +10,15 @@ interface Props {
   onRun: () => void;
   running: boolean;
   error: DslErrorDetail | null;
+  inputRef?: RefObject<HTMLInputElement>;
 }
 
-export function QueryBar({ value, onChange, onRun, running, error }: Props) {
+export function QueryBar({ value, onChange, onRun, running, error, inputRef }: Props) {
   return (
     <div>
       <div className="querybar">
         <input
+          ref={inputRef}
           aria-label="DSL query"
           placeholder="e.g. roe > 15 AND piotroski_f >= 7 AND country IN ('FR','DE')"
           value={value}

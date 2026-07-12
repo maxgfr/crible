@@ -619,7 +619,7 @@
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-017",
@@ -646,7 +646,7 @@
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-018",
@@ -679,7 +679,7 @@
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-019",
@@ -717,7 +717,7 @@
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-020",
@@ -751,7 +751,7 @@
       "verify": {
         "commands": []
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-021",

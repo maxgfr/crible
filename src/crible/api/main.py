@@ -116,6 +116,34 @@ def create_app() -> FastAPI:
     def status():
         return runtime().status()
 
+    @app.get("/api/providers")
+    def providers() -> list[dict]:
+        """FR-013/FR-014 — read-only provider inventory for the settings view.
+
+        Enablement mirrors ProviderRegistry.activate: keyless is always on,
+        a keyed provider is on iff its env var is set. No instantiation —
+        id/kind/key_env_var are class attributes.
+        """
+        import os as env_os
+
+        from crible.providers.eodhd import EodhdProvider
+        from crible.providers.fmp_free import FmpFreeProvider
+        from crible.providers.simfin import SimFinProvider
+        from crible.providers.yfinance_provider import YFinanceProvider
+
+        inventory = []
+        for cls in (YFinanceProvider, SimFinProvider, FmpFreeProvider, EodhdProvider):
+            key_var = getattr(cls, "key_env_var", None)
+            inventory.append(
+                {
+                    "id": cls.id,
+                    "kind": cls.kind,
+                    "key_env_var": key_var,
+                    "enabled": True if key_var is None else bool(env_os.environ.get(key_var)),
+                }
+            )
+        return inventory
+
     @app.get("/healthz")
     def healthz():
         return {"ok": True}

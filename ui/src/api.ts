@@ -71,7 +71,41 @@ export async function company(symbol: string): Promise<CompanyDetail | null> {
   return (await response.json()) as CompanyDetail;
 }
 
-export async function status(): Promise<Record<string, unknown>> {
+export interface IngestHeartbeat {
+  universe?: number;
+  crawled?: number;
+  coverage_pct?: number;
+  freshness?: Record<string, number>;
+  requests_last_hour?: number;
+  budget_per_hour?: number;
+  last_cycle?: { fetched: number; failed: number };
+  providers?: Record<string, string>;
+  esef_resolved?: number;
+  esef_unmatched?: number;
+  ts?: number;
+}
+
+export interface StatusResponse {
+  universe?: number;
+  by_region?: Record<string, number>;
+  ingest?: IngestHeartbeat;
+  snapshot?: boolean;
+  generated_at?: number;
+}
+
+export async function status(): Promise<StatusResponse> {
   const response = await fetch("/api/status");
-  return (await response.json()) as Record<string, unknown>;
+  return (await response.json()) as StatusResponse;
+}
+
+export interface ProviderInfo {
+  id: string;
+  kind: "keyless" | "free-key" | "paid";
+  key_env_var: string | null;
+  enabled: boolean;
+}
+
+export async function providers(): Promise<ProviderInfo[]> {
+  const response = await fetch("/api/providers");
+  return (await response.json()) as ProviderInfo[];
 }
