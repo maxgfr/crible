@@ -1,0 +1,98 @@
+{
+  "findings": [
+    {
+      "id": "F2",
+      "kind": "defect",
+      "dimension": "maintainability",
+      "severity": "P2",
+      "title": "ingest/service.py concentre trop de responsabilités (hotspot 370 LOC, nesting 14)",
+      "statement": "Toujours ouvert (porté du run de base, décision « coût > valeur immédiate » documentée dans PRIORITIES) : le service d'ingestion orchestre queue, budget, backoff, crawler, prix et heartbeat dans un seul module de 370 LOC avec une profondeur d'imbrication de 14 — le pire hotspot du dépôt à l'analyse déterministe.",
+      "evidence": [
+        {
+          "ref": "src/crible/ingest/service.py:1-370",
+          "note": "370 LOC, nesting 14 — hotspot n°1 de analysis.json (les deux runs)"
+        },
+        {
+          "ref": "run:analysis.json",
+          "note": "hotspots[0] = ingest/service.py (size + churn)"
+        }
+      ],
+      "failureScenario": "Une évolution du budget de crawl (par ex. budget par provider) force à modifier un module qui mélange six responsabilités ; le risque de régression sur le backoff ou le heartbeat est élevé faute de frontières.",
+      "recommendation": "Extraire les collaborateurs (BudgetClock, CrawlLoop, Heartbeat) — déjà planifié en File 1 différée ; à faire quand une évolution touchera le module.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F8",
+      "kind": "defect",
+      "dimension": "correctness",
+      "severity": "P2",
+      "title": "Le preset « Top ranked » échouait sans indice sur un snapshot antérieur à FR-015",
+      "statement": "Le preset livré `composite_rank >= 80` référence une colonne qui n'existe que dans les snapshots recalculés après l'upgrade FR-015. Sur une installation existante (snapshot pré-upgrade), la whitelist dérivée de snapshot_latest ne contient pas la colonne et le DSL levait « unknown field 'composite_rank' … no similar field exists » — un preset livré ne doit jamais échouer sans expliquer le remède. Reproduit puis corrigé dans ce cycle : les colonnes build-time portent désormais un hint « recompute the snapshot (`crible compute`) after upgrading » (commit b97193e, test test_fr015_pre_upgrade_snapshot_gets_a_recompute_hint).",
+      "evidence": [
+        {
+          "ref": "src/crible/presets.py:52-57",
+          "note": "preset top-ranked livré avec composite_rank"
+        },
+        {
+          "ref": "src/crible/store.py:42-44",
+          "note": "whitelist dérivée des colonnes du snapshot courant"
+        },
+        {
+          "ref": "src/crible/dsl/compiler.py:18-31",
+          "note": "fix : BUILD_TIME_COLUMNS → hint de recompute (au lieu du no-similar-field)"
+        },
+        {
+          "ref": "tests/test_fr015_ranks.py:128-141",
+          "note": "repro RED→GREEN du scénario pré-upgrade"
+        }
+      ],
+      "failureScenario": "Un utilisateur existant met à jour crible, clique le preset « Top ranked » : avant le fix il obtenait une erreur de champ inconnu sans remède ; après le fix l'erreur explique qu'un `crible compute` ajoute la colonne.",
+      "recommendation": "Corrigé dans le cycle (hint de recompute) ; à généraliser si d'autres colonnes build-time apparaissent (le set BUILD_TIME_COLUMNS est la source unique).",
+      "status": "confirmed"
+    },
+    {
+      "id": "F9",
+      "kind": "opportunity",
+      "dimension": "correctness",
+      "severity": "P2",
+      "impact": "med",
+      "effort": "S",
+      "title": "Colonnes de rang visibles par défaut dans la grille + blend documenté dans le README",
+      "statement": "FR-015 est livré (composite_rank + piliers, preset Top ranked, décomposition dans le drawer) mais la grille par défaut n'affiche pas composite_rank et le README ne documente pas la formule du blend — or la transparence du rang est l'argument face aux StockRanks propriétaires ([S21]).",
+      "evidence": [
+        {
+          "ref": "ui/src/App.tsx:29-33",
+          "note": "DEFAULT_COLUMNS sans composite_rank"
+        },
+        {
+          "ref": "docs/market/2026-07-12/REPORT.md:5",
+          "note": "[S21] Stockopedia €550/an — le rang transparent est l'angle d'attaque"
+        }
+      ],
+      "recommendation": "Ajouter composite_rank aux colonnes par défaut du ColumnPicker et une section « How the rank is built » dans le README (formule, peer group, sémantique NULL jamais imputée).",
+      "status": "confirmed"
+    },
+    {
+      "id": "F10",
+      "kind": "opportunity",
+      "dimension": "tests",
+      "severity": "P2",
+      "impact": "med",
+      "effort": "S",
+      "title": "Étendre le benchmark NFR-008 au coût de build des rangs",
+      "statement": "Les rangs FR-015 sont calculés côté write (attach_ranks sur ~161k lignes, groupby percentile). Le chemin de lecture est benchmarké (p95 < 1s, inchangé) mais le surcoût de build n'a pas de garde-fou chiffré — une régression du compute passerait inaperçue jusqu'au crawl suivant.",
+      "evidence": [
+        {
+          "ref": "src/crible/compute/ranks.py:91-122",
+          "note": "attach_ranks — groupby + rank pct sur l'univers entier"
+        },
+        {
+          "ref": "tests/test_nfr008_benchmark.py:57-65",
+          "note": "le benchmark couvre les presets (lecture) mais pas le build"
+        }
+      ],
+      "recommendation": "Ajouter un micro-benchmark attach_ranks sur le snapshot synthétique 161k (budget indicatif < 5s) dans test_nfr008 ou un test dédié.",
+      "status": "confirmed"
+    }
+  ]
+}
