@@ -57,9 +57,11 @@ Plus la **launch checklist** (licence, install one-liner, landing/README, pricin
 
 ## Temps 4 — Spec & dev (construct, incrémental — jamais `init`)
 
+> ⚠️ **`render --from-srd` régénère TOUT l'arbre `srd/design/*` ET `srd/prd/*` depuis le manifeste `SRD.json`** (le manifeste fait foi, pas les `.md` rendus). Toute édition à la main des fichiers rendus est écrasée au render suivant. **Avant tout render, synchronise le bloc `design` de `SRD.json`** (tokens, principles, screens, flows, `navigation`, `tokensAuthored: true`) avec l'identité de `/DESIGN.md` + `ui/src/tokens.css` — sinon l'identité retombe aux défauts. `tokensAuthored: true` supprime le bandeau « Seeded defaults » ; `design.navigation` (string) rend la section « Shell & navigation » (fix construct df31150). Parité spec↔code obligatoire après render.
+
 ```bash
-# feature retenue : éditer srd/SRD.json (+ FR/acceptance/entities/ADR) puis :
-node $CX render --out srd --from-srd --merge      # préserve la progression BUILD-PLAN
+# feature retenue : éditer srd/SRD.json (+ FR/acceptance/entities/ADR + bloc design synchronisé) puis :
+node $CX render --out srd --from-srd --merge      # préserve la progression BUILD-PLAN ; régénère design/ + prd/
 node $CX check  --out srd                          # gate structurel
 # nouveau module → amender srd/brief.json + render --level complex (ids FR renumérotés → retagger les tests)
 # pins d'évidence : node $CX research --out srd --angles market,oss,tech --url <u> — TOUJOURS repasser TOUS les angles (le dossier est REBUILD)

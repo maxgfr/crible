@@ -7,3 +7,10 @@
 - Consistency over novelty — reuse tokens and components before inventing new ones.
 - Accessible by construction: dense ≠ inaccessible; every flow works with keyboard and assistive tech.
 - One color means "interactive": forge amber marks actions, focus and selection — semantic colors (gain/loss/warn) encode data meaning, never mood, and never appear on chrome.
+
+## Content & voice
+
+- Voice & tone: sober, precise, numbers-forward; French product name, English UI.
+- Label actions with the outcome the user gets, not the system operation behind it.
+- Error messages state what happened, why, and the next step — never blame the user.
+- Empty states teach the first useful action; success states confirm exactly what changed.

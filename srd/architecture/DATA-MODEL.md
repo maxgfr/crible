@@ -1,6 +1,6 @@
 # Data model
 
-Three storage layers (ADR-0003): an immutable **raw layer** (versioned Parquet per provider fetch), the wide **snapshot layer** (one Parquet published by atomic swap), and small **operational state** (DuckDB owned by the ingest process). Entities below describe the logical model across those layers.
+_Seeded by inference from the brief — verify each entity and extend attributes during authoring._
 
 ## Company
 
@@ -11,7 +11,7 @@ Three storage layers (ADR-0003): an immutable **raw layer** (versioned Parquet p
 | isin | string (nullable) |
 | country | string (ISO-3166 alpha-2 — the DSL filter code) |
 | country_name | string (original FinanceDatabase name) |
-| region | string (europe | us | world — drives crawl priority) |
+| region | string (europe \| us \| world — drives crawl priority) |
 | sector | string |
 | industry | string |
 | exchange | string |
@@ -27,9 +27,9 @@ _Referenced by: FR-001, FR-006, FR-007, FR-010, FR-012_
 | Attribute | Type |
 |---|---|
 | symbol | ref Company |
-| provider | string (yfinance | esef | simfin | financialreports | …) |
-| statementType | enum (income | balance | cashflow) |
-| freq | enum (annual | quarterly) |
+| provider | string (yfinance \| esef \| simfin \| financialreports \| …) |
+| statementType | enum (income \| balance \| cashflow) |
+| freq | enum (annual \| quarterly) |
 | period | string (fiscal period end) |
 | payload | json (as-fetched fields) |
 | fetchedAt | timestamp |
@@ -45,7 +45,7 @@ _Referenced by: FR-002, FR-010, FR-012, FR-013_
 | date | date |
 | open/high/low/close | number |
 | volume | number |
-| provider | string (yfinance | stooq) |
+| provider | string (yfinance \| stooq) |
 
 _Referenced by: FR-002, FR-011_
 
@@ -73,7 +73,7 @@ _Referenced by: FR-003, FR-004, FR-005, FR-006, FR-007, FR-012_
 | nextDue | timestamp (freshness-driven) |
 | lastCrawledAt | timestamp |
 | consecutiveFailures | int |
-| status | enum (pending | inflight | done | parked) |
+| status | enum (pending \| inflight \| done \| parked) |
 
 _Referenced by: FR-002_
 
@@ -92,8 +92,8 @@ _Referenced by: FR-004, FR-006, FR-009_
 
 | Attribute | Type |
 |---|---|
-| id | identifier (yfinance | esef | stooq | simfin | financialreports | fmp_free | eodhd_free | eodhd) |
-| kind | enum (keyless | free-key | paid) |
+| id | identifier (yfinance \| esef \| stooq \| simfin \| financialreports \| fmp_free \| eodhd_free \| eodhd) |
+| kind | enum (keyless \| free-key \| paid) |
 | enabled | boolean (derived: keyless → true; keyed → key present & valid) |
 | keyEnvVar | string (nullable) |
 | health | json (last success, error counts, budget usage) |

@@ -646,6 +646,37 @@
         "NFR-012"
       ],
       "unresolved": false
+    },
+    {
+      "id": "FR-015",
+      "title": "Composite quality/value/momentum rank across the universe",
+      "description": "Rank the screening universe on a single composite score built from the fundamentals crible already computes (Piotroski F, Altman Z, per-share value ratios, price momentum), in the spirit of Stockopedia's StockRanks — the paid market's headline differentiator [S21][S22] (see docs/market/2026-07-12/REPORT.md). Each pillar (Quality / Value / Momentum) is a percentile rank within a peer group (e.g. region×sector) over the existing snapshot columns; the composite is a documented, transparent blend. No new data source and no API key — computed from the wide snapshot in DuckDB. Every rank links back to its component values (provenance-consistent with FR-003/FR-012). GATED: market-evidenced, spec-first; implementation awaits explicit go-ahead.",
+      "priority": "could",
+      "acceptance": [
+        {
+          "given": "a published snapshot with the quality/value/momentum input columns for a peer group",
+          "when": "the rank step runs over the universe",
+          "then": "each company receives quality_rank, value_rank, momentum_rank (0–100 percentiles within its peer group) and a composite_rank blending them by a documented, reproducible formula; re-running on the same snapshot yields identical ranks"
+        },
+        {
+          "given": "a company is missing an input for one pillar",
+          "when": "ranks are computed",
+          "then": "that pillar's rank is NULL (never imputed) and the composite is computed from the available pillars with the omission recorded in provenance — no fabricated rank"
+        },
+        {
+          "given": "a rank is shown in the UI",
+          "when": "the user opens the company drawer",
+          "then": "each pillar rank links to the underlying component values, consistent with the score-breakdown transparency of FR-012"
+        }
+      ],
+      "rationaleEvidence": [
+        "S21",
+        "S22"
+      ],
+      "entities": [],
+      "interfaces": [],
+      "nfrs": [],
+      "unresolved": []
     }
   ],
   "nonFunctional": [
@@ -1714,6 +1745,17 @@
       "screens": [
         "Providers & settings"
       ]
+    },
+    {
+      "fr": "FR-015",
+      "nfrs": [],
+      "adrs": [
+        "0001"
+      ],
+      "entities": [],
+      "interfaces": [],
+      "components": [],
+      "screens": []
     }
   ],
   "openQuestions": [],
@@ -1804,74 +1846,87 @@
       "Dark mode is the primary theme; light is the variant. Both ship, both meet contrast.",
       "Transparency in the UI itself: every score links to its components, every value to its provenance — no unexplained numbers.",
       "Consistency over novelty — reuse tokens and components before inventing new ones.",
-      "Accessible by construction: dense ≠ inaccessible; every flow works with keyboard and assistive tech."
+      "Accessible by construction: dense ≠ inaccessible; every flow works with keyboard and assistive tech.",
+      "One color means \"interactive\": forge amber marks actions, focus and selection — semantic colors (gain/loss/warn) encode data meaning, never mood, and never appear on chrome."
     ],
     "tokens": [
       {
         "category": "color",
         "name": "color.bg",
-        "value": "#0D1117",
-        "note": "App background (dark-first). Light theme: #FFFFFF."
+        "value": "oklch(0.13 0 0)",
+        "note": "App background — neutral pure black, never tinted. Light « paper terminal »: oklch(1 0 0)."
       },
       {
         "category": "color",
         "name": "color.bg-raised",
-        "value": "#161B22",
-        "note": "Panels, drawers, sticky header. Light: #F6F8FA."
+        "value": "oklch(0.17 0 0)",
+        "note": "Topbar, panels, drawers, sticky header. Light: oklch(0.955 0.004 75)."
       },
       {
         "category": "color",
         "name": "color.fg",
-        "value": "#E6EDF3",
-        "note": "Primary text. Light: #1F2328."
+        "value": "oklch(0.93 0.012 75)",
+        "note": "Primary text — warm chalk on slate. Light: oklch(0.25 0.015 60)."
       },
       {
         "category": "color",
         "name": "color.muted",
-        "value": "#8B949E",
-        "note": "Secondary text, borders, disabled. Light: #59636E."
+        "value": "oklch(0.65 0.015 75)",
+        "note": "Secondary text, borders, disabled (≥4.5:1). Light: oklch(0.47 0.015 60)."
       },
       {
         "category": "color",
         "name": "color.primary",
-        "value": "#4DA3FF",
-        "note": "Actions, links, focused query bar. Light: #0969DA. AA on both bgs."
+        "value": "oklch(0.75 0.15 55)",
+        "note": "Forge amber — the ONLY interactive signal: actions, links, focus, selection. Light: oklch(0.55 0.13 55)."
+      },
+      {
+        "category": "color",
+        "name": "color.on-primary",
+        "value": "oklch(0.15 0.03 55)",
+        "note": "Text on amber fill. Light: oklch(1 0 0)."
+      },
+      {
+        "category": "color",
+        "name": "color.accent",
+        "value": "oklch(0.62 0.1 240)",
+        "note": "Cooled steel — provenance, info links, neutral badges. Light: oklch(0.45 0.1 240)."
       },
       {
         "category": "color",
         "name": "color.gain",
-        "value": "#3FB950",
-        "note": "Positive deltas, passing criteria. Light: #1A7F37."
+        "value": "oklch(0.72 0.15 150)",
+        "note": "Positive deltas, passing criteria — never colour alone (sign required). Light: oklch(0.52 0.14 150)."
       },
       {
         "category": "color",
         "name": "color.loss",
-        "value": "#F85149",
-        "note": "Negative deltas, failing criteria. Light: #CF222E."
+        "value": "oklch(0.64 0.2 22)",
+        "note": "Negative deltas, failing criteria. Light: oklch(0.52 0.19 25)."
       },
       {
         "category": "color",
         "name": "color.danger",
-        "value": "#F85149",
-        "note": "Destructive actions, errors. Light: #CF222E."
+        "value": "oklch(0.64 0.2 22)",
+        "note": "Destructive, errors (= loss). Light: oklch(0.52 0.19 25)."
       },
       {
         "category": "color",
         "name": "color.warn",
-        "value": "#D29922",
-        "note": "Stale-data badges, Beneish red flags. Light: #9A6700."
+        "value": "oklch(0.8 0.13 90)",
+        "note": "Stale-data badges, Beneish red flags — yellow, distinct from amber. Light: oklch(0.55 0.12 90)."
       },
       {
         "category": "typography",
         "name": "font.sans",
-        "value": "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif",
-        "note": "UI chrome, labels. Bundled with the SPA (@font-face, no CDN — NFR-013 egress test)."
+        "value": "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
+        "note": "Labels, prose. System stack only — nothing fetched or bundled (NFR-013)."
       },
       {
         "category": "typography",
         "name": "font.mono",
-        "value": "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
-        "note": "All numerals (tabular-nums), DSL query bar, code. Bundled with the SPA (no CDN)."
+        "value": "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, 'Cascadia Mono', Consolas, 'Liberation Mono', monospace",
+        "note": "The tool's voice: wordmark, numerals (tabular-nums), DSL query bar, provenance."
       },
       {
         "category": "typography",
@@ -1894,54 +1949,62 @@
       {
         "category": "spacing",
         "name": "space.1",
-        "value": "4px"
+        "value": "4px",
+        "note": ""
       },
       {
         "category": "spacing",
         "name": "space.2",
-        "value": "8px"
+        "value": "8px",
+        "note": ""
       },
       {
         "category": "spacing",
         "name": "space.3",
-        "value": "12px"
+        "value": "12px",
+        "note": ""
       },
       {
         "category": "spacing",
         "name": "space.4",
-        "value": "16px"
+        "value": "16px",
+        "note": ""
       },
       {
         "category": "spacing",
         "name": "space.6",
-        "value": "24px"
+        "value": "24px",
+        "note": ""
       },
       {
         "category": "spacing",
         "name": "space.8",
-        "value": "32px"
+        "value": "32px",
+        "note": ""
       },
       {
         "category": "radius",
         "name": "radius.sm",
-        "value": "3px"
+        "value": "2px",
+        "note": "Inputs, badges — instrument, not toy."
       },
       {
         "category": "radius",
         "name": "radius.md",
-        "value": "6px"
+        "value": "4px",
+        "note": "Buttons, pills."
       },
       {
         "category": "radius",
         "name": "radius.lg",
-        "value": "10px",
+        "value": "8px",
         "note": "Drawers, dialogs only."
       },
       {
         "category": "elevation",
         "name": "shadow.sm",
         "value": "0 1px 2px rgba(0,0,0,0.4)",
-        "note": "Dark-theme value; light: rgba(0,0,0,0.06)."
+        "note": "Dark; light: rgba(0,0,0,0.06)."
       },
       {
         "category": "elevation",
@@ -1950,16 +2013,58 @@
         "note": "Drawer/dialog; light: rgba(0,0,0,0.12)."
       },
       {
+        "category": "elevation",
+        "name": "shadow.glow",
+        "value": "0 0 0 1px var(--color-primary), 0 0 12px color-mix(in oklch, var(--color-primary) 25%, transparent)",
+        "note": "Phosphor signature — focus/active states only (query bar, active pill)."
+      },
+      {
+        "category": "z",
+        "name": "z.sticky",
+        "value": "10",
+        "note": ""
+      },
+      {
+        "category": "z",
+        "name": "z.dropdown",
+        "value": "15",
+        "note": ""
+      },
+      {
+        "category": "z",
+        "name": "z.backdrop",
+        "value": "20",
+        "note": ""
+      },
+      {
+        "category": "z",
+        "name": "z.drawer",
+        "value": "30",
+        "note": ""
+      },
+      {
+        "category": "z",
+        "name": "z.toast",
+        "value": "40",
+        "note": ""
+      },
+      {
+        "category": "z",
+        "name": "z.tooltip",
+        "value": "50",
+        "note": ""
+      },
+      {
         "category": "motion",
         "name": "motion.fast",
         "value": "120ms ease-out",
-        "note": "Hover, focus, sort-arrow."
+        "note": "Hover, focus, sort, glow-in."
       },
       {
         "category": "motion",
         "name": "motion.base",
         "value": "200ms ease-out",
-        "note": "Drawer slide; disabled under prefers-reduced-motion."
+        "note": "Drawer; 0ms under prefers-reduced-motion."
       }
     ],
     "components": [
@@ -2204,6 +2309,7 @@
         "name": "First run (zero-key)",
         "steps": [
           "docker compose up with no keys",
+          "The screener never shows a blank grid: its first-run empty state teaches — bootstrap/crawl progress inline (coverage %, ETA) with a link to the Status view",
           "Status shows universe bootstrap then Europe-first crawl progress with ETA",
           "First preset screen returns rows on the ingested sample",
           "Grid renders; the operator saves a first custom DSL screen"
@@ -2341,6 +2447,8 @@
       "Label actions with the outcome the user gets, not the system operation behind it.",
       "Error messages state what happened, why, and the next step — never blame the user.",
       "Empty states teach the first useful action; success states confirm exactly what changed."
-    ]
+    ],
+    "tokensAuthored": true,
+    "navigation": "One-window shell, no sidebar (the width belongs to the table). Topbar, left to right: wordmark (sieve glyph + « crible » in mono) · view switcher pills Screener / Status / Providers (hash-routed #/, #/status, #/providers) · ingest status pill · theme toggle (dark ⇄ light « paper terminal », persisted in localStorage, initial default from prefers-color-scheme). The company drawer stays an overlay over whichever view is active and keeps its deep-linkable route. Keyboard: `/` focuses the DSL query bar, `Esc` closes the drawer, view pills are tabbable."
   }
 }

@@ -38,11 +38,12 @@
     "shadow.glow": "0 0 0 1px var(--color-primary), 0 0 12px color-mix(in oklch, var(--color-primary) 25%, transparent)"
   },
   "z": {
-    "z.sticky": 10,
-    "z.backdrop": 20,
-    "z.drawer": 30,
-    "z.toast": 40,
-    "z.tooltip": 50
+    "z.sticky": "10",
+    "z.dropdown": "15",
+    "z.backdrop": "20",
+    "z.drawer": "30",
+    "z.toast": "40",
+    "z.tooltip": "50"
   },
   "motion": {
     "motion.fast": "120ms ease-out",

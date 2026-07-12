@@ -1,6 +1,6 @@
 # Traceability matrix
 
-| FR | NFRs | ADRs | Entities | Interfaces | Components | Screens |
+| Requirement | NFRs | ADRs | Entities | Interfaces | Components | Screens |
 |---|---|---|---|---|---|---|
 | FR-001 | NFR-003, NFR-005, NFR-009, NFR-010 | 0001, 0003 | Company | CLI | — | — |
 | FR-002 | NFR-003, NFR-005, NFR-007, NFR-009 | 0001, 0003, 0004 | RawStatement, PriceBar, CrawlTask, Provider | CLI, Provider Plugin API | Status Dashboard | Ingest & coverage status |
@@ -16,3 +16,4 @@
 | FR-012 | NFR-004, NFR-010 | 0002 | Company, SnapshotRow, RawStatement | Web App, HTTP API | Company Detail Drawer, Empty & Error States | Company detail |
 | FR-013 | NFR-006, NFR-009, NFR-012 | 0002, 0003 | Provider, RawStatement | Provider Plugin API | Status Dashboard | Ingest & coverage status, Providers & settings |
 | FR-014 | NFR-006, NFR-012 | 0002, 0004 | Provider | Provider Plugin API | — | Providers & settings |
+| FR-015 | — | 0001 | — | — | — | — |

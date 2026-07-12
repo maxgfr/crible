@@ -1,8 +1,8 @@
 # Functional requirements
 
-## FR-001 — Worldwide universe built from FinanceDatabase _(must)_
+## FR-001 — Worldwide universe built from FinanceDatabase _(must)_ [E109][E110][E2][E16][E25][E27][E35][E40]
 
-Bootstrap the screening universe from FinanceDatabase — its README statistics table counts 160,995 equities across 117 countries and 84 exchanges [E109][E110]; symbols are Yahoo-suffixed tickers usable directly by yfinance [E2][E16]. Loaded into DuckDB with region tags that drive crawl priority (Europe first). market_cap arrives as a categorical class (Large/Mid/Small); numeric market cap is derived later from prices × shares. Known upstream data-quality caveats (CUSIP collisions [E25], stale exchange codes [E27], sparse ISINs [E35]) are tolerated: the universe is metadata, not valuation input. Universe refreshes also update the delisted flag from the source. [E109][E110][E2][E16][E25][E27][E35][E40]
+Bootstrap the screening universe from FinanceDatabase — its README statistics table counts 160,995 equities across 117 countries and 84 exchanges [E109][E110]; symbols are Yahoo-suffixed tickers usable directly by yfinance [E2][E16]. Loaded into DuckDB with region tags that drive crawl priority (Europe first). market_cap arrives as a categorical class (Large/Mid/Small); numeric market cap is derived later from prices × shares. Known upstream data-quality caveats (CUSIP collisions [E25], stale exchange codes [E27], sparse ISINs [E35]) are tolerated: the universe is metadata, not valuation input. Universe refreshes also update the delisted flag from the source.
 
 **Acceptance criteria:**
 - **Given** a fresh install with no API keys configured **When** the operator runs the universe bootstrap (crible ingest --bootstrap) **Then** a companies table exists in DuckDB with at least 150,000 equity rows spanning at least 100 countries, every row carrying a Yahoo-suffixed symbol, country, region, sector, industry and exchange, and re-running the bootstrap is idempotent (upsert; row count stable)
@@ -11,9 +11,9 @@ Bootstrap the screening universe from FinanceDatabase — its README statistics 
 
 _Traceability — NFRs: NFR-003, NFR-005, NFR-009, NFR-010 · entities: Company · interfaces: CLI_
 
-## FR-002 — Rolling prioritized keyless ingestion (yfinance) _(must)_
+## FR-002 — Rolling prioritized keyless ingestion (yfinance) _(must)_ [E105][E107][E108][E52][E36][E82]
 
-A continuous, resumable crawler fetches per-ticker fundamentals AND prices through yfinance under one hard, configurable request budget (default 330 upstream requests per rolling hour — a deliberately conservative crawl rate chosen because Yahoo aggressively rate-limits scrapers: 429s and YFRateLimitError are endemic [E105][E107][E108]). Every upstream call counts: a fundamentals sweep costs ~7 requests per symbol (3 statement types × 2 frequencies + profile/price). Honest throughput at default budget ≈ 7,900 requests/day: with ~2,000/day reserved for daily priority-tier prices (FR-011), ~5,900/day remain for fundamentals ≈ 840 symbols/day — the Europe tier cycles in roughly 5–7 weeks (inside the quarterly freshness contract) and the worldwide tail is explicitly best-effort (ADR-0004 states the full arithmetic). A priority queue orders work Europe → US large caps → rest of world; statement revisits are freshness-driven (quarterly). Raw responses land as versioned Parquet (append-only raw layer). All sources sit behind one Provider interface; a keyed plugin with no key disables itself cleanly (zero-key contract). If Yahoo blocks for an extended period, the crawler parks politely and retries with capped backoff; the API keeps serving the last snapshot with staleness visible (degradation path). [E105][E107][E108][E52][E36][E82]
+A continuous, resumable crawler fetches per-ticker fundamentals AND prices through yfinance under one hard, configurable request budget (default 330 upstream requests per rolling hour — a deliberately conservative crawl rate chosen because Yahoo aggressively rate-limits scrapers: 429s and YFRateLimitError are endemic [E105][E107][E108]). Every upstream call counts: a fundamentals sweep costs ~7 requests per symbol (3 statement types × 2 frequencies + profile/price). Honest throughput at default budget ≈ 7,900 requests/day: with ~2,000/day reserved for daily priority-tier prices (FR-011), ~5,900/day remain for fundamentals ≈ 840 symbols/day — the Europe tier cycles in roughly 5–7 weeks (inside the quarterly freshness contract) and the worldwide tail is explicitly best-effort (ADR-0004 states the full arithmetic). A priority queue orders work Europe → US large caps → rest of world; statement revisits are freshness-driven (quarterly). Raw responses land as versioned Parquet (append-only raw layer). All sources sit behind one Provider interface; a keyed plugin with no key disables itself cleanly (zero-key contract). If Yahoo blocks for an extended period, the crawler parks politely and retries with capped backoff; the API keeps serving the last snapshot with staleness visible (degradation path).
 
 **Acceptance criteria:**
 - **Given** the universe is loaded and no API keys are configured **When** the crawler runs for one hour **Then** it fetches statements exclusively via keyless providers, counts every upstream request (each statement/profile call individually) against the budget, never exceeds 330 upstream requests in any rolling 60-minute window, persists each fetched company as versioned raw Parquet under the data directory, and updates its crawl queue (lastCrawledAt / nextDue) after every symbol
@@ -23,9 +23,9 @@ A continuous, resumable crawler fetches per-ticker fundamentals AND prices throu
 
 _Traceability — NFRs: NFR-003, NFR-005, NFR-007, NFR-009 · entities: RawStatement, PriceBar, CrawlTask, Provider · interfaces: CLI, Provider Plugin API_
 
-## FR-003 — Ratio and score computation into a wide snapshot _(must)_
+## FR-003 — Ratio and score computation into a wide snapshot _(must)_ [E1][E6][E7][E8][E9][E39][E79][E30]
 
-Compute the wide screening snapshot: financetoolkit (with the Yahoo source enforced) supplies 150+ transparently-defined ratios plus Piotroski F-Score and Altman Z-Score [E1][E6][E8]; Beneish M-Score is implemented in-house (absent from financetoolkit — verified by full-source grep) with its 8 components, unit-tested against published examples. Output: one row per company × fiscal period, ~200 columns, written as snapshot Parquet that DuckDB queries. Missing inputs yield NULL cells with provenance, never fabricated values [E30]. [E1][E6][E7][E8][E9][E39][E79][E30]
+Compute the wide screening snapshot: financetoolkit (with the Yahoo source enforced) supplies 150+ transparently-defined ratios plus Piotroski F-Score and Altman Z-Score [E1][E6][E8]; Beneish M-Score is implemented in-house (absent from financetoolkit — verified by full-source grep) with its 8 components, unit-tested against published examples. Output: one row per company × fiscal period, ~200 columns, written as snapshot Parquet that DuckDB queries. Missing inputs yield NULL cells with provenance, never fabricated values [E30].
 
 **Acceptance criteria:**
 - **Given** raw statements exist for a sample of at least 100 companies **When** the compute step runs (crible compute) **Then** a snapshot Parquet is produced with one row per company × fiscal period, at least 150 value columns (canonical fields, financetoolkit ratios, growth series) plus piotroski_f (0–9), altman_z and beneish_m with their components, and re-running on the same input yields identical values for every column except computed_at (file-level metadata excluded from the comparison)
@@ -34,9 +34,9 @@ Compute the wide screening snapshot: financetoolkit (with the Yahoo source enfor
 
 _Traceability — NFRs: NFR-001, NFR-010, NFR-012 · entities: SnapshotRow · interfaces: CLI_
 
-## FR-004 — Filter DSL compiled to DuckDB SQL _(must)_
+## FR-004 — Filter DSL compiled to DuckDB SQL _(must)_ [E4][E12][E88]
 
-A human-readable filter DSL — e.g. roe > 15 AND piotroski >= 7 AND country IN ('FR','DE') — compiled to parametrized DuckDB SQL over the snapshot. Strict column whitelist (parser rejects unknown fields with a hint), values always bound as parameters (injection impossible by construction), sorting and pagination built in. DuckDB is an in-process columnar analytics engine [E4]; the enforceable speed contract is NFR-008's CI benchmark on a synthetic full-size snapshot — not vendor copy. The preset-filtering timeout that hit xang1234/stock-screener on an operational database [E88] is the anti-pattern this design avoids. [E4][E12][E88]
+A human-readable filter DSL — e.g. roe > 15 AND piotroski >= 7 AND country IN ('FR','DE') — compiled to parametrized DuckDB SQL over the snapshot. Strict column whitelist (parser rejects unknown fields with a hint), values always bound as parameters (injection impossible by construction), sorting and pagination built in. DuckDB is an in-process columnar analytics engine [E4]; the enforceable speed contract is NFR-008's CI benchmark on a synthetic full-size snapshot — not vendor copy. The preset-filtering timeout that hit xang1234/stock-screener on an operational database [E88] is the anti-pattern this design avoids.
 
 **Acceptance criteria:**
 - **Given** the snapshot is loaded **When** a user screens with roe > 15 AND piotroski >= 7 AND country IN ('FR','DE') **Then** the result contains exactly the rows satisfying every clause, respects the requested sort and pagination, and the generated SQL references only whitelisted columns with all values bound as parameters
@@ -46,9 +46,9 @@ A human-readable filter DSL — e.g. roe > 15 AND piotroski >= 7 AND country IN 
 
 _Traceability — NFRs: NFR-001, NFR-008, NFR-011 · entities: SnapshotRow, Preset · interfaces: CLI, HTTP API_
 
-## FR-005 — CLI (crible) _(must)_
+## FR-005 — CLI (crible) _(must)_ [E92][E93]
 
-The crible CLI (Typer [E92]): crible screen "<dsl>" with table or CSV output; crible ingest (bootstrap / one cycle / continuous loop); crible compute; crible status (universe size, coverage %, freshness histogram, requests-per-hour, provider health, unmatched-EU-listings count); crible export "<dsl>" --out file.csv (writes the FULL result set of the query — identical rows to GET /screen.csv). Exactly the same DSL and semantics as the API and UI. [E92][E93]
+The crible CLI (Typer [E92]): crible screen "<dsl>" with table or CSV output; crible ingest (bootstrap / one cycle / continuous loop); crible compute; crible status (universe size, coverage %, freshness histogram, requests-per-hour, provider health, unmatched-EU-listings count); crible export "<dsl>" --out file.csv (writes the FULL result set of the query — identical rows to GET /screen.csv). Exactly the same DSL and semantics as the API and UI.
 
 **Acceptance criteria:**
 - **Given** a working install with a computed snapshot **When** crible screen "piotroski >= 7" --format csv runs **Then** matching rows stream to stdout as CSV with a header row, the process exits 0, and the same query through the API returns the same rows
@@ -57,9 +57,9 @@ The crible CLI (Typer [E92]): crible screen "<dsl>" with table or CSV output; cr
 
 _Traceability — NFRs: NFR-004, NFR-005 · entities: SnapshotRow · interfaces: CLI_
 
-## FR-006 — HTTP API (FastAPI) _(must)_
+## FR-006 — HTTP API (FastAPI) _(must)_ [E13][E14]
 
-The HTTP API (FastAPI [E13]): POST /screen (DSL + sort + pagination → rows, total, tookMs), GET /screen.csv (streaming export), GET /presets, GET /company/{symbol} (profile, statement history, score breakdowns, per-field provenance), GET /status (coverage, freshness, rate budget, provider health), GET /healthz. Serves the built SPA statically at /. No auth by design: single self-hosted operator (ADR-0002), bound to localhost/compose network by default. [E13][E14]
+The HTTP API (FastAPI [E13]): POST /screen (DSL + sort + pagination → rows, total, tookMs), GET /screen.csv (streaming export), GET /presets, GET /company/{symbol} (profile, statement history, score breakdowns, per-field provenance), GET /status (coverage, freshness, rate budget, provider health), GET /healthz. Serves the built SPA statically at /. No auth by design: single self-hosted operator (ADR-0002), bound to localhost/compose network by default.
 
 **Acceptance criteria:**
 - **Given** the API is running with a snapshot **When** POST /screen receives {"query": "roe > 15", "sort": "-roe", "page": 1} **Then** it returns 200 with rows, total count, page info and tookMs, with p95 latency under 500 ms warm for full-universe screens
@@ -69,9 +69,9 @@ The HTTP API (FastAPI [E13]): POST /screen (DSL + sort + pagination → rows, to
 
 _Traceability — NFRs: NFR-001, NFR-002, NFR-008 · entities: SnapshotRow, Preset, Company · interfaces: HTTP API_
 
-## FR-007 — React/Vite SPA _(must)_
+## FR-007 — React/Vite SPA _(must)_ [E18][E19][E20][E21][E100][E75]
 
-The React 18 + Vite + TypeScript SPA [E18][E21]: a dense, dark-first results grid on TanStack Table [E19] — query bar bound to the DSL, sortable columns, column picker, presets menu, CSV export of the current result set, and a company-detail drawer (statements, score breakdowns, provenance and freshness badges). The table is the hero; screener.in-class information density is the benchmark [E75]. [E18][E19][E20][E21][E100][E75]
+The React 18 + Vite + TypeScript SPA [E18][E21]: a dense, dark-first results grid on TanStack Table [E19] — query bar bound to the DSL, sortable columns, column picker, presets menu, CSV export of the current result set, and a company-detail drawer (statements, score breakdowns, provenance and freshness badges). The table is the hero; screener.in-class information density is the benchmark [E75].
 
 **Acceptance criteria:**
 - **Given** the SPA is served and a snapshot exists **When** the user runs a DSL query from the query bar **Then** the grid renders the matching rows with sortable columns and a column picker; the export button (labelled 'Export all results') downloads the FULL result set of the current query (all pages, currently visible columns) via GET /screen.csv
@@ -80,9 +80,9 @@ The React 18 + Vite + TypeScript SPA [E18][E21]: a dense, dark-first results gri
 
 _Traceability — NFRs: NFR-001, NFR-004, NFR-008 · entities: SnapshotRow, Company · interfaces: Web App, HTTP API_
 
-## FR-008 — Docker Compose deployment _(must)_
+## FR-008 — Docker Compose deployment _(must)_ [E94][E49]
 
-Docker Compose deployment [E94]: service ingest (continuous loop: universe bootstrap if empty → crawl cycle → compute → atomic snapshot publish, repeating; compute runs after every crawl cycle and at least every 30 minutes) + service api (FastAPI serving the built SPA), a shared volume for Parquet/DuckDB, healthchecks on both, .env consumed for optional phase-2 keys. On first boot the crawler front-loads the bootstrap sample — a built-in list of ~100 liquid symbols (CAC 40 + DAX 40 + 20 US mega-caps), overridable via CRIBLE_BOOTSTRAP_SAMPLE — so a first screen returns rows within hours, not weeks. docker compose up with zero keys yields a fully working system — the zero-key contract is exercised in CI. [E94][E49]
+Docker Compose deployment [E94]: service ingest (continuous loop: universe bootstrap if empty → crawl cycle → compute → atomic snapshot publish, repeating; compute runs after every crawl cycle and at least every 30 minutes) + service api (FastAPI serving the built SPA), a shared volume for Parquet/DuckDB, healthchecks on both, .env consumed for optional phase-2 keys. On first boot the crawler front-loads the bootstrap sample — a built-in list of ~100 liquid symbols (CAC 40 + DAX 40 + 20 US mega-caps), overridable via CRIBLE_BOOTSTRAP_SAMPLE — so a first screen returns rows within hours, not weeks. docker compose up with zero keys yields a fully working system — the zero-key contract is exercised in CI.
 
 **Acceptance criteria:**
 - **Given** a machine with only Docker installed and no API keys in the environment **When** docker compose up runs **Then** both services report healthy within 120 seconds, the shared volume holds the DuckDB database and Parquet layers, and — with the default bootstrap sample (~100 symbols ≈ 700 budgeted requests) — a valid DSL screen (e.g. piotroski_f >= 0) returns at least one row through UI or CLI within 4 hours of first boot
@@ -91,9 +91,9 @@ Docker Compose deployment [E94]: service ingest (continuous loop: universe boots
 
 _Traceability — NFRs: NFR-003, NFR-006, NFR-009, NFR-013 · entities: Provider · interfaces: HTTP API, CLI_
 
-## FR-009 — Preset screens _(should)_
+## FR-009 — Preset screens _(should)_ [E67][E63]
 
-Preset screens shipped as plain, visible, editable DSL strings — transparency is the product (the closed ranks of Stockopedia [E67] are the counter-model). Shipped presets with their exact DSL: piotroski-strong (piotroski_f >= 7), altman-safe (altman_z > 2.99), beneish-red-flags (beneish_m > -1.78), classic-value (price_to_earnings_ratio < 12 AND price_to_book < 1.5), quality (return_on_equity > 0.15 AND debt_to_equity < 1). Thresholds are visible in the DSL and editable — they are starting points, not hidden judgments. Available identically via CLI (--preset), API (GET /presets) and the SPA presets menu. [E67][E63]
+Preset screens shipped as plain, visible, editable DSL strings — transparency is the product (the closed ranks of Stockopedia [E67] are the counter-model). Shipped presets with their exact DSL: piotroski-strong (piotroski_f >= 7), altman-safe (altman_z > 2.99), beneish-red-flags (beneish_m > -1.78), classic-value (price_to_earnings_ratio < 12 AND price_to_book < 1.5), quality (return_on_equity > 0.15 AND debt_to_equity < 1). Thresholds are visible in the DSL and editable — they are starting points, not hidden judgments. Available identically via CLI (--preset), API (GET /presets) and the SPA presets menu.
 
 **Acceptance criteria:**
 - **Given** the presets are shipped **When** GET /presets is called or crible screen --preset piotroski-strong runs **Then** each preset exposes its name, a one-line description and its complete DSL string, and running the preset is byte-for-byte equivalent to running that DSL string directly
@@ -101,9 +101,9 @@ Preset screens shipped as plain, visible, editable DSL strings — transparency 
 
 _Traceability — NFRs: NFR-004, NFR-010 · entities: Preset · interfaces: HTTP API, Web App, CLI_
 
-## FR-010 — ESEF XBRL Europe enrichment _(should)_
+## FR-010 — ESEF XBRL Europe enrichment _(should)_ [E5][E15][E74][E113][E114][E35]
 
-Europe-depth enrichment from filings.xbrl.org — the free, keyless ESEF repository (audited annual reports as xBRL-JSON with a JSON-API; explicitly an interim measure until ESAP, and NOT complete: some jurisdictions' filings, e.g. Germany and Ireland, are unavailable [E5][E15][E74]). Identity resolution: filings are indexed by LEI, the universe by Yahoo symbol + (sparse) ISIN — so enrichment applies to EU companies whose ISIN resolves to an LEI via GLEIF's free ISIN-to-LEI relationship files [E113][E114]; ISIN sparsity in FinanceDatabase is a known limitation [E35]. Audited figures are stored as provider='esef' facts; where audited and scraped values coexist for the same field/period, the audited value wins and material discrepancies are logged. Company detail links to the filing. [E5][E15][E74][E113][E114][E35]
+Europe-depth enrichment from filings.xbrl.org — the free, keyless ESEF repository (audited annual reports as xBRL-JSON with a JSON-API; explicitly an interim measure until ESAP, and NOT complete: some jurisdictions' filings, e.g. Germany and Ireland, are unavailable [E5][E15][E74]). Identity resolution: filings are indexed by LEI, the universe by Yahoo symbol + (sparse) ISIN — so enrichment applies to EU companies whose ISIN resolves to an LEI via GLEIF's free ISIN-to-LEI relationship files [E113][E114]; ISIN sparsity in FinanceDatabase is a known limitation [E35]. Audited figures are stored as provider='esef' facts; where audited and scraped values coexist for the same field/period, the audited value wins and material discrepancies are logged. Company detail links to the filing.
 
 **Acceptance criteria:**
 - **Given** an EU company whose universe ISIN resolves to an LEI (GLEIF mapping) with an ESEF annual report on filings.xbrl.org **When** the enrichment cycle processes it **Then** audited annual figures parsed from xBRL-JSON are stored as provider='esef' facts for that company, the snapshot marks the enriched fields' provenance as audited, and the company detail view links to the filing URL
@@ -113,9 +113,9 @@ Europe-depth enrichment from filings.xbrl.org — the free, keyless ESEF reposit
 
 _Traceability — NFRs: NFR-003, NFR-005, NFR-010 · entities: RawStatement, Company · interfaces: Provider Plugin API_
 
-## FR-011 — Price freshness tiering (budget-aware, provenance-dated) _(should)_
+## FR-011 — Price freshness tiering (budget-aware, provenance-dated) _(should)_ [E36][E82][E105]
 
-Prices ride the SAME Yahoo request budget as fundamentals — there is no free lunch: design-time verification (2026-07-07) found Stooq's CSV endpoints behind a JavaScript proof-of-work anti-bot wall, so no keyless bulk price path exists and none is assumed. Tiering: symbols in the priority price set (default: the bootstrap sample + European large caps, configurable size ~2,000) get daily price refreshes; all other symbols refresh opportunistically with leftover budget (weekly best-effort). Every price carries its as-of date; valuation ratios computed from a stale price expose price_asof provenance rather than pretending freshness. An optional stooq fallback plugin exists but ships DISABLED and is explicitly non-load-bearing (its wall may break it at any time). Yahoo price failures degrade politely (skip, keep last price, staleness visible) — the recurring hang/throttle failure modes are documented [E36][E82][E105]. [E36][E82][E105]
+Prices ride the SAME Yahoo request budget as fundamentals — there is no free lunch: design-time verification (2026-07-07) found Stooq's CSV endpoints behind a JavaScript proof-of-work anti-bot wall, so no keyless bulk price path exists and none is assumed. Tiering: symbols in the priority price set (default: the bootstrap sample + European large caps, configurable size ~2,000) get daily price refreshes; all other symbols refresh opportunistically with leftover budget (weekly best-effort). Every price carries its as-of date; valuation ratios computed from a stale price expose price_asof provenance rather than pretending freshness. An optional stooq fallback plugin exists but ships DISABLED and is explicitly non-load-bearing (its wall may break it at any time). Yahoo price failures degrade politely (skip, keep last price, staleness visible) — the recurring hang/throttle failure modes are documented [E36][E82][E105].
 
 **Acceptance criteria:**
 - **Given** the priority price set is configured (default bootstrap sample + European large caps) **When** the price refresher runs its daily cycle within the global budget **Then** priority symbols end the cycle with prices at most one trading day old, non-priority symbols are refreshed only with leftover budget, and every snapshot valuation ratio exposes the price_asof date it was computed from
@@ -123,9 +123,9 @@ Prices ride the SAME Yahoo request budget as fundamentals — there is no free l
 
 _Traceability — NFRs: NFR-003, NFR-005 · entities: PriceBar, Provider · interfaces: Provider Plugin API_
 
-## FR-012 — Company detail view _(should)_
+## FR-012 — Company detail view _(should)_ [E58][E75][E1]
 
-Company detail (SPA drawer + GET /company/{symbol}): full statement history as far as sources allow, every score with its complete component breakdown (the 9 Piotroski criteria pass/fail, the 8 Beneish components, Altman inputs), per-field provenance (provider + fetchedAt) and freshness. The transparency answer to Simply Wall St's polished-but-closed company pages [E58]. [E58][E75][E1]
+Company detail (SPA drawer + GET /company/{symbol}): full statement history as far as sources allow, every score with its complete component breakdown (the 9 Piotroski criteria pass/fail, the 8 Beneish components, Altman inputs), per-field provenance (provider + fetchedAt) and freshness. The transparency answer to Simply Wall St's polished-but-closed company pages [E58].
 
 **Acceptance criteria:**
 - **Given** a company present in the snapshot **When** its detail is opened in the UI or fetched via the API **Then** it shows the held statement history, each score with its full component breakdown (9 Piotroski criteria, 8 Beneish components, Altman inputs), and per-field provenance with provider and fetch timestamp
@@ -133,9 +133,9 @@ Company detail (SPA drawer + GET /company/{symbol}): full statement history as f
 
 _Traceability — NFRs: NFR-004, NFR-010 · entities: Company, SnapshotRow, RawStatement · interfaces: Web App, HTTP API_
 
-## FR-013 — Phase-2 free-key provider plugins _(could)_
+## FR-013 — Phase-2 free-key provider plugins _(could)_ [E72][E73][E115][E116][E65][E78]
 
-Phase-2 free-key provider plugins behind the same Provider interface: financialreports (FinancialReports.eu — free official MCP server, OAuth, EU filings + normalized financials [E72][E73]), simfin (free bulk fundamentals for ~5,000 US stocks with 20+ years of history via API/bulk download [E115][E116]; free-tier data is delayed relative to paid — exact lag re-verified when the plugin is built), fmp_free and eodhd_free (schema validation against the future paid switch only). Strictly optional: without its key a plugin logs one 'disabled (no key configured)' line and the system behaves exactly as keyless. [E72][E73][E115][E116][E65][E78]
+Phase-2 free-key provider plugins behind the same Provider interface: financialreports (FinancialReports.eu — free official MCP server, OAuth, EU filings + normalized financials [E72][E73]), simfin (free bulk fundamentals for ~5,000 US stocks with 20+ years of history via API/bulk download [E115][E116]; free-tier data is delayed relative to paid — exact lag re-verified when the plugin is built), fmp_free and eodhd_free (schema validation against the future paid switch only). Strictly optional: without its key a plugin logs one 'disabled (no key configured)' line and the system behaves exactly as keyless.
 
 **Acceptance criteria:**
 - **Given** no provider keys are configured **When** the system starts **Then** each keyed plugin logs exactly one 'disabled (no key configured)' line, is reported as disabled in crible status, and every keyless flow behaves identically to a build without the plugins
@@ -144,12 +144,23 @@ Phase-2 free-key provider plugins behind the same Provider interface: financialr
 
 _Traceability — NFRs: NFR-006, NFR-009, NFR-012 · entities: Provider, RawStatement · interfaces: Provider Plugin API_
 
-## FR-014 — EODHD paid provider PRD + stub plugin _(could)_
+## FR-014 — EODHD paid provider PRD + stub plugin _(could)_ [E111][E112][E61][E62]
 
-The single planned paid upgrade, specced without paying: docs/prds/eodhd.md — a detailed PRD for EODHD's Fundamentals Data Feed. Grounded facts: the free tier grants 20 API calls/day and paid plans are required for more data [E111]; the pricing table is tier-based (free → paid, yearly discount) [E112]. The exact paid price/quota observed during planning (€59.99/mo, 100k calls/day on the 2026 pricing page) is recorded in the PRD as TO-REVALIDATE at purchase time, with endpoint schemas validated against the demo tickers using the existing free key, a field-by-field mapping to crible's raw schema, and the switch plan (set EODHD_KEY → plugin activates). docs/prds/fmp-ultimate.md documents FMP Ultimate as the evaluated-and-rejected alternative. [E111][E112][E61][E62]
+The single planned paid upgrade, specced without paying: docs/prds/eodhd.md — a detailed PRD for EODHD's Fundamentals Data Feed. Grounded facts: the free tier grants 20 API calls/day and paid plans are required for more data [E111]; the pricing table is tier-based (free → paid, yearly discount) [E112]. The exact paid price/quota observed during planning (€59.99/mo, 100k calls/day on the 2026 pricing page) is recorded in the PRD as TO-REVALIDATE at purchase time, with endpoint schemas validated against the demo tickers using the existing free key, a field-by-field mapping to crible's raw schema, and the switch plan (set EODHD_KEY → plugin activates). docs/prds/fmp-ultimate.md documents FMP Ultimate as the evaluated-and-rejected alternative.
 
 **Acceptance criteria:**
 - **Given** the repository is checked out **When** a reader opens docs/prds/eodhd.md **Then** it contains the grounded free-tier facts (20 calls/day, paid upgrade required), the planning-time paid price/quota clearly marked to-revalidate, recorded sample payloads for the fundamentals and EOD endpoints captured via the free key's demo tickers, a field-by-field mapping to crible's raw schema, and the exact activation steps — and docs/prds/fmp-ultimate.md documents the rejected FMP alternative
 - **Given** an EODHD key is configured **When** the stub plugin initializes **Then** it validates the key with a single metadata call and reports the detected tier — a free-tier key yields 'insufficient tier for fundamentals' and the plugin stays disabled — proving the switch path end-to-end without a paid subscription
 
 _Traceability — NFRs: NFR-006, NFR-012 · entities: Provider · interfaces: Provider Plugin API_
+
+## FR-015 — Composite quality/value/momentum rank across the universe _(could)_ [S21][S22]
+
+Rank the screening universe on a single composite score built from the fundamentals crible already computes (Piotroski F, Altman Z, per-share value ratios, price momentum), in the spirit of Stockopedia's StockRanks — the paid market's headline differentiator [S21][S22] (see docs/market/2026-07-12/REPORT.md). Each pillar (Quality / Value / Momentum) is a percentile rank within a peer group (e.g. region×sector) over the existing snapshot columns; the composite is a documented, transparent blend. No new data source and no API key — computed from the wide snapshot in DuckDB. Every rank links back to its component values (provenance-consistent with FR-003/FR-012). GATED: market-evidenced, spec-first; implementation awaits explicit go-ahead.
+
+**Acceptance criteria:**
+- **Given** a published snapshot with the quality/value/momentum input columns for a peer group **When** the rank step runs over the universe **Then** each company receives quality_rank, value_rank, momentum_rank (0–100 percentiles within its peer group) and a composite_rank blending them by a documented, reproducible formula; re-running on the same snapshot yields identical ranks
+- **Given** a company is missing an input for one pillar **When** ranks are computed **Then** that pillar's rank is NULL (never imputed) and the composite is computed from the available pillars with the omission recorded in provenance — no fabricated rank
+- **Given** a rank is shown in the UI **When** the user opens the company drawer **Then** each pillar rank links to the underlying component values, consistent with the score-breakdown transparency of FR-012
+
+_Traceability — NFRs: — · entities: — · interfaces: —_
