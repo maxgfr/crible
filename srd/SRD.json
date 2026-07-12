@@ -650,7 +650,7 @@
     {
       "id": "FR-015",
       "title": "Composite quality/value/momentum rank across the universe",
-      "description": "Rank the screening universe on a single composite score built from the fundamentals crible already computes (Piotroski F, Altman Z, per-share value ratios, price momentum), in the spirit of Stockopedia's StockRanks — the paid market's headline differentiator [S21][S22] (see docs/market/2026-07-12/REPORT.md). Each pillar (Quality / Value / Momentum) is a percentile rank within a peer group (e.g. region×sector) over the existing snapshot columns; the composite is a documented, transparent blend. No new data source and no API key — computed from the wide snapshot in DuckDB. Every rank links back to its component values (provenance-consistent with FR-003/FR-012). GATED: market-evidenced, spec-first; implementation awaits explicit go-ahead.",
+      "description": "Rank the screening universe on a single composite score built from the fundamentals crible already computes (Piotroski F, Altman Z, per-share value ratios, price momentum), in the spirit of Stockopedia's StockRanks — the paid market's headline differentiator [S21][S22] (see docs/market/2026-07-12/REPORT.md). Each pillar (Quality / Value / Momentum) is a percentile rank within a peer group (e.g. region×sector) over the existing snapshot columns; the composite is a documented, transparent blend. No new data source and no API key — computed from the wide snapshot in DuckDB. Every rank links back to its component values (provenance-consistent with FR-003/FR-012). GO given 2026-07-12 (improve cycle #2): computed at snapshot build time — the read path is untouched (NFR-008).",
       "priority": "could",
       "acceptance": [
         {

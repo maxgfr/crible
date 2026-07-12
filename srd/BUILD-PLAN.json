@@ -592,12 +592,22 @@
       "dependsOn": [
         "T-000"
       ],
-      "artifacts": [],
-      "tests": [],
+      "artifacts": [
+        "src/crible/compute/ranks.py",
+        "src/crible/compute/snapshot.py",
+        "src/crible/presets.py",
+        "ui/src/components/CompanyDrawer.tsx"
+      ],
+      "tests": [
+        "tests/test_fr015_ranks.py",
+        "ui/src/__tests__/fr015.test.tsx"
+      ],
       "verify": {
-        "commands": []
+        "commands": [
+          "uv run pytest tests/test_fr015_ranks.py -q"
+        ]
       },
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-016",
