@@ -40,3 +40,17 @@ def test_fr013_key_in_env_flips_provider_on(tmp_path, monkeypatch):
     by_id = {p["id"]: p for p in client.get("/api/providers").json()}
     assert by_id["eodhd"]["enabled"] is True
     assert by_id["simfin"]["enabled"] is False
+
+
+def test_fr013_inventory_is_derived_from_the_shared_catalog(client):
+    """F1/F6 — the endpoint must not re-enumerate providers or re-implement the
+    enablement rule; it derives both from the single catalog + provider.enabled()."""
+    from crible.providers.catalog import default_catalog, inventory
+
+    catalog = default_catalog()
+    body = client.get("/api/providers").json()
+    # ids come from the catalog, in catalog order (no hand-maintained list drift)
+    assert [p["id"] for p in body] == [prov.id for prov in catalog]
+    # enabled mirrors each provider's own enabled(env), not a re-derived rule
+    expected = inventory(catalog, env={})
+    assert body == expected

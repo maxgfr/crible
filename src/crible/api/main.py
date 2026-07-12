@@ -120,29 +120,15 @@ def create_app() -> FastAPI:
     def providers() -> list[dict]:
         """FR-013/FR-014 — read-only provider inventory for the settings view.
 
-        Enablement mirrors ProviderRegistry.activate: keyless is always on,
-        a keyed provider is on iff its env var is set. No instantiation —
-        id/kind/key_env_var are class attributes.
+        Derived from the shared catalog and each provider's own ``enabled(env)``
+        (crible.providers.catalog) — never a re-enumerated list or a re-derived
+        activation rule, so this view cannot drift from the real active set.
         """
         import os as env_os
 
-        from crible.providers.eodhd import EodhdProvider
-        from crible.providers.fmp_free import FmpFreeProvider
-        from crible.providers.simfin import SimFinProvider
-        from crible.providers.yfinance_provider import YFinanceProvider
+        from crible.providers.catalog import default_catalog, inventory
 
-        inventory = []
-        for cls in (YFinanceProvider, SimFinProvider, FmpFreeProvider, EodhdProvider):
-            key_var = getattr(cls, "key_env_var", None)
-            inventory.append(
-                {
-                    "id": cls.id,
-                    "kind": cls.kind,
-                    "key_env_var": key_var,
-                    "enabled": True if key_var is None else bool(env_os.environ.get(key_var)),
-                }
-            )
-        return inventory
+        return inventory(default_catalog(), dict(env_os.environ))
 
     @app.get("/healthz")
     def healthz():
