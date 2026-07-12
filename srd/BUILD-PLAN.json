@@ -774,7 +774,7 @@
           "uv run pytest -q"
         ]
       },
-      "status": "todo"
+      "status": "done"
     }
   ]
 }

@@ -32,18 +32,15 @@ Ce fichier liste ce qui reste. Rien ici n'est bloquant pour utiliser le screener
 
 ## P2 — Écrans du design system non construits (spéc dans srd/design/SCREENS.md)
 
-- [ ] **Écran « Ingest & coverage status »** dans la SPA.
-  Données déjà servies par `/api/status` (coverage %, histogramme fraîcheur, req/h vs budget,
-  santé par provider, `esef_unmatched`). Manque le composant React (`StatusDashboard` est
-  listé dans le design system mais pas implémenté).
+- [x] **Écran « Ingest & coverage status »** dans la SPA. _(fait — `StatusView`, hash `#/status` ;
+  coverage %, histogramme fraîcheur SVG, jauge req/h, santé providers, ESEF matched/unmatched.)_
 
-- [ ] **Écran « Providers & settings »** dans la SPA.
-  Inventaire read-only des providers (keyless / keyed-off / keyed-on) + pointeur `.env` +
-  chemin d'upgrade EODHD. Toggle de thème.
+- [x] **Écran « Providers & settings »** dans la SPA. _(fait — `ProvidersView`, `#/providers`,
+  endpoint `/api/providers` ; inventaire keyless/free-key/paid, pointeur `.env`, upgrade EODHD,
+  préférence de thème.)_
 
-- [ ] **Toggle dark/light.**
-  Les tokens light existent (`tokens.css`), `data-theme` est figé sur `dark`. Ajouter un
-  bouton qui bascule `data-theme` sur `<html>` (+ persistance localStorage).
+- [x] **Toggle dark/light.** _(fait — toggle topbar, persistance `crible-theme`, défaut
+  `prefers-color-scheme`, script anti-FOUC dans `index.html` ; light = « paper terminal ».)_
 
 ## P3 — Robustesse / passage à l'échelle
 
