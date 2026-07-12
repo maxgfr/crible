@@ -34,6 +34,7 @@ def test_fr009_running_a_preset_is_byte_for_byte_its_dsl() -> None:
             "piotroski_f": [8, 6, 9],
             "altman_z": [3.5, 1.2, 4.0],
             "beneish_m": [-2.5, -1.0, -2.9],
+            "composite_rank": [85.0, 40.0, 92.0],
         }
     )
     con.register("snapshot_latest", frame)

@@ -49,6 +49,12 @@ _PRESETS = [
         description="High return on equity with conservative leverage",
         dsl="return_on_equity > 0.15 AND debt_to_equity_ratio < 1",
     ),
+    Preset(
+        id="top-ranked",
+        name="Top ranked",
+        description="Top quintile of the composite quality/value/momentum rank (FR-015)",
+        dsl="composite_rank >= 80",
+    ),
 ]
 
 PRESETS: dict[str, Preset] = {p.id: p for p in _PRESETS}

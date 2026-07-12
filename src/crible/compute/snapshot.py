@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from crible.compute.canonical import CANONICAL_FIELDS, build_canonical
+from crible.compute.ranks import attach_ranks, price_return
 from crible.compute.ratios import compute_ratios
 from crible.compute.scores import all_scores
 
@@ -78,6 +79,13 @@ def build_symbol_snapshot(
     ratio_growth.columns = [f"{col}_growth" for col in ratio_growth.columns]
 
     out = pd.concat([canonical, ratios, growth, ratio_growth, scores], axis=1)
+    # FR-015 momentum input: trailing 6-month price return, latest period only
+    # (cross-sectional like the price itself); NaN when history is too short.
+    out["return_6m"] = float("nan")
+    if len(out):
+        out.iloc[-1, out.columns.get_loc("return_6m")] = price_return(
+            frames.get(("prices", "daily"))
+        )
     out.insert(0, "symbol", symbol)
     out.insert(1, "period", out.index.astype(str))
     out["provider"] = provider
@@ -152,7 +160,9 @@ def build_snapshot(data_dir: Path | str, symbols: list[str] | None = None) -> pd
             parts.append(part)
     if not parts:
         return pd.DataFrame()
-    return attach_universe(pd.concat(parts, ignore_index=True), data_dir)
+    # FR-015: ranks are cross-sectional — computed once the whole universe
+    # snapshot is assembled (peer groups need region/sector from the universe).
+    return attach_ranks(attach_universe(pd.concat(parts, ignore_index=True), data_dir))
 
 
 def publish_snapshot(snapshot: pd.DataFrame, data_dir: Path | str) -> Path:
