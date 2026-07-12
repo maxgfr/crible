@@ -125,6 +125,21 @@ def test_fr015_rank_columns_screen_through_the_dsl() -> None:
     assert top["symbol"].tolist() == ["C5.PA", "C4.PA"]
 
 
+def test_fr015_pre_upgrade_snapshot_gets_a_recompute_hint() -> None:
+    """The shipped top-ranked preset must not strand a pre-FR-015 snapshot on
+    « no similar field exists » — the error says HOW to get the column."""
+    import pytest
+
+    from crible.dsl.parser import DslError
+
+    con = duckdb.connect()
+    con.register("snapshot_latest", pd.DataFrame({"symbol": ["A"], "piotroski_f": [8]}))
+    whitelist = whitelist_from_relation(con, "snapshot_latest")
+    with pytest.raises(DslError) as err:
+        screen(con, "composite_rank >= 80", whitelist=whitelist, limit=10, offset=0)
+    assert "crible compute" in str(err.value)
+
+
 def test_fr015_top_ranked_preset_ships() -> None:
     from crible.presets import PRESETS
 

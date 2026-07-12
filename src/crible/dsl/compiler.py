@@ -10,14 +10,25 @@ from __future__ import annotations
 
 import difflib
 
+from crible.compute.ranks import RANK_COLUMNS
 from crible.dsl.parser import BoolOp, Comparison, DslError, InList, Not
 
 OPERATORS = {">": ">", ">=": ">=", "<": "<", "<=": "<=", "=": "=", "==": "=", "!=": "<>", "<>": "<>"}
+
+# FR-015 columns exist only in snapshots computed after the upgrade — the
+# remedy is a recompute, not a spelling fix.
+BUILD_TIME_COLUMNS = set(RANK_COLUMNS) | {"rank_peer_group", "rank_missing_pillars", "return_6m"}
+BUILD_TIME_REMEDY = (
+    "added at snapshot build time (FR-015) — recompute the snapshot"
+    " (`crible compute`) after upgrading"
+)
 
 
 def _check_field(field: str, whitelist: set[str], position: int) -> str:
     if field in whitelist:
         return field
+    if field in BUILD_TIME_COLUMNS:
+        raise DslError(f"unknown field {field!r} at position {position}", position=position, hint=BUILD_TIME_REMEDY)
     closest = difflib.get_close_matches(field, sorted(whitelist), n=1)
     hint = f"did you mean {closest[0]!r}?" if closest else "no similar field exists"
     raise DslError(f"unknown field {field!r} at position {position}", position=position, hint=hint)
