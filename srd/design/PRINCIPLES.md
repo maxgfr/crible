@@ -6,3 +6,4 @@
 - Transparency in the UI itself: every score links to its components, every value to its provenance — no unexplained numbers.
 - Consistency over novelty — reuse tokens and components before inventing new ones.
 - Accessible by construction: dense ≠ inaccessible; every flow works with keyboard and assistive tech.
+- One color means "interactive": forge amber marks actions, focus and selection — semantic colors (gain/loss/warn) encode data meaning, never mood, and never appear on chrome.
