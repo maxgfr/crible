@@ -1,0 +1,7 @@
+# SUMMARY — marché des screeners fondamentaux self-hosted / zéro clé
+
+**TL;DR : le créneau exact de crible est vide.** Les screeners fondamentaux sérieux sont des SaaS payants (Stockopedia €550–725/an [S21], TIKR sur données CapitalIQ [S26], Simply Wall St freemium [S25]) ; les outils open-source/self-hosted couvrent le *portfolio tracking* (Ghostfolio [S4]) ou le *terminal de recherche* (OpenBB, 70,5k★ [S23]) mais **aucun ne fait du screening fondamental full-univers clé-en-main en self-host**. La demande de self-host existe et n'est pas servie : des utilisateurs demandent explicitement une version serveur/NAS d'OpenBB, question restée sans réponse depuis 2023 [S23] ; la catégorie « Money » d'awesome-selfhosted (Actual 27k★, Firefly III…) ne liste **aucun screener** [S24].
+
+**Angle d'attaque** : « le screener fondamental qui tourne chez toi, zéro clé API, zéro abonnement » — l'économie est immédiate et chiffrable (€550/an chez le leader européen [S21]) et la friction des APIs gratuites à quotas est documentée [S2]. **Canal n°1 : GitHub + awesome-selfhosted + r/selfhosted**, là où Ghostfolio et OpenBB ont construit leurs bases [S4][S23].
+
+**Priorité produit** : l'existant d'abord — install story NAS/Docker irréprochable [S23], README vendeur avec comparatif honnête, listing awesome-selfhosted [S24]. Une seule feature candidate passe le gate marché avec une évidence forte : un **rang composite qualité/valeur/momentum** à la StockRanks, LE différenciateur du leader payant [S21][S22], calculable avec les données déjà en base.

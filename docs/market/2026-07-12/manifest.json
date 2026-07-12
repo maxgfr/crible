@@ -1,0 +1,49 @@
+{
+  "version": "1.9.2",
+  "question": "self-hosted no-API-key fundamental stock screener market: competitors (OpenBB, Stockopedia, Simply Wall St, TIKR, screener.in, Portfolio123, Ghostfolio), pricing, self-hoster demand signals (r/selfhosted, Hacker News, GitHub), gaps and adoption drivers",
+  "mode": "startup",
+  "depth": "standard",
+  "lang": "en",
+  "pages": 2,
+  "backends": [
+    "duckduckgo",
+    "searxng",
+    "hackernews"
+  ],
+  "backendsUsed": [
+    "duckduckgo",
+    "claude"
+  ],
+  "enginesFused": [
+    "duckduckgo"
+  ],
+  "sourceCount": 26,
+  "maxSources": 25,
+  "builtAt": "2026-07-12T12:01:57.472Z",
+  "slug": "startup-self-hosted-no-api-key-fundamental-stock-screener-market-competitors-openbb-stoc",
+  "tiers": [
+    "SUMMARY.md",
+    "REPORT.md"
+  ],
+  "extras": [],
+  "notes": [
+    "Hacker News returned no results.",
+    "SearXNG not configured — set --searxng <url> or ULTRASEARCH_SEARXNG (run `docker-compose up` for a local instance). Skipping.",
+    "DuckDuckGo returned 10 result(s).",
+    "Web cascade tried searxng → duckduckgo → ddglite → mojeek → marginalia; results from duckduckgo.",
+    "DuckDuckGo Lite returned no results.",
+    "Mojeek unreachable (status 403).",
+    "Mojeek returned no results.",
+    "Marginalia unreachable (status 0).",
+    "agent: enrich thin areas with your own WebSearch, then ingest each good URL via `ultrasearch fetch --url <u> --out <dir>` before writing the report."
+  ],
+  "timings": {
+    "hackernews": 715,
+    "searxng": 1,
+    "duckduckgo": 1359,
+    "ddglite": 221,
+    "mojeek": 197,
+    "marginalia": 24607,
+    "total": 29442
+  }
+}
