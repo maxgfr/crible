@@ -654,6 +654,30 @@ table.inventory td.note {
   gap: var(--space-1);
 }
 
+.qb-starters {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.qb-chip {
+  font-family: var(--font-mono);
+  font-size: var(--scale-small);
+  padding: 0 var(--space-2);
+  background: transparent;
+  color: var(--color-fg);
+  border: 1px solid color-mix(in srgb, var(--color-muted) 40%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.qb-chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
 .qb-subgroup {
   display: inline-flex;
   align-items: center;

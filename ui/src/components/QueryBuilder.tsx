@@ -6,7 +6,13 @@
 
 import { useMemo, useState } from "react";
 import type { FieldInfo } from "../data";
-import { ENUM_VALUES, GROUP_ORDER, fieldGroup, fieldLabel } from "../data/field-catalog";
+import {
+  ENUM_VALUES,
+  GROUP_ORDER,
+  STARTER_FILTERS,
+  fieldGroup,
+  fieldLabel,
+} from "../data/field-catalog";
 import { parse } from "../dsl/parser";
 import {
   buildDsl,
@@ -169,6 +175,26 @@ export function QueryBuilder({ fields, onApply }: Props) {
     });
   };
 
+  // the classic screener criteria, one click away — only those the live
+  // schema actually has
+  const starters = useMemo(
+    () => STARTER_FILTERS.filter((s) => types.has(s.field)),
+    [types],
+  );
+
+  const addStarter = (starter: (typeof STARTER_FILTERS)[number]) => {
+    setRoot((current) => ({
+      ...current,
+      items: [
+        // untouched empty rows give way to the prefilled chip
+        ...current.items.filter(
+          (item) => !(item.kind === "cond" && item.field === "" && item.value === ""),
+        ),
+        { kind: "cond", field: starter.field, op: starter.op, value: starter.value },
+      ],
+    }));
+  };
+
   const dsl = buildDsl(root, types);
 
   const apply = () => {
@@ -183,6 +209,22 @@ export function QueryBuilder({ fields, onApply }: Props) {
 
   return (
     <div className="querybuilder">
+      {starters.length > 0 && (
+        <div className="qb-starters" role="group" aria-label="Common filters">
+          <span className="meta">filters:</span>
+          {starters.map((s) => (
+            <button
+              key={s.field}
+              className="qb-chip"
+              title={`Add ${fieldLabel(s.field)} ${s.op} ${s.value || "…"}`}
+              onClick={() => addStarter(s)}
+            >
+              + {fieldLabel(s.field)}
+              {s.value ? ` ${s.op} ${s.value}` : ""}
+            </button>
+          ))}
+        </div>
+      )}
       {root.items.map((item, i) =>
         item.kind === "cond" ? (
           <ConditionRow

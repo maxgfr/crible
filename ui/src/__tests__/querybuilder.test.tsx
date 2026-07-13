@@ -163,6 +163,27 @@ describe("QueryBuilder (component)", () => {
     expect(ops).toEqual(["=", "!=", "IN"]);
   });
 
+  it("pins the classic screener criteria as one-click starter chips", () => {
+    const onApply = vi.fn();
+    render(<QueryBuilder fields={FIELDS} onApply={onApply} />);
+    // only chips whose column exists in the live schema are offered
+    expect(rtl.queryByRole("button", { name: /market cap/i })).toBeNull();
+    fireEvent.click(rtl.getByRole("button", { name: /P\/E <= 15/i }));
+    fireEvent.click(rtl.getByRole("button", { name: /apply filters/i }));
+    // the untouched empty row gave way to the prefilled chip
+    expect(onApply).toHaveBeenCalledWith("price_to_earnings_ratio <= 15");
+  });
+
+  it("chips stack into an AND chain with editable defaults", () => {
+    const onApply = vi.fn();
+    render(<QueryBuilder fields={FIELDS} onApply={onApply} />);
+    fireEvent.click(rtl.getByRole("button", { name: /Piotroski F >= 7/i }));
+    fireEvent.click(rtl.getByRole("button", { name: /Region = europe/i }));
+    fireEvent.change(rtl.getAllByLabelText("Value")[0], { target: { value: "8" } });
+    fireEvent.click(rtl.getByRole("button", { name: /apply filters/i }));
+    expect(onApply).toHaveBeenCalledWith("piotroski_f >= 8 AND region = 'europe'");
+  });
+
   it("disables Apply while nothing is composable", () => {
     const onApply = vi.fn();
     render(<QueryBuilder fields={FIELDS} onApply={onApply} />);

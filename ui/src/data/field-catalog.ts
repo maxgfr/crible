@@ -33,16 +33,21 @@ const CATALOG: Record<string, CatalogEntry> = {
   operating_cashflow: { label: "Operating cash flow", group: "Fundamentals" },
   free_cash_flow: { label: "Free cash flow", group: "Fundamentals" },
   shares_outstanding: { label: "Shares outstanding", group: "Fundamentals" },
-  // valuation
+  // valuation (column names verified against the published snapshot schema)
   market_cap: { label: "Market cap", group: "Valuation" },
   price_to_earnings_ratio: { label: "P/E", group: "Valuation" },
   price_to_book_ratio: { label: "P/B", group: "Valuation" },
-  price_to_sales_ratio: { label: "P/S", group: "Valuation" },
+  price_to_cash_flow_ratio: { label: "P/CF", group: "Valuation" },
+  price_to_free_cash_flow_ratio: { label: "P/FCF", group: "Valuation" },
+  ev_to_sales_ratio: { label: "EV/Sales", group: "Valuation" },
+  ev_to_ebitda_ratio: { label: "EV/EBITDA", group: "Valuation" },
   earnings_yield: { label: "Earnings yield", group: "Valuation" },
-  earnings_per_share: { label: "EPS", group: "Valuation" },
+  free_cash_flow_yield: { label: "FCF yield", group: "Valuation" },
+  weighted_dividend_yield: { label: "Dividend yield", group: "Valuation" },
   // profitability & health
   return_on_equity: { label: "ROE", group: "Profitability" },
   return_on_assets: { label: "ROA", group: "Profitability" },
+  return_on_capital_employed: { label: "ROCE", group: "Profitability" },
   net_profit_margin: { label: "Net margin", group: "Profitability" },
   gross_margin: { label: "Gross margin", group: "Profitability" },
   operating_margin: { label: "Operating margin", group: "Profitability" },
@@ -50,6 +55,9 @@ const CATALOG: Record<string, CatalogEntry> = {
   current_ratio: { label: "Current ratio", group: "Health" },
   quick_ratio: { label: "Quick ratio", group: "Health" },
   interest_coverage_ratio: { label: "Interest coverage", group: "Health" },
+  // growth (every fundamental has a _growth companion; these two are curated)
+  revenue_growth: { label: "Revenue growth (YoY)", group: "Growth (YoY)" },
+  net_income_growth: { label: "Earnings growth (YoY)", group: "Growth (YoY)" },
   // scores
   piotroski_f: { label: "Piotroski F", group: "Scores" },
   altman_z: { label: "Altman Z", group: "Scores" },
@@ -79,6 +87,33 @@ export const ENUM_VALUES: Record<string, string[]> = {
     "Information Technology", "Materials", "Real Estate", "Utilities",
   ],
 };
+
+// The classic screener criteria (the Finviz/Stockopedia fundamental set),
+// pinned as one-click starter chips in the query builder. Default values are
+// editable starting points, not recommendations; a chip only shows when its
+// column exists in the live schema. Decimal convention: 0.15 = 15 %.
+export interface StarterFilter {
+  field: string;
+  op: ">" | ">=" | "<" | "<=" | "=";
+  value: string;
+}
+
+export const STARTER_FILTERS: StarterFilter[] = [
+  { field: "market_cap", op: ">=", value: "1000000000" },
+  { field: "price_to_earnings_ratio", op: "<=", value: "15" },
+  { field: "price_to_book_ratio", op: "<=", value: "1.5" },
+  { field: "weighted_dividend_yield", op: ">=", value: "0.03" },
+  { field: "return_on_equity", op: ">=", value: "0.15" },
+  { field: "debt_to_equity_ratio", op: "<=", value: "1" },
+  { field: "net_profit_margin", op: ">=", value: "0.1" },
+  { field: "revenue_growth", op: ">=", value: "0.1" },
+  { field: "piotroski_f", op: ">=", value: "7" },
+  { field: "altman_z", op: ">", value: "2.99" },
+  { field: "composite_rank", op: ">=", value: "80" },
+  { field: "region", op: "=", value: "europe" },
+  { field: "sector", op: "=", value: "" },
+  { field: "country", op: "=", value: "" },
+];
 
 export function fieldLabel(name: string): string {
   return CATALOG[name]?.label ?? name.replaceAll("_", " ");
