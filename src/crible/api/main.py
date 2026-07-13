@@ -112,6 +112,12 @@ def create_app() -> FastAPI:
             }
         return detail
 
+    @app.get("/api/search")
+    def search(q: str, limit: int = 20) -> list[dict]:
+        """Universe search by symbol/name substring — deep-links the company
+        drawer for any of the 161k listings, crawled or not."""
+        return runtime().search(q, limit=min(max(limit, 1), 100))
+
     @app.get("/api/status")
     def status():
         return runtime().status()

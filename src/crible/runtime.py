@@ -119,6 +119,27 @@ class Runtime:
         clean_profile = {k: (None if pd.isna(v) else v) for k, v in profile.items()}
         return {"profile": clean_profile, "periods": periods}
 
+    def search(self, q: str, limit: int = 20) -> list[dict]:
+        """Symbol/name substring search over the universe — the way a 161k-row
+        universe stays browsable before (and beyond) crawl coverage."""
+        needle = q.strip()
+        if not needle or not self.universe_path().exists():
+            return []
+        con = duckdb.connect()
+        try:
+            rows = con.execute(
+                f"SELECT symbol, name, country, sector"
+                f" FROM read_parquet('{self.universe_path().as_posix()}')"
+                " WHERE symbol ILIKE ? OR name ILIKE ?"
+                " ORDER BY symbol LIMIT ?",
+                [f"%{needle}%", f"%{needle}%", limit],
+            ).fetchall()
+        finally:
+            con.close()
+        return [
+            {"symbol": s, "name": n, "country": c, "sector": sec} for s, n, c, sec in rows
+        ]
+
     def status(self) -> dict:
         out: dict = {"data_dir": str(self.data_dir)}
         if self.universe_path().exists():

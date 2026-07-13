@@ -3,7 +3,7 @@
 // path, and the theme preference. The table is the hero here too.
 
 import { useEffect, useState } from "react";
-import { providers, type ProviderInfo } from "../api";
+import { providers, type ProviderInfo } from "../data";
 import type { Theme } from "../theme";
 
 interface Props {

@@ -2,7 +2,7 @@
 // with position + hint; previous results stay visible while an error shows.
 
 import type { RefObject } from "react";
-import type { DslErrorDetail } from "../api";
+import type { DslErrorDetail } from "../data";
 
 interface Props {
   value: string;

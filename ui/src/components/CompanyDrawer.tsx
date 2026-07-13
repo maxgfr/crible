@@ -3,7 +3,7 @@
 // provenance (provider + computed_at). Deep enough to explain every number.
 
 import { Fragment, useEffect, useState } from "react";
-import { company, type CompanyDetail } from "../api";
+import { company, type CompanyDetail } from "../data";
 
 interface Props {
   symbol: string;

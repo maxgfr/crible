@@ -4,7 +4,7 @@
 // the no-heartbeat state teaches instead of showing nothing.
 
 import { useEffect, useState } from "react";
-import { status, type StatusResponse } from "../api";
+import { status, type StatusResponse } from "../data";
 
 const FRESHNESS_ORDER = ["<7d", "<30d", "<90d", "stale", "never"];
 

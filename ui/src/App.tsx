@@ -7,19 +7,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DslApiError,
-  exportCsvUrl,
+  STATIC_MODE,
+  exportCsv,
   screen,
   status,
   type DslErrorDetail,
   type ScreenResponse,
   type StatusResponse,
-} from "./api";
+} from "./data";
 import { ColumnPicker } from "./components/ColumnPicker";
 import { CompanyDrawer } from "./components/CompanyDrawer";
+import { DemoBanner } from "./components/DemoBanner";
 import { PresetsMenu } from "./components/PresetsMenu";
 import { ProvidersView } from "./components/ProvidersView";
 import { QueryBar } from "./components/QueryBar";
 import { ResultsGrid } from "./components/ResultsGrid";
+import { SearchBox } from "./components/SearchBox";
 import { StatusView } from "./components/StatusView";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { Wordmark } from "./components/Wordmark";
@@ -158,9 +161,12 @@ export default function App() {
           ))}
         </nav>
         <span className="spacer" />
+        <SearchBox onPick={(symbol) => navigate({ view: route.view, company: symbol })} />
         <span className="status-pill">{statusLine}</span>
         <ThemeToggle theme={theme} onToggle={() => setTheme((t) => toggled(t))} />
       </header>
+
+      {STATIC_MODE && <DemoBanner />}
 
       {route.view === "screener" && (
         <>
@@ -192,9 +198,25 @@ export default function App() {
                 {result.hint ? ` · ${result.hint}` : ""}
               </span>
             )}
-            <a href={ranQuery ? exportCsvUrl(ranQuery, null, columns) : "#"}>
-              <button disabled={!ranQuery || !result?.total}>Export all results (CSV)</button>
-            </a>
+            <button
+              disabled={!ranQuery || !result?.total}
+              onClick={async () => {
+                if (!ranQuery) return;
+                const csv = await exportCsv(ranQuery, null, columns);
+                if ("url" in csv) {
+                  window.location.assign(csv.url);
+                } else {
+                  const url = URL.createObjectURL(csv.blob);
+                  const link = document.createElement("a");
+                  link.href = url;
+                  link.download = csv.filename;
+                  link.click();
+                  URL.revokeObjectURL(url);
+                }
+              }}
+            >
+              Export all results (CSV)
+            </button>
           </div>
           {firstRun && statusData ? (
             <FirstRun statusData={statusData} />

@@ -551,3 +551,68 @@ table.inventory td.note {
     animation: none;
   }
 }
+
+/* ------------------------------------------------ universe search (topbar) */
+
+.searchbox {
+  position: relative;
+}
+
+.searchbox input {
+  font-family: var(--font-mono);
+  font-size: var(--scale-small);
+  width: 180px;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-bg);
+  color: var(--color-fg);
+  border: 1px solid color-mix(in srgb, var(--color-muted) 40%, transparent);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--motion-fast);
+}
+
+.searchbox input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.searchbox-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  min-width: 280px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  background: var(--color-bg-raised);
+  border: 1px solid color-mix(in srgb, var(--color-muted) 40%, transparent);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--color-bg) 60%, transparent);
+}
+
+.searchbox-results li {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--scale-small);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.searchbox-results li:hover {
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+
+/* ------------------------------------------------- static demo banner */
+
+.demo-banner {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--scale-small);
+  color: var(--color-muted);
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-muted) 25%, transparent);
+}
+
+.demo-banner a {
+  color: var(--color-primary);
+}

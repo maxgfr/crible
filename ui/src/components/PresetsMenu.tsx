@@ -3,7 +3,7 @@
 // as a new named preset (stored locally, FR-009 AC-2).
 
 import { useEffect, useState } from "react";
-import { presets as fetchPresets, type Preset } from "../api";
+import { presets as fetchPresets, type Preset } from "../data";
 import { loadCustomPresets, saveCustomPreset } from "../presets-store";
 
 interface Props {
