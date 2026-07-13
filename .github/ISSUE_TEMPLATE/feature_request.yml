@@ -1,0 +1,28 @@
+name: Feature request
+description: Propose an improvement or a new capability
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: The screening job you can't do today, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How you imagine it working (DSL syntax, UI, CLI flag…).
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: contract
+    attributes:
+      label: Zero-key contract
+      description: Core features must work without any API key or account.
+      options:
+        - label: This proposal works keyless (or is an optional keyed provider plugin)
+          required: true

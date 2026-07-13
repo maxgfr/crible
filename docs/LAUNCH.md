@@ -80,7 +80,7 @@ Besoin réel de crible : conteneurs `ingest`+`api`, volume persistant (~10 GB pa
 ## 4. Checklist publication
 
 - [x] **Licence** : MIT présente à la racine (`LICENSE`).
-- [ ] **Screenshots dans le README** : les 6 captures du design round sont copiées dans `docs/img/` (`screener|status|providers`-`dark|light`.png). Snippet prêt à coller sous le titre du README :
+- [x] **Screenshots dans le README** : les 6 captures du design round sont copiées dans `docs/img/` (`screener|status|providers`-`dark|light`.png). Snippet prêt à coller sous le titre du README :
   ```markdown
   ![crible screener](docs/img/screener-dark.png)
   <details><summary>More screens (status, providers, light theme)</summary>

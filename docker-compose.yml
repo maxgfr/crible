@@ -3,6 +3,7 @@
 
 services:
   ingest:
+    image: ghcr.io/maxgfr/crible:latest
     build: .
     command: ["crible", "ingest", "--loop"]
     volumes:
@@ -24,6 +25,7 @@ services:
     restart: unless-stopped
 
   api:
+    image: ghcr.io/maxgfr/crible:latest
     build: .
     ports:
       - "${CRIBLE_PORT:-8000}:8000"

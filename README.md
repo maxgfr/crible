@@ -1,10 +1,25 @@
 # crible
 
+[![ci](https://github.com/maxgfr/crible/actions/workflows/ci.yml/badge.svg)](https://github.com/maxgfr/crible/actions/workflows/ci.yml)
+[![pages](https://github.com/maxgfr/crible/actions/workflows/pages.yml/badge.svg)](https://github.com/maxgfr/crible/actions/workflows/pages.yml)
+[![release](https://img.shields.io/github/v/release/maxgfr/crible)](https://github.com/maxgfr/crible/releases)
+[![license: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 **The fundamental stock screener that runs on your own machine — zero API keys, zero subscription, forever.**
+
+**[Try the live demo →](https://maxgfr.github.io/crible/)** — the real screener running entirely in your browser (DuckDB-WASM, open data, no backend).
 
 Screen a worldwide universe of ~161k equities (Europe-depth priority) on real fundamentals —
 Piotroski F, Altman Z, Beneish M, 150+ transparent ratios — with every number traceable back
 to its source. No account, no data vendor, no monthly bill. `docker compose up` and it's yours.
+
+![crible screener](docs/img/screener-dark.png)
+<details><summary>More screens (status, providers, light theme)</summary>
+
+![status](docs/img/status-dark.png)
+![providers](docs/img/providers-dark.png)
+![paper terminal](docs/img/screener-light.png)
+</details>
 
 ```bash
 # same filter DSL in CLI, API and UI — results in milliseconds
@@ -35,6 +50,13 @@ bet is ownership + transparency + zero cost for the fundamental-screening job._
 git clone https://github.com/maxgfr/crible && cd crible
 docker compose up          # ingest + api, one shared volume — no keys needed
 # open http://localhost:8000  (dense, dark-first grid; light "paper terminal" toggle)
+```
+
+Prebuilt multi-arch images (amd64 + arm64 — VPS, Apple Silicon, ARM NAS) ship with every
+release; `docker compose pull` fetches them instead of building locally:
+
+```bash
+docker pull ghcr.io/maxgfr/crible:latest
 ```
 
 The first run bootstraps the universe and starts a rate-budgeted, Europe-first crawl; the
@@ -91,6 +113,24 @@ Unlike proprietary StockRanks, every rank decomposes in the company drawer down
 to its component values. Ranks are computed at snapshot build time: after
 upgrading, run `crible compute` (or wait for the next crawl cycle) to get the
 columns.
+
+## The live demo — how it works
+
+The [demo](https://maxgfr.github.io/crible/) is not a video or a mock: it is the real screener
+running **entirely in your browser**. The same filter DSL is compiled client-side (a TypeScript
+port, golden-locked to the Python compiler by shared test vectors) and executed by
+**DuckDB-WASM** over Parquet artifacts fetched with HTTP range requests from GitHub Pages —
+there is no backend at all.
+
+- **Open data, nightly**: a GitHub Action refreshes the demo dataset every night from the same
+  keyless sources the self-hosted crawl uses — FinanceDatabase (the full ~161k-listing universe,
+  searchable), Yahoo via yfinance, filings.xbrl.org (audited ESEF statements) matched through
+  the GLEIF ISIN→LEI file. No key, no account, anywhere.
+- **Sample scope**: fundamentals and scores cover the ~100-company bootstrap sample
+  (CAC 40 + DAX 40 + 20 US mega-caps); the full rolling crawl of the whole universe is what
+  self-hosting gives you.
+- **Last-good guarantee**: a refresh that fails or covers too few symbols never publishes —
+  the demo keeps the previous dataset, and its Status view shows data freshness honestly.
 
 ## Status
 
