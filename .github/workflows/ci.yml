@@ -43,5 +43,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker compose build
-      # the live zero-key E2E (compose up → real Yahoo crawl → first screen)
-      # is run manually / nightly, not per-push: it spends real request budget
+      # Zero-key smoke on the REAL image, no Yahoo spend: the CLI runs,
+      # bootstrap pulls the published open dataset, the API screens it.
+      # (The full crawl E2E stays manual/nightly: it spends request budget.)
+      - name: Compose smoke — CLI + bootstrap + API screen (zero keys)
+        run: |
+          set -euo pipefail
+          docker compose run --rm --no-deps api crible --help > /dev/null
+          docker compose run --rm --no-deps api crible bootstrap
+          docker compose run --rm --no-deps api crible screen "piotroski_f >= 7" --limit 5
+          docker compose up -d --no-deps api
+          for i in $(seq 1 30); do curl -fsS http://localhost:8000/healthz > /dev/null && break; sleep 2; done
+          total=$(curl -fsS -X POST http://localhost:8000/api/screen \
+            -H 'Content-Type: application/json' -d '{"query":"piotroski_f >= 7"}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["total"])')
+          echo "screen total=$total"; test "$total" -gt 0
+          curl -fsS http://localhost:8000/api/fields | python3 -c '
+          import json, sys
+          fields = json.load(sys.stdin)
+          assert any(f["name"] == "price_to_earnings_ratio" for f in fields), "P/E missing"
+          print(len(fields), "filterable fields")'
+          docker compose down -v
