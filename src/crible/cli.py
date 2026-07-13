@@ -91,6 +91,19 @@ def presets() -> None:
 
 
 @app.command()
+def fields(fmt: str = typer.Option("table", "--format", help="table | json")) -> None:
+    """List every filterable snapshot column with its type (the DSL whitelist)."""
+    listed = Runtime.from_env().fields()
+    if not listed:
+        _fail("no snapshot yet — run `crible bootstrap` (or ingest + compute) first")
+    if fmt == "json":
+        typer.echo(json.dumps(listed, indent=2))
+    else:
+        for field in listed:
+            typer.echo(f"{field['name']}\t{field['type']}")
+
+
+@app.command()
 def status() -> None:
     """Universe coverage, freshness, rate budget and provider health."""
     typer.echo(json.dumps(Runtime.from_env().status(), indent=2, default=str))

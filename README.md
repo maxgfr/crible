@@ -23,7 +23,7 @@ to its source. No account, no data vendor, no monthly bill. `docker compose up` 
 
 ```bash
 # same filter DSL in CLI, API and UI — results in milliseconds
-crible screen "roe > 15 AND piotroski >= 7 AND country IN ('FR','DE')"
+crible screen "return_on_equity > 0.15 AND piotroski_f >= 7 AND country IN ('FR','DE')"
 ```
 
 ## Why crible
@@ -75,6 +75,17 @@ uv run crible screen "piotroski_f >= 7"     # rows, right now — no crawl neede
 ```
 
 The normal ingest loop then extends the dataset from wherever the bootstrap left it.
+
+**Keeping the data fresh** — pick one:
+
+- `docker compose up` — the `ingest` service is the built-in "cron": a continuous,
+  rate-budgeted crawl loop that recomputes and republishes the snapshot after every cycle.
+- Your own cron running one bounded pass, e.g. nightly:
+  `17 2 * * * cd crible && uv run crible demo-refresh --deadline 9000` (exactly what the
+  GitHub Action does).
+- Consume-only (no crawling at all): re-pull the published nightly dataset with
+  `crible bootstrap --force` on a cron — the `data-latest` release is refreshed every night
+  by this repo's Action.
 
 ### Running on a NAS (Synology / Docker)
 

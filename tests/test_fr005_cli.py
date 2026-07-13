@@ -55,6 +55,20 @@ def test_fr005_screen_csv_streams_rows_with_header(data_dir) -> None:
     assert "AAPL" not in result.output
 
 
+def test_fr005_fields_lists_the_dsl_whitelist_with_types(data_dir) -> None:
+    result = runner.invoke(app, ["fields"])
+    assert result.exit_code == 0, result.output
+    assert "piotroski_f\tnumber" in result.output
+    assert "country\tstring" in result.output
+
+
+def test_fr005_fields_without_snapshot_hints_bootstrap(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path / "empty"))
+    result = runner.invoke(app, ["fields"])
+    assert result.exit_code == 1
+    assert "bootstrap" in result.output
+
+
 def test_fr005_invalid_dsl_exits_nonzero_with_actionable_error(data_dir) -> None:
     result = runner.invoke(app, ["screen", "roe >"])
     assert result.exit_code != 0
