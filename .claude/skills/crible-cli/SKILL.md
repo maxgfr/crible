@@ -36,7 +36,11 @@ uv run crible presets             # ready-made screens with their editable DSL
 ```
 
 The field list IS the whitelist: any column it prints can be used in a query.
-An unknown field in a query fails with a "did you mean …?" hint — trust it.
+An unknown field fails with a "did you mean …?" hint when a close match
+exists — but there are NO aliases: `roe`, `per`, `pe` do not resolve. Map
+finance shorthand to exact names first (`crible fields | grep -i equity`):
+P/E → `price_to_earnings_ratio`, ROE → `return_on_equity`,
+market cap → `market_cap`, dividend yield → `weighted_dividend_yield`.
 
 ## 2. The filter DSL
 
