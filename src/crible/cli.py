@@ -166,11 +166,18 @@ def demo_refresh(
     deadline: float = typer.Option(9000.0, "--deadline", help="Wall-clock budget in seconds"),
     esef_limit: int = typer.Option(25, "--esef-limit", help="Max ESEF enrichments this run"),
     edgar_limit: int = typer.Option(25, "--edgar-limit", help="Max EDGAR enrichments this run"),
+    edgar_bulk: bool = typer.Option(
+        False, "--edgar-bulk",
+        help="Download companyfacts.zip (~1.4 GB) and ingest ALL resolved US issuers (ADR-0005)",
+    ),
 ) -> None:
     """One bounded keyless refresh pass (the nightly demo-data run)."""
     from crible.ingest.service import run_refresh
 
-    result = run_refresh(deadline_seconds=deadline, esef_limit=esef_limit, edgar_limit=edgar_limit)
+    result = run_refresh(
+        deadline_seconds=deadline, esef_limit=esef_limit, edgar_limit=edgar_limit,
+        edgar_bulk=edgar_bulk,
+    )
     typer.echo(json.dumps(result, indent=2, default=str))
 
 

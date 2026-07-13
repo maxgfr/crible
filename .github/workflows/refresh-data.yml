@@ -50,8 +50,11 @@ jobs:
           curl -fsSL --retry 3 -o data/isin-lei.zip \
             https://mapping.gleif.org/api/v2/isin-lei/latest/download
 
-      - name: Bounded keyless refresh (crawl → ESEF → prices → prune → compute)
-        run: uv run crible demo-refresh --deadline 9000
+      - name: Bounded keyless refresh (crawl → ESEF → EDGAR bulk → prices → prune → compute)
+        # deadline trimmed to 2h: the EDGAR bulk sweep (~10k US issuers from
+        # one public-domain archive) takes the reclaimed time; ESEF cadence
+        # raised — filings.xbrl.org is not budget-bound like Yahoo
+        run: uv run crible demo-refresh --deadline 7200 --esef-limit 100 --edgar-bulk
 
       - name: Export the static site artifacts (min-symbols gate)
         run: uv run crible export-site --out site-data --min-symbols 50

@@ -168,9 +168,10 @@ there is no backend at all.
   searchable), Yahoo via yfinance, SEC EDGAR (audited US statements, public domain) and
   filings.xbrl.org (audited ESEF statements) matched through the GLEIF ISIN→LEI file. No key,
   no account, anywhere. The same dataset is downloadable (`crible bootstrap`).
-- **Sample scope**: fundamentals and scores cover the ~100-company bootstrap sample
-  (CAC 40 + DAX 40 + 20 US mega-caps); the full rolling crawl of the whole universe is what
-  self-hosting gives you.
+- **Coverage**: audited fundamentals cover the **entire US market** (~10k issuers via the
+  nightly EDGAR bulk sweep — price-free scores only where Yahoo prices are missing) plus the
+  crawled European sample (CAC 40 + DAX 40, extended nightly by the crawl + ESEF); the full
+  rolling crawl of the whole universe is what self-hosting gives you.
 - **Last-good guarantee**: a refresh that fails or covers too few symbols never publishes —
   the demo keeps the previous dataset, and its Status view shows data freshness honestly.
 

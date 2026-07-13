@@ -43,9 +43,9 @@ Ce fichier liste ce qui reste. Rien ici n'est bloquant pour utiliser le screener
   Chaque cycle reconstruit tout le snapshot. OK à ~500 sociétés, à revisiter vers 20k+ :
   ne recomputer que les symboles dont le raw a changé depuis le dernier snapshot.
 
-- [ ] **EDGAR bulk (`companyfacts.zip`, ~1,4 Go nightly)** pour couvrir TOUT le marché US
-  audité en un téléchargement au lieu du per-CIK — le chemin de scale documenté
-  dans l'ADR-0005 ; le `CONCEPT_MAP` et `facts_to_frames` sont déjà réutilisables tels quels.
+- [x] **EDGAR bulk (`companyfacts.zip`, ~1,4 Go nightly)** — _fait (2026-07-13) :
+  `run_edgar_bulk` + `demo-refresh --edgar-bulk`, activé dans le nightly ; tout le marché
+  US audité (~10k émetteurs, 8 exercices max) en un téléchargement._
 
 - [ ] **Normalisation FX (Frankfurter/ECB, keyless).**
   Les ratios sont currency-neutral donc la valeur immédiate est modeste, mais les

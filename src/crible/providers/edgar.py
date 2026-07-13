@@ -26,6 +26,13 @@ log = logging.getLogger("crible.providers.edgar")
 
 COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 COMPANYFACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
+# the whole US market's XBRL facts in one nightly archive (~1.4 GB) — the
+# ADR-0005 scale-up path; never committed, processed then discarded
+COMPANYFACTS_BULK_URL = "https://www.sec.gov/Archives/edgar/daily-index/xbrl/companyfacts.zip"
+
+# bound the snapshot's growth: 8 fiscal years is plenty for trends and keeps
+# the published parquet well under GitHub's 100 MiB file limit at ~10k issuers
+MAX_FISCAL_YEARS = 8
 
 ANNUAL_FORMS = ("10-K", "20-F", "40-F")
 # a full-year duration, with slack for 52/53-week fiscal calendars
@@ -127,10 +134,11 @@ def facts_to_frames(companyfacts: dict[str, Any]) -> dict[tuple[str, str], pd.Da
                 claimed[(period, column)] = concept
 
     frames: dict[tuple[str, str], pd.DataFrame] = {}
+    periods = sorted(values)[-MAX_FISCAL_YEARS:]
     for statement_type in ("income", "balance", "cashflow"):
         columns = [c for c, s in STATEMENT_OF.items() if s == statement_type]
         rows = []
-        for period in sorted(values):
+        for period in periods:
             row: dict[str, Any] = {"period": period}
             row.update({c: values[period][c][1] for c in columns if c in values[period]})
             if len(row) > 1:
@@ -138,6 +146,33 @@ def facts_to_frames(companyfacts: dict[str, Any]) -> dict[tuple[str, str], pd.Da
         if rows:
             frames[(statement_type, "annual")] = pd.DataFrame(rows)
     return frames
+
+
+def iter_bulk_companyfacts(zip_path, ciks: set[int]):
+    """Yield (cik, companyfacts) for the wanted CIKs from the bulk archive.
+
+    Members are named CIK##########.json; anything unparseable is skipped —
+    one broken filing must never sink a 10k-issuer sweep.
+    """
+    import json
+    import zipfile
+
+    with zipfile.ZipFile(zip_path) as archive:
+        for name in archive.namelist():
+            stem = name.rsplit("/", 1)[-1]
+            if not (stem.startswith("CIK") and stem.endswith(".json")):
+                continue
+            try:
+                cik = int(stem[3:-5])
+            except ValueError:
+                continue
+            if cik not in ciks:
+                continue
+            try:
+                with archive.open(name) as handle:
+                    yield cik, json.load(handle)
+            except (json.JSONDecodeError, OSError) as exc:
+                log.warning("edgar bulk: skipping %s: %s", stem, exc)
 
 
 def resolve_ciks(
@@ -195,3 +230,17 @@ class EdgarClient:
 
     def companyfacts(self, cik: int) -> dict:
         return self._get_json(COMPANYFACTS_URL.format(cik=int(cik)))
+
+    def download_bulk(self, dest) -> None:
+        """Stream companyfacts.zip (~1.4 GB) to dest — temp-then-rename."""
+        from pathlib import Path
+
+        dest = Path(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_suffix(".zip.tmp")
+        with self._http.stream("GET", COMPANYFACTS_BULK_URL, headers=self._headers) as response:
+            response.raise_for_status()
+            with open(tmp, "wb") as out:
+                for chunk in response.iter_bytes(1 << 20):
+                    out.write(chunk)
+        tmp.rename(dest)

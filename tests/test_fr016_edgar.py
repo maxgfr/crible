@@ -164,6 +164,90 @@ def test_fr016_directory_outage_is_recorded_not_raised(tmp_path, monkeypatch) ->
     assert outcome["outage"] is not None and "company_tickers" in outcome["outage"]
 
 
+# ----------------------------------------------------------------------- bulk
+
+
+def _bulk_zip(tmp_path, members: dict[str, dict]):
+    import json
+    import zipfile
+
+    path = tmp_path / "companyfacts.zip"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("README.txt", "not a filing")  # ignored
+        for name, payload in members.items():
+            archive.writestr(name, json.dumps(payload))
+    return path
+
+
+def test_fr016_bulk_ingests_every_resolved_us_issuer(tmp_path, monkeypatch) -> None:
+    """ADR-0005 scale-up: one archive → the audited layer for every resolved
+    US listing; unresolved CIKs are skipped; the task is marked fetched so
+    the per-CIK cycle finds nothing due afterwards."""
+    import duckdb as _duckdb
+
+    from crible.ingest.service import run_edgar_bulk, run_edgar_cycle
+
+    _seed_universe(tmp_path, monkeypatch)
+    zip_path = _bulk_zip(
+        tmp_path,
+        {
+            "CIK0000320193.json": COMPANYFACTS,
+            "CIK0000000001.json": COMPANYFACTS,  # not in the ticker map — skipped
+        },
+    )
+    outcome = run_edgar_bulk(zip_path=zip_path, ticker_map={"AAPL": 320193}, download=False)
+    assert outcome["enriched"] == 1
+    assert outcome["outage"] is None
+    files = list(tmp_path.glob("raw/provider=edgar/symbol=AAPL/*.parquet"))
+    assert len(files) == 3  # income + balance + cashflow
+
+    con = _duckdb.connect(str(tmp_path / "crible.duckdb"))
+    fetched = con.execute(
+        "SELECT last_fetched_at FROM edgar_tasks WHERE symbol = 'AAPL'"
+    ).fetchone()[0]
+    con.close()
+    assert fetched is not None
+
+    class NeverCalled:
+        def companyfacts(self, cik):
+            raise AssertionError("bulk marked AAPL fetched — nothing is due")
+
+    followup = run_edgar_cycle(limit=10, client=NeverCalled(), ticker_map={"AAPL": 320193})
+    assert followup["enriched"] == []
+
+
+def test_fr016_bulk_without_archive_and_download_disabled_skips(tmp_path, monkeypatch) -> None:
+    from crible.ingest.service import run_edgar_bulk
+
+    _seed_universe(tmp_path, monkeypatch)
+    outcome = run_edgar_bulk(
+        zip_path=tmp_path / "missing.zip", ticker_map={"AAPL": 320193}, download=False
+    )
+    assert outcome["skipped"] is not None
+    assert list(tmp_path.glob("raw/provider=edgar/**/*.parquet")) == []
+
+
+def test_fr016_facts_cap_at_eight_fiscal_years() -> None:
+    facts = {
+        "facts": {
+            "us-gaap": {
+                "NetIncomeLoss": {
+                    "units": {
+                        "USD": [
+                            _fact(f"{year}-01-01", f"{year}-12-31", float(year))
+                            for year in range(2010, 2026)
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    income = facts_to_frames(facts)[("income", "annual")]
+    assert len(income) == 8  # bounded history keeps the snapshot publishable
+    assert list(income["period"])[0] == "2018-12-31"
+    assert list(income["period"])[-1] == "2025-12-31"
+
+
 # ---------------------------------------------------------------- fair access
 
 

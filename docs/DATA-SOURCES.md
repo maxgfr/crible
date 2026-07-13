@@ -33,10 +33,12 @@ it all price-based ratios, because **no open OHLCV price source exists**:
 exchanges monetize market data, and Yahoo/Google merely sublicense it.
 
 **Demo footprint.** The demo ships the full universe parquet (~4 MB — a
-one-time, browser-cached fetch that powers search over all 151k listings) but
-keeps the snapshot bounded (~100 companies) via the crawl deadline and
-bootstrap sample. What Pages serves is only `site-data/`; the raw layer lives
-on the branch/release for bootstrap purposes and never reaches the browser.
+one-time, browser-cached fetch that powers search over all 151k listings).
+Since the EDGAR bulk sweep (2026-07-13), the snapshot covers the whole US
+market (audited fundamentals, 8 fiscal years max) plus the crawled European
+sample — tens of MB of parquet, still fetched via HTTP range requests. What
+Pages serves is only `site-data/`; the raw layer lives on the branch/release
+for bootstrap purposes and never reaches the browser.
 
 ## Google Finance — evaluated and rejected (2026-07-13)
 

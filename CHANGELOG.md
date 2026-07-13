@@ -27,6 +27,12 @@
   all composing the same plain, editable DSL into the query bar. Replaces the
   fixed six-filter bar; the grammar and the Python/TS golden parity are
   untouched.
+- **EDGAR bulk — the whole US market on the demo (ADR-0005 update)** — the
+  nightly now downloads `companyfacts.zip` (1.4 GB, public domain) and ingests
+  the audited layer for every resolved US listing (~10k issuers, 8 fiscal
+  years of history), instead of 25 per night. Issuers without a Yahoo price
+  carry the price-free indicators (Piotroski, Beneish, margins, growth) with
+  NULL valuation ratios — never imputed. `demo-refresh --edgar-bulk`.
 - **Starter filter chips** — the classic screener criteria (market cap, P/E,
   P/B, dividend yield, ROE, debt/equity, margins, growth, scores, ranks,
   region/sector/country) pinned as one-click editable chips on the builder.
