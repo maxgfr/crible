@@ -1,10 +1,10 @@
 # Nightly demo-data refresh — 100% keyless open data (NFR-009: no secrets
 # beyond GITHUB_TOKEN). Restores the last-good dataset from the demo-data
 # branch, runs one bounded refresh pass (FinanceDatabase universe + Yahoo
-# fundamentals/prices + ESEF audited statements via a fresh GLEIF mapping),
-# then publishes back as a single orphan commit. Any failure — including the
-# export-site min-symbols gate — aborts BEFORE the push, so the live demo
-# always keeps the last-good data.
+# fundamentals/prices + ESEF audited statements via a fresh GLEIF mapping +
+# EDGAR audited US statements), then publishes back as a single orphan
+# commit. Any failure — including the export-site min-symbols gate — aborts
+# BEFORE the push, so the live demo always keeps the last-good data.
 
 name: refresh-data
 
@@ -25,6 +25,8 @@ jobs:
     timeout-minutes: 300
     env:
       CRIBLE_DATA_DIR: data
+      # SEC fair-access: a declared User-Agent naming the operator (FR-016)
+      CRIBLE_SEC_USER_AGENT: "crible-demo/nightly (+https://github.com/${{ github.repository }})"
     steps:
       - uses: actions/checkout@v4
 
@@ -56,6 +58,11 @@ jobs:
 
       - name: Publish the demo-data branch (single orphan commit)
         run: bash scripts/publish-demo-data.sh
+
+      - name: Publish the rolling data-latest release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/publish-data-release.sh
 
       - name: Summary
         run: |
