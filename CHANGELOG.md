@@ -2,6 +2,18 @@
 
 ## Unreleased — 2026-07-13 (open-data hardening)
 
+- **Automated Stooq bulk download (`crible stooq-download`)** — clears Stooq's
+  two anti-bot layers headlessly so the CAPTCHA-gated worldwide price archives
+  can be fetched in CI: a pure-Python SHA-256 proof-of-work solver for the
+  "verify your browser" wall, then a lightweight ONNX OCR model (`ddddocr`,
+  ~85 % first-try, retried) for the 4-char image captcha, validated against
+  Stooq's own endpoint. Ships a reusable `crible solve-captcha <img>` command,
+  an optional `captcha` extra (keeps core ML-free), a `stooq-download` proof
+  workflow, and network-free orchestration tests. `--import` chains straight
+  into the existing derived-values distillation. **Wired into the
+  `import-prices` workflow**: it now fetches the Stooq worldwide dump
+  (`d_world_txt`, best-effort) alongside HuggingFace before recompute/publish,
+  so the pipeline gains worldwide coverage in CI.
 - **SEC EDGAR provider (FR-016, ADR-0005)** — audited US fundamentals from the
   public-domain companyfacts API, keyless, on its own SEC fair-access budget
   (declared `CRIBLE_SEC_USER_AGENT`, 5 req/s, never the Yahoo bucket). Audited

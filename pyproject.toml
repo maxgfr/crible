@@ -19,6 +19,14 @@ dependencies = [
     "httpx>=0.27",
 ]
 
+[project.optional-dependencies]
+# CAPTCHA OCR for the automated Stooq bulk download (crible stooq-download).
+# Optional on purpose: pulls a small ONNX stack (onnxruntime + opencv + pillow),
+# so `crible` core stays ML-free. Install with `uv sync --extra captcha`.
+# CI note: ddddocr requires opencv-python (not headless) → the runner needs the
+# system OpenGL lib (`apt-get install -y libgl1`); see .github/workflows/stooq-download.yml.
+captcha = ["ddddocr>=1.6"]
+
 [project.scripts]
 crible = "crible.cli:app"
 

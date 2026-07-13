@@ -200,6 +200,62 @@ def import_prices(
     )
 
 
+@app.command("solve-captcha")
+def solve_captcha_cmd(
+    image: str = typer.Argument(..., help="Path to a captcha image (png/jpg/gif), or '-' for stdin"),
+    raw: bool = typer.Option(False, "--raw", help="Print the model output verbatim (no normalising)"),
+) -> None:
+    """OCR a captcha image and print the code (needs the optional 'captcha' extra)."""
+    from crible.ingest.captcha import CaptchaError, solve_captcha
+
+    if image == "-":
+        data = sys.stdin.buffer.read()
+    else:
+        path = Path(image)
+        if not path.exists():
+            _fail(f"no such image: {path}")
+        data = path.read_bytes()
+    try:
+        typer.echo(solve_captcha(data, normalize=not raw))
+    except CaptchaError as exc:
+        _fail(str(exc))
+
+
+@app.command("stooq-download")
+def stooq_download_cmd(
+    dataset: str = typer.Argument(
+        ..., help="Stooq bulk code, e.g. d_world_txt, d_us_txt, d_hu_txt (d_/h_/5_ = daily/hourly/5-min)"
+    ),
+    out: Path = typer.Option(None, "--out", help="Output zip path (default: ./<dataset>.zip)"),
+    attempts: int = typer.Option(6, "--attempts", help="Max captcha attempts before giving up"),
+    do_import: bool = typer.Option(
+        False, "--import", help="After download, distil it into data/prices-latest.parquet"
+    ),
+) -> None:
+    """Download a CAPTCHA-gated Stooq bulk archive automatically (proof-of-work + OCR captcha).
+
+    Clears Stooq's anti-bot layers headlessly so the worldwide price dumps can be
+    fetched in CI. Only derived values are ever stored (see `import-prices`)."""
+    from crible.ingest.stooq_fetch import StooqError, download_stooq
+
+    target = out or Path(f"{dataset}.zip")
+    try:
+        path = download_stooq(dataset, target, attempts=attempts)
+    except StooqError as exc:
+        _fail(str(exc))
+    size_mb = path.stat().st_size / 1e6
+    typer.echo(f"downloaded {dataset} -> {path} ({size_mb:.1f} MB)")
+    if do_import:
+        from crible import config
+        from crible.ingest.price_import import import_stooq
+
+        report = import_stooq(config.data_dir(), path)
+        typer.echo(
+            f"imported {report.imported} symbols from stooq"
+            f" ({report.skipped_unknown} outside the universe) — run `crible compute` to refresh ratios"
+        )
+
+
 @app.command("demo-refresh")
 def demo_refresh(
     deadline: float = typer.Option(9000.0, "--deadline", help="Wall-clock budget in seconds"),

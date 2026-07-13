@@ -1,13 +1,21 @@
-# On-demand price refresh: pull the HuggingFace dump distillate, recompute
-# the snapshot with it, republish. The weekly pull already runs inside
-# refresh-data; this dispatch exists to force one anytime.
-# (Stooq bulk zips are CAPTCHA-gated by design — they cannot run in CI:
-#  download manually, `crible import-prices <zip>`, `scripts/publish-prices.sh`.)
+# On-demand price refresh: pull the HuggingFace (US) distillate AND the Stooq
+# worldwide dump, recompute the snapshot with them, republish. The weekly HF
+# pull already runs inside refresh-data; this dispatch exists to force one
+# anytime and to add Stooq's worldwide coverage.
+# Stooq is CAPTCHA-gated — `crible stooq-download` clears the proof-of-work +
+# image captcha headlessly (SHA-256 hashcash + ddddocr OCR), so it runs here in
+# CI. It stays best-effort (continue-on-error): prices are an enrichment, never
+# a gate. Set the stooq_dataset input to empty to skip it.
 
 name: import-prices
 
 on:
   workflow_dispatch:
+    inputs:
+      stooq_dataset:
+        description: "Stooq worldwide bulk code to fetch (empty = skip Stooq, HuggingFace only)"
+        default: d_world_txt
+        required: false
 
 permissions:
   contents: write
@@ -29,12 +37,23 @@ jobs:
           git fetch origin demo-data
           git checkout FETCH_HEAD -- data
 
+      # ddddocr (the captcha OCR) pulls opencv-python (not headless) → needs libGL.
+      - name: Install the OpenGL runtime opencv needs
+        run: sudo apt-get update && sudo apt-get install -y libgl1 libglib2.0-0
+
       - uses: astral-sh/setup-uv@v5
       - run: uv python install 3.12
-      - run: uv sync
+      - run: uv sync --extra captcha
 
-      - name: Import the price dump distillate (derived values only)
+      - name: Import the HuggingFace price dump distillate (US, derived values only)
         run: uv run crible import-prices huggingface
+
+      - name: Fetch the Stooq worldwide dump (proof-of-work + OCR captcha, derived values only)
+        if: ${{ inputs.stooq_dataset != '' }}
+        continue-on-error: true # prices are an enrichment, never a gate
+        run: |
+          uv run crible stooq-download "${{ inputs.stooq_dataset }}" \
+            --out "${RUNNER_TEMP}/stooq.zip" --import
 
       - name: Recompute the snapshot with the fresh quotes
         run: uv run crible compute

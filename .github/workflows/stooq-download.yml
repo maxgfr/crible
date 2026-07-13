@@ -1,0 +1,49 @@
+# Proof/utility workflow: fetch a CAPTCHA-gated Stooq bulk archive headlessly in
+# CI. Demonstrates that `crible stooq-download` clears Stooq's proof-of-work +
+# image-captcha with a lightweight ONNX model (ddddocr) on a stock runner.
+# Manual only — it downloads licensed data, so it never publishes on its own;
+# to refresh prices, add `--import` + a compute/publish step (see import-prices).
+
+name: stooq-download
+
+on:
+  workflow_dispatch:
+    inputs:
+      dataset:
+        description: "Stooq bulk code (d_/h_/5_ = daily/hourly/5-min; e.g. d_world_txt, d_us_txt, d_hu_txt)"
+        default: d_hu_txt
+        required: true
+      attempts:
+        description: "Max captcha attempts"
+        default: "6"
+        required: false
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # ddddocr depends on opencv-python (not headless) → the runner needs libGL.
+      - name: Install the OpenGL runtime opencv needs
+        run: sudo apt-get update && sudo apt-get install -y libgl1 libglib2.0-0
+
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - run: uv sync --extra captcha
+
+      - name: Download the archive (proof-of-work + OCR captcha, no browser)
+        run: |
+          uv run crible stooq-download "${{ inputs.dataset }}" \
+            --out "/tmp/${{ inputs.dataset }}.zip" \
+            --attempts "${{ inputs.attempts }}"
+          echo "--- archive contents (first 15) ---"
+          unzip -l "/tmp/${{ inputs.dataset }}.zip" | head -20
+
+      - name: Upload the archive as a run artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stooq-${{ inputs.dataset }}
+          path: /tmp/${{ inputs.dataset }}.zip
+          retention-days: 3

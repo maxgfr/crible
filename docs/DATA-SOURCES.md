@@ -69,7 +69,7 @@ the crawl has no bars (staleness stays visible via `price_asof`).
 | Dump | Coverage | Access | Freshness | Terms |
 |---|---|---|---|---|
 | [paperswithbacktest/Stocks-Daily-Price](https://huggingface.co/datasets/paperswithbacktest/Stocks-Daily-Price) | ~7k US listings, daily, full history | 4 parquet shards, plain HTTPS, **no key/API** — pulled weekly by the nightly | Refreshed ~monthly (2026-07-09 at audit time) | License "other" (unspecified) — hence derived-values-only |
-| [Stooq bulk archives](https://stooq.com/db/h/) | Worldwide (US, DE, UK, JP, PL…), daily, decades | **Manual download** (CAPTCHA-gated; automation blocked, verified 2026-07-13) then `crible import-prices <zip>` and `scripts/publish-prices.sh` | Daily | No published license — same derived-values-only policy |
+| [Stooq bulk archives](https://stooq.com/db/h/) | Worldwide (US, DE, UK, JP, PL…), daily, decades | **`crible stooq-download <dataset> --import`** clears the two anti-bot layers headlessly (SHA-256 proof-of-work + a 4-char image captcha, OCR'd by the optional `captcha` extra; verified 2026-07-13) — or manual download then `crible import-prices <zip>` | Daily | No published license — same derived-values-only policy |
 
 The `import-prices` workflow (manual dispatch) forces a HuggingFace refresh +
 snapshot recompute + republish anytime; the nightly refresh pulls it weekly
@@ -77,9 +77,13 @@ on its own.
 
 ## Removed sources (open-data cleanup, 2026-07-13)
 
-- **Stooq** — the specced price fallback never became load-bearing: its CSV
-  endpoints sit behind a JS proof-of-work wall (verified 2026-07-07) and no
-  redistribution license is published. The dead code paths were removed.
+- **Stooq** — the specced *live per-symbol CSV* fallback never became
+  load-bearing: those endpoints sit behind a JS proof-of-work wall (verified
+  2026-07-07) and no redistribution license is published, so the dead live-CSV
+  code paths were removed. The bulk archives stay a supported DUMP source: as of
+  2026-07-13 `crible stooq-download` clears that same proof-of-work plus the
+  download image captcha headlessly (the captcha is OCR'd by the optional
+  `captcha` extra), still storing only derived values.
 - **SimFin / FMP / EODHD keyed plugins** — deleted. SimFin's free license is
   personal-research only and even paid tiers bar redistribution; the others
   are commercial services. Keeping crible fully open data means the shipped
