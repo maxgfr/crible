@@ -25,8 +25,9 @@ jobs:
     timeout-minutes: 300
     env:
       CRIBLE_DATA_DIR: data
-      # SEC fair-access: a declared User-Agent naming the operator (FR-016)
-      CRIBLE_SEC_USER_AGENT: "crible-demo/nightly (+https://github.com/${{ github.repository }})"
+      # SEC fair-access: a declared User-Agent naming the operator WITH a
+      # contact email — www.sec.gov 403s UAs without one (seen 2026-07-13)
+      CRIBLE_SEC_USER_AGENT: "crible-demo (maxgolfier@gmail.com; +https://github.com/${{ github.repository }})"
     steps:
       - uses: actions/checkout@v4
 

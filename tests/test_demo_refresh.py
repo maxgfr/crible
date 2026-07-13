@@ -208,17 +208,22 @@ def test_run_refresh_without_universe_source_or_last_good_fails(refresh_env) -> 
         )
 
 
-def test_run_refresh_prunes_raw_versions(refresh_env) -> None:
+def test_run_refresh_restores_queue_from_raw_and_advances(refresh_env) -> None:
+    """A nightly Actions run starts from a fresh operational DB (only the raw
+    parquet layer travels on the demo-data branch). The queue freshness must
+    be rebuilt from the raw filename stamps — otherwise every night re-crawls
+    the same head and coverage plateaus instead of advancing."""
     provider = FakeYfProvider()
-    run_refresh(
+    first = run_refresh(
         deadline_seconds=60,
         fetch_universe=fixture_frame,
         provider=provider,
         price_provider=FakePriceProvider(),
         edgar_client=FakeEdgarDirectory(),
     )
-    # a nightly Actions run starts from a fresh operational DB (only the raw
-    # parquet layer is restored from the demo-data branch) → full re-crawl
+    assert first["fetched"] == 8
+    calls_after_first = len(provider.calls)
+
     (refresh_env / "crible.duckdb").unlink()
     result = run_refresh(
         deadline_seconds=60,
@@ -227,8 +232,10 @@ def test_run_refresh_prunes_raw_versions(refresh_env) -> None:
         price_provider=FakePriceProvider(),
         edgar_client=FakeEdgarDirectory(),
     )
-    assert result["pruned"] >= 8  # older income versions for the 8 re-crawled symbols
-    # after pruning: at most one file per (provider, symbol, statement, freq)
+    assert result["queue_restored"] >= 8
+    assert result["fetched"] == 0  # everything fresh in raw — nothing re-crawled
+    assert len(provider.calls) == calls_after_first
+    # the raw layer stays pruned: at most one file per (provider, symbol, statement, freq)
     for directory in refresh_env.glob("raw/provider=*/symbol=*"):
         keys = ["-".join(p.stem.split("-", 2)[:2]) for p in directory.glob("*.parquet")]
         assert len(keys) == len(set(keys)), directory
