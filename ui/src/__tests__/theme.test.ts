@@ -1,22 +1,32 @@
-// T-016 — theme resolution & persistence: stored value wins, then OS
-// preference, dark is the default; applyTheme stamps <html data-theme>.
+// T-016 — theme resolution & persistence: an explicit stored choice wins,
+// "auto" (the default) follows the OS preference; applyTheme stamps
+// <html data-theme>.
 
 import { describe, expect, it } from "vitest";
-import { applyTheme, resolveTheme, toggled } from "../theme";
+import { applyTheme, effectiveTheme, resolvePref, toggled } from "../theme";
 
-describe("resolveTheme", () => {
-  it("uses the stored theme when valid", () => {
-    expect(resolveTheme("light", false)).toBe("light");
-    expect(resolveTheme("dark", true)).toBe("dark");
+describe("resolvePref", () => {
+  it("keeps an explicit stored choice", () => {
+    expect(resolvePref("light")).toBe("light");
+    expect(resolvePref("dark")).toBe("dark");
   });
 
-  it("falls back to the OS preference when nothing stored", () => {
-    expect(resolveTheme(null, true)).toBe("light");
-    expect(resolveTheme(null, false)).toBe("dark");
+  it("defaults to auto when nothing (or garbage) is stored", () => {
+    expect(resolvePref(null)).toBe("auto");
+    expect(resolvePref("auto")).toBe("auto");
+    expect(resolvePref("phosphore")).toBe("auto");
+  });
+});
+
+describe("effectiveTheme", () => {
+  it("follows the OS in auto mode", () => {
+    expect(effectiveTheme("auto", true)).toBe("light");
+    expect(effectiveTheme("auto", false)).toBe("dark");
   });
 
-  it("ignores garbage stored values", () => {
-    expect(resolveTheme("phosphore", false)).toBe("dark");
+  it("ignores the OS when an explicit theme is chosen", () => {
+    expect(effectiveTheme("dark", true)).toBe("dark");
+    expect(effectiveTheme("light", false)).toBe("light");
   });
 });
 

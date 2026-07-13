@@ -30,7 +30,15 @@ import { StatusView } from "./components/StatusView";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { Wordmark } from "./components/Wordmark";
 import { useHashRoute } from "./router";
-import { applyTheme, loadTheme, saveTheme, toggled } from "./theme";
+import {
+  applyTheme,
+  effectiveTheme,
+  loadThemePref,
+  prefersLight,
+  saveThemePref,
+  toggled,
+  watchSystemTheme,
+} from "./theme";
 
 export const DEFAULT_COLUMNS = [
   "symbol", "name", "country", "sector",
@@ -71,7 +79,9 @@ function FirstRun({ statusData }: { statusData: StatusResponse }) {
 
 export default function App() {
   const [route, navigate] = useHashRoute();
-  const [theme, setTheme] = useState(() => loadTheme());
+  const [themePref, setThemePref] = useState(() => loadThemePref());
+  const [systemLight, setSystemLight] = useState(() => prefersLight());
+  const theme = effectiveTheme(themePref, systemLight);
   const [query, setQuery] = useState(DEFAULT_QUERY);
   const [ranQuery, setRanQuery] = useState<string | null>(null);
   const [result, setResult] = useState<ScreenResponse | null>(null);
@@ -83,10 +93,12 @@ export default function App() {
   const [fieldInfos, setFieldInfos] = useState<FieldInfo[]>([]);
   const queryInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => watchSystemTheme(() => setSystemLight(prefersLight())), []);
+
   useEffect(() => {
     applyTheme(theme);
-    saveTheme(theme);
-  }, [theme]);
+    saveThemePref(themePref);
+  }, [theme, themePref]);
 
   const run = async (dsl?: string) => {
     const q = dsl ?? query;
@@ -170,7 +182,7 @@ export default function App() {
         <span className="spacer" />
         <SearchBox onPick={(symbol) => navigate({ view: route.view, company: symbol })} />
         <span className="status-pill">{statusLine}</span>
-        <ThemeToggle theme={theme} onToggle={() => setTheme((t) => toggled(t))} />
+        <ThemeToggle theme={theme} onToggle={() => setThemePref(toggled(theme))} />
       </header>
 
       {STATIC_MODE && <DemoBanner />}
@@ -246,7 +258,7 @@ export default function App() {
       )}
 
       {route.view === "status" && <StatusView />}
-      {route.view === "providers" && <ProvidersView theme={theme} onTheme={setTheme} />}
+      {route.view === "providers" && <ProvidersView pref={themePref} onPref={setThemePref} />}
 
       {route.company && (
         <CompanyDrawer

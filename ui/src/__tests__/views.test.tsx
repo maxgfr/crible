@@ -71,7 +71,7 @@ describe("ProvidersView (T-020)", () => {
         ]),
       ),
     );
-    render(<ProvidersView theme="dark" onTheme={() => {}} />);
+    render(<ProvidersView pref="dark" onPref={() => {}} />);
     await waitFor(() => expect(rtl.getByText("yfinance")).toBeInTheDocument());
     expect(rtl.getByText("stub")).toBeInTheDocument();
     expect(rtl.getByText("STUB_KEY")).toBeInTheDocument();
@@ -81,11 +81,13 @@ describe("ProvidersView (T-020)", () => {
     expect(rtl.getByText(/\.env/)).toBeInTheDocument();
   });
 
-  it("exposes the theme preference", async () => {
+  it("exposes the theme preference, auto included", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse([])));
-    const onTheme = vi.fn();
-    render(<ProvidersView theme="dark" onTheme={onTheme} />);
+    const onPref = vi.fn();
+    render(<ProvidersView pref="dark" onPref={onPref} />);
     fireEvent.click(rtl.getByRole("radio", { name: /paper terminal/i }));
-    expect(onTheme).toHaveBeenCalledWith("light");
+    expect(onPref).toHaveBeenCalledWith("light");
+    fireEvent.click(rtl.getByRole("radio", { name: /auto/i }));
+    expect(onPref).toHaveBeenCalledWith("auto");
   });
 });

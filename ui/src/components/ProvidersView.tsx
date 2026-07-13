@@ -4,11 +4,11 @@
 
 import { useEffect, useState } from "react";
 import { providers, type ProviderInfo } from "../data";
-import type { Theme } from "../theme";
+import type { ThemePref } from "../theme";
 
 interface Props {
-  theme: Theme;
-  onTheme: (theme: Theme) => void;
+  pref: ThemePref;
+  onPref: (pref: ThemePref) => void;
 }
 
 const BUILT_INS = [
@@ -25,7 +25,7 @@ function StatePill({ provider }: { provider: ProviderInfo }) {
   return <span className="pill pill-muted">off — no key</span>;
 }
 
-export function ProvidersView({ theme, onTheme }: Props) {
+export function ProvidersView({ pref, onPref }: Props) {
   const [plugins, setPlugins] = useState<ProviderInfo[] | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -93,8 +93,17 @@ export function ProvidersView({ theme, onTheme }: Props) {
             <input
               type="radio"
               name="theme"
-              checked={theme === "dark"}
-              onChange={() => onTheme("dark")}
+              checked={pref === "auto"}
+              onChange={() => onPref("auto")}
+            />{" "}
+            Auto (follow the system)
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="theme"
+              checked={pref === "dark"}
+              onChange={() => onPref("dark")}
             />{" "}
             Dark (phosphore)
           </label>
@@ -102,8 +111,8 @@ export function ProvidersView({ theme, onTheme }: Props) {
             <input
               type="radio"
               name="theme"
-              checked={theme === "light"}
-              onChange={() => onTheme("light")}
+              checked={pref === "light"}
+              onChange={() => onPref("light")}
             />{" "}
             Light (paper terminal)
           </label>
