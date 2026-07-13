@@ -5,7 +5,6 @@ crawl has no bars. The licensed series themselves are never stored."""
 
 from __future__ import annotations
 
-import io
 import zipfile
 
 import pandas as pd
