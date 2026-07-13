@@ -97,6 +97,10 @@ Phase-2 providers (SimFin / FMP / EODHD) are **optional** and off by default: ad
 to enable one, and it shows up as enabled in the **Providers** view. crible stays fully keyless
 without them.
 
+The full public-data audit — every source, its access mode and license terms, plus the
+evaluated-and-rejected candidates (e.g. Google Finance, whose official API shut down in 2012) —
+lives in [`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md).
+
 ### How the composite rank is built (FR-015)
 
 `composite_rank` (0-100) blends three percentile pillars, each ranked within the

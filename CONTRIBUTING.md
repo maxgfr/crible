@@ -9,7 +9,9 @@ you need.
    an empty environment — no API key, no account, ever. CI enforces this: the
    Python job runs with no secrets configured. A change that makes a core flow
    require a key will not be merged. Optional keyed providers (SimFin, FMP,
-   EODHD) must stay optional and off by default.
+   EODHD) must stay optional and off by default. New data sources must clear
+   the public-data audit in [docs/DATA-SOURCES.md](docs/DATA-SOURCES.md) —
+   public, keyless, ToS-respecting — and be added to that table.
 2. **The DSL has two implementations that may never drift.** The Python
    compiler (`src/crible/dsl/`) and the TypeScript port (`ui/src/dsl/`) are
    locked together by shared golden vectors (`ui/src/dsl/golden.json`),
@@ -39,6 +41,21 @@ The GitHub Pages demo build is a separate mode of the same SPA:
 ```bash
 VITE_DATA_MODE=static VITE_BASE=/crible/ npm --prefix ui run build
 ```
+
+### Seeding the demo data (maintainers)
+
+The demo dataset normally refreshes nightly via the `refresh-data` workflow.
+To seed it upfront — or rescue it when Yahoo rate-limits the GitHub runners —
+run the same keyless pipeline from your own machine:
+
+```bash
+DEADLINE=7200 bash scripts/seed-demo-data.sh   # crawl budget in seconds
+```
+
+It restores the last-good dataset, crawls politely (~47 symbols/hour at the
+default budget), refuses to publish under 50 covered symbols, force-pushes the
+orphan `demo-data` branch and triggers the Pages deploy. Re-running resumes
+instead of starting over.
 
 ## Pull requests
 

@@ -55,14 +55,7 @@ jobs:
         run: uv run crible export-site --out site-data --min-symbols 50
 
       - name: Publish the demo-data branch (single orphan commit)
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout --orphan demo-data-publish
-          git reset
-          git add -f data/raw data/universe.parquet data/snapshot data/status.json site-data
-          git commit -q -m "demo-data: nightly refresh $(date -u +%F)"
-          git push --force origin HEAD:refs/heads/demo-data
+        run: bash scripts/publish-demo-data.sh
 
       - name: Summary
         run: |
