@@ -383,7 +383,10 @@ class _YfPriceAdapter:
         from crible.providers.yfinance_provider import RATE_LIMIT_MARKERS
 
         try:
-            bars = yf.Ticker(symbol).history(period="5d", auto_adjust=False)
+            # one year of daily bars is still ONE request — and FR-015's
+            # return_6m needs ≥182 days of history to compute (momentum
+            # pillar); a 5d window left it permanently NaN
+            bars = yf.Ticker(symbol).history(period="1y", auto_adjust=False)
         except Exception as exc:  # noqa: BLE001
             if any(m in str(exc).lower() for m in RATE_LIMIT_MARKERS):
                 raise RateLimitedError(str(exc)) from exc

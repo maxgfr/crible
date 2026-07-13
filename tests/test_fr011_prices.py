@@ -88,3 +88,27 @@ def test_fr011_snapshot_without_prices_has_null_price_asof(tmp_path) -> None:
     frames = {(s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()}
     snapshot = build_symbol_snapshot("TEST.PA", frames, computed_at=1000.0)
     assert snapshot["price_asof"].isna().all()
+
+
+def test_fr011_price_adapter_fetches_a_full_year_for_momentum(monkeypatch) -> None:
+    """FR-015 regression: return_6m needs ≥182 days of daily bars — a 5d
+    fetch window left the momentum pillar permanently NaN. One year of bars
+    still costs exactly one Yahoo request."""
+    import sys
+    import types
+
+    calls: dict = {}
+
+    class FakeTicker:
+        def __init__(self, symbol: str) -> None:
+            calls["symbol"] = symbol
+
+        def history(self, period=None, auto_adjust=None):
+            calls["period"] = period
+            return pd.DataFrame()
+
+    monkeypatch.setitem(sys.modules, "yfinance", types.SimpleNamespace(Ticker=FakeTicker))
+    from crible.ingest.service import _YfPriceAdapter
+
+    assert _YfPriceAdapter().fetch_prices("AIR.PA") is None  # empty history → None
+    assert calls["period"] == "1y"
