@@ -44,6 +44,8 @@ def build_symbol_snapshot(
     provider: str = "yfinance",
     computed_at: float | None = None,
     audited_frames: dict[tuple[str, str], pd.DataFrame] | None = None,
+    price_quote: tuple[float, str] | None = None,
+    momentum_6m: float | None = None,
 ) -> pd.DataFrame:
     canonical = build_canonical(frames)
     audited_fields: dict[str, list[str]] = {}
@@ -64,7 +66,9 @@ def build_symbol_snapshot(
 
     price_asof: str | None = None
     if price is None:
-        close = latest_close(frames)
+        # crawled daily bars win; the imported dump quote is the fallback
+        # (price_quote from data/prices-latest.parquet — derived values only)
+        close = latest_close(frames) or price_quote
         if close is not None:
             value, price_asof = close
             # the current price applies to the LATEST fiscal period only —
@@ -84,9 +88,10 @@ def build_symbol_snapshot(
     # (cross-sectional like the price itself); NaN when history is too short.
     out["return_6m"] = float("nan")
     if len(out):
-        out.iloc[-1, out.columns.get_loc("return_6m")] = price_return(
-            frames.get(("prices", "daily"))
-        )
+        momentum = price_return(frames.get(("prices", "daily")))
+        if pd.isna(momentum) and momentum_6m is not None:
+            momentum = momentum_6m  # distilled from the imported dump
+        out.iloc[-1, out.columns.get_loc("return_6m")] = momentum
     out.insert(0, "symbol", symbol)
     out.insert(1, "period", out.index.astype(str))
     out["provider"] = provider
@@ -151,8 +156,21 @@ def _frames_provider(frames: dict[tuple[str, str], pd.DataFrame], default: str) 
     return default
 
 
+def _price_quotes(data_dir: Path | str) -> dict[str, tuple[float, str, float]]:
+    """symbol → (close, asof, return_6m) from the imported dump distillate."""
+    from crible.ingest.price_import import load_prices_latest
+
+    table = load_prices_latest(data_dir)
+    return {
+        str(row.symbol): (float(row.close), str(row.price_asof), float(row.return_6m))
+        for row in table.itertuples()
+        if pd.notna(row.close)
+    }
+
+
 def build_snapshot(data_dir: Path | str, symbols: list[str] | None = None) -> pd.DataFrame:
     todo = symbols if symbols is not None else crawled_symbols(data_dir)
+    quotes = _price_quotes(data_dir)
     parts = []
     for symbol in todo:
         scraped = latest_raw_frames(data_dir, symbol, provider="yfinance")
@@ -164,11 +182,14 @@ def build_snapshot(data_dir: Path | str, symbols: list[str] | None = None) -> pd
         }
         if not scraped and not audited:
             continue
+        quote = quotes.get(symbol)
         part = build_symbol_snapshot(
             symbol,
             scraped or audited,
             provider="yfinance" if scraped else _frames_provider(audited, "esef"),
             audited_frames=audited if scraped else None,
+            price_quote=(quote[0], quote[1]) if quote else None,
+            momentum_6m=quote[2] if quote else None,
         )
         if not part.empty:
             parts.append(part)

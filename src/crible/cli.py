@@ -161,6 +161,45 @@ def bootstrap(
     )
 
 
+@app.command("import-prices")
+def import_prices(
+    source: str = typer.Argument(
+        ..., help="'huggingface' (US, plain HTTPS) or a path to a Stooq bulk zip (manual download)"
+    ),
+    max_age_days: float = typer.Option(
+        0, "--max-age-days", help="Skip when the last import is younger than this (0 = always run)"
+    ),
+) -> None:
+    """Distil a price DUMP (no API) into data/prices-latest.parquet.
+
+    Only derived values are stored/published — last close, as-of date and
+    trailing 6-month return per symbol — never the licensed series."""
+    from crible import config
+    from crible.ingest.price_import import (
+        import_huggingface,
+        import_stooq,
+        latest_import_age_days,
+    )
+
+    data = config.data_dir()
+    if max_age_days > 0:
+        age = latest_import_age_days(data)
+        if age is not None and age < max_age_days:
+            typer.echo(f"import is {age:.1f} days old (< {max_age_days:g}) — nothing to do")
+            return
+    if source == "huggingface":
+        report = import_huggingface(data)
+    else:
+        path = Path(source)
+        if not path.exists():
+            _fail(f"no such archive: {path} — download it manually from stooq.com/db/h/")
+        report = import_stooq(data, path)
+    typer.echo(
+        f"imported {report.imported} symbols from {report.source}"
+        f" ({report.skipped_unknown} outside the universe) — run `crible compute` to refresh ratios"
+    )
+
+
 @app.command("demo-refresh")
 def demo_refresh(
     deadline: float = typer.Option(9000.0, "--deadline", help="Wall-clock budget in seconds"),

@@ -101,3 +101,9 @@ company matches" from a thin dataset.
 `uv run crible demo-refresh --deadline 9000` is the bounded cron alternative;
 consume-only setups re-pull the published dataset with
 `uv run crible bootstrap --force`.
+
+Prices for symbols the crawl has not reached come from dump distillates:
+`crible import-prices huggingface` (US, plain HTTPS) or
+`crible import-prices <stooq-zip>` (worldwide, manual download from
+stooq.com/db/h/), then `crible compute`. Check `price_asof` in results —
+it carries the staleness honestly.

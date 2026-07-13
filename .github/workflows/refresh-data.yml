@@ -51,6 +51,10 @@ jobs:
           curl -fsSL --retry 3 -o data/isin-lei.zip \
             https://mapping.gleif.org/api/v2/isin-lei/latest/download
 
+      - name: Weekly US price import (dump distillate — derived values only)
+        continue-on-error: true # prices are an enrichment, never a gate
+        run: uv run crible import-prices huggingface --max-age-days 6
+
       - name: Bounded keyless refresh (crawl → ESEF → EDGAR bulk → prices → prune → compute)
         # deadline trimmed to 2h: the EDGAR bulk sweep (~10k US issuers from
         # one public-domain archive) takes the reclaimed time; ESEF cadence

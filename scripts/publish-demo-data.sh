@@ -31,6 +31,8 @@ git read-tree --empty
 # once a refresh has written its heartbeat (mid-crawl publishes lack it)
 paths=(data/raw data/universe.parquet data/snapshot site-data)
 [ -f data/status.json ] && paths+=(data/status.json)
+# derived price distillate (close/asof/return_6m per symbol) — never the series
+[ -f data/prices-latest.parquet ] && paths+=(data/prices-latest.parquet)
 git add -f "${paths[@]}"
 tree="$(git write-tree)"
 unset GIT_INDEX_FILE

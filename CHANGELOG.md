@@ -27,6 +27,21 @@
   all composing the same plain, editable DSL into the query bar. Replaces the
   fixed six-filter bar; the grammar and the Python/TS golden parity are
   untouched.
+- **Price dumps, distilled (`crible import-prices`)** — no open-licensed
+  OHLCV exists, but free dumps do: the HuggingFace daily-price shards (plain
+  HTTPS, ~7k US listings, pulled weekly by the nightly) and Stooq bulk
+  archives (manual download, worldwide). Only DERIVED values are stored and
+  published — close, as-of, 6-month return per symbol — never the series;
+  the snapshot falls back to them where the crawl has no bars, giving
+  EDGAR-only issuers real P/E, market cap and momentum.
+- **ESEF index sweep** — filings.xbrl.org's full index (~25k filings) is
+  walked newest-first instead of polling one LEI at a time: every request
+  lands on a real audited filing; the EU gisement becomes coverable in weeks.
+- **Nightly coverage plateau fixed** — the crawl queue is rebuilt from raw
+  filename stamps each run (only raw/ travels on the demo-data branch), so
+  nightlies advance into new symbols instead of re-crawling the same head.
+- **SEC 403 on runners fixed** — www.sec.gov requires a contact email in the
+  User-Agent; the nightly UA now carries one.
 - **EDGAR bulk — the whole US market on the demo (ADR-0005 update)** — the
   nightly now downloads `companyfacts.zip` (1.4 GB, public domain) and ingests
   the audited layer for every resolved US listing (~10k issuers, 8 fiscal

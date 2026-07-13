@@ -57,6 +57,20 @@ Any of those paths would break at least one core contract (zero-key,
 zero-cost, public data, ToS-respecting). The role Google Finance would have
 filled is already covered by yfinance + ESEF.
 
+## Imported price dumps — derived values only (2026-07-13)
+
+No open-licensed OHLCV source exists (exchanges monetize market data), but
+free full-history DUMPS do. crible's policy: the SERIES are never stored nor
+republished — `crible import-prices` distils each symbol into ONE derived row
+(last close, as-of date, trailing 6-month return) in
+`data/prices-latest.parquet`, which the snapshot consumes as a fallback when
+the crawl has no bars (staleness stays visible via `price_asof`).
+
+| Dump | Coverage | Access | Freshness | Terms |
+|---|---|---|---|---|
+| [paperswithbacktest/Stocks-Daily-Price](https://huggingface.co/datasets/paperswithbacktest/Stocks-Daily-Price) | ~7k US listings, daily, full history | 4 parquet shards, plain HTTPS, **no key/API** — pulled weekly by the nightly | Refreshed ~monthly (2026-07-09 at audit time) | License "other" (unspecified) — hence derived-values-only |
+| [Stooq bulk archives](https://stooq.com/db/h/) | Worldwide (US, DE, UK, JP, PL…), daily, decades | **Manual download** (CAPTCHA-gated; automation blocked, verified 2026-07-13) then `crible import-prices <zip>` | Daily | No published license — same derived-values-only policy |
+
 ## Removed sources (open-data cleanup, 2026-07-13)
 
 - **Stooq** — the specced price fallback never became load-bearing: its CSV

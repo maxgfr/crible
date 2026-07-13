@@ -22,6 +22,7 @@ trap 'rm -rf "$workdir"' EXIT
 tarball="$workdir/crible-data.tar.gz"
 paths=(data/raw data/universe.parquet data/snapshot)
 [ -f data/status.json ] && paths+=(data/status.json)
+[ -f data/prices-latest.parquet ] && paths+=(data/prices-latest.parquet)
 tar -czf "$tarball" "${paths[@]}"
 
 # a rolling release: created once, assets clobbered nightly; --latest=false so
