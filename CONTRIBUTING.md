@@ -8,8 +8,8 @@ you need.
 1. **Zero-key is the contract, not a default.** Every core flow must work with
    an empty environment — no API key, no account, ever. CI enforces this: the
    Python job runs with no secrets configured. A change that makes a core flow
-   require a key will not be merged. Optional keyed providers (SimFin, FMP,
-   EODHD) must stay optional and off by default. New data sources must clear
+   require a key will not be merged. Third-party keyed provider plugins must
+   stay optional and off by default. New data sources must clear
    the public-data audit in [docs/DATA-SOURCES.md](docs/DATA-SOURCES.md) —
    public, keyless, ToS-respecting — and be added to that table.
 2. **The DSL has two implementations that may never drift.** The Python

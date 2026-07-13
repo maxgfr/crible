@@ -40,4 +40,4 @@ body:
     attributes:
       label: Environment
       options:
-        - label: I run keyless (no SIMFIN/FMP/EODHD key configured)
+        - label: I run keyless (no third-party provider plugin configured)

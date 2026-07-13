@@ -92,7 +92,7 @@ Besoin réel de crible : conteneurs `ingest`+`api`, volume persistant (~10 GB pa
   ```
 - [ ] **Release initiale** : passer le repo en public, puis tag `v0.1.0` + GitHub Release (le README « Status » cite déjà le SRD ; noter le contrat zéro clé dans les release notes). Déclenche l'horloge des 4 mois awesome-selfhosted.
 - [x] **Contrat zéro clé mis en avant** : README l'affiche dès la 2e ligne (« zero API keys required — by contract, forever »).
-- [x] **Upgrade payant optionnel documenté** : `docs/prds/eodhd.md` (EODHD Fundamentals €59,99/mois) — lien à garder dans le README section providers.
+- [x] ~~**Upgrade payant optionnel documenté**~~ _(obsolète — décision open data 2026-07-13 : les plugins à clé et l'upgrade EODHD ont été supprimés ; le catalogue livré est 100 % keyless.)_
 - [ ] **Après publication** : appliquer topics + description (§2), planifier la PR awesome-selfhosted (§1) à +4 mois, poster sur r/selfhosted (angle : « garde tes €550/an »).
 
 ---

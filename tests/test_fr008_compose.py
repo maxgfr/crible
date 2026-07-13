@@ -19,17 +19,16 @@ def test_fr008_compose_defines_ingest_and_api_with_shared_volume_and_healthcheck
     assert 'command: ["crible", "ingest", "--loop"]' in compose
 
 
-def test_fr008_zero_key_mode_is_the_default_no_key_is_required() -> None:
+def test_fr008_zero_key_mode_is_the_only_mode() -> None:
+    # the keyless contract, strengthened (2026-07-13): the stack passes NO
+    # provider key env vars at all — there is nothing to configure
     compose = (ROOT / "docker-compose.yml").read_text()
-    # every provider key defaults to empty — absent keys must never break startup
-    for key in ("SIMFIN_KEY", "FINANCIALREPORTS_KEY", "FMP_KEY", "EODHD_KEY"):
-        assert f"${{{key}:-}}" in compose
+    assert "_KEY" not in compose
 
 
 def test_fr008_no_secrets_baked_into_the_image() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text()
-    for key in ("SIMFIN_KEY", "FINANCIALREPORTS_KEY", "FMP_KEY", "EODHD_KEY"):
-        assert key not in dockerfile  # keys flow via compose env only (NFR-002)
+    assert "_KEY" not in dockerfile  # no provider keys anywhere (NFR-002)
     assert "ENV" in dockerfile and "CRIBLE_DATA_DIR=/data" in dockerfile
 
 

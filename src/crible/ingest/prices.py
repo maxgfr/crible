@@ -1,9 +1,9 @@
 """FR-011 — price freshness tiering, budget-aware and provenance-dated.
 
-Prices share the ONE Yahoo request budget (no keyless bulk path exists —
-Stooq's endpoints sit behind a JS proof-of-work wall, design-time verified
-2026-07-07). The priority set gets daily refreshes; everything else rides
-leftover budget. Switch rule: 3 consecutive rate-limit failures (or a hang,
+Prices share the ONE Yahoo request budget — yfinance is the only price
+source in the keyless core (no redistributable bulk price feed exists).
+The priority set gets daily refreshes; everything else rides leftover
+budget. Switch rule: 3 consecutive rate-limit failures (or a hang,
 enforced by the crawler's watchdog) end the cycle politely — symbols keep
 their last price, staleness stays visible via price_asof.
 """

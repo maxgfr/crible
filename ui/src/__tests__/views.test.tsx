@@ -1,6 +1,6 @@
 // T-019/T-020 — Status (coverage, freshness histogram, budget gauge,
-// provider health) and Providers & settings (inventory, .env pointer,
-// EODHD upgrade path, theme preference).
+// provider health) and Providers & settings (keyless inventory, plugin
+// seam, theme preference).
 
 import { fireEvent, render, screen as rtl, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -60,23 +60,22 @@ describe("StatusView (T-019)", () => {
 });
 
 describe("ProvidersView (T-020)", () => {
-  it("lists keyless built-ins and keyed plugins with their state", async () => {
+  it("lists keyless built-ins and any keyed plugin with its state", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
         jsonResponse([
           { id: "yfinance", kind: "keyless", key_env_var: null, enabled: true },
-          { id: "simfin", kind: "free-key", key_env_var: "SIMFIN_KEY", enabled: false },
-          { id: "eodhd", kind: "paid", key_env_var: "EODHD_KEY", enabled: true },
+          // third-party plugin through the seam — the shipped catalog is keyless-only
+          { id: "stub", kind: "free-key", key_env_var: "STUB_KEY", enabled: false },
         ]),
       ),
     );
     render(<ProvidersView theme="dark" onTheme={() => {}} />);
     await waitFor(() => expect(rtl.getByText("yfinance")).toBeInTheDocument());
-    expect(rtl.getByText("simfin")).toBeInTheDocument();
-    expect(rtl.getByText("SIMFIN_KEY")).toBeInTheDocument();
+    expect(rtl.getByText("stub")).toBeInTheDocument();
+    expect(rtl.getByText("STUB_KEY")).toBeInTheDocument();
     expect(rtl.getAllByText(/off — no key/i).length).toBeGreaterThan(0);
-    expect(rtl.getByText("eodhd")).toBeInTheDocument();
     // built-ins always present even before fetch resolves
     expect(rtl.getByText(/esef/i)).toBeInTheDocument();
     expect(rtl.getByText(/\.env/)).toBeInTheDocument();

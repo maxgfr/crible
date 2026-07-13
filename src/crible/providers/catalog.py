@@ -9,15 +9,13 @@ so the Providers view can never drift from the actual activation logic.
 from __future__ import annotations
 
 from crible.providers.base import Provider
-from crible.providers.eodhd import EodhdProvider
-from crible.providers.fmp_free import FmpFreeProvider
-from crible.providers.simfin import SimFinProvider
 from crible.providers.yfinance_provider import YFinanceProvider
 
 
 def default_catalog() -> list[Provider]:
-    """The providers crible ships with, in display order (keyless first)."""
-    return [YFinanceProvider(), SimFinProvider(), FmpFreeProvider(), EodhdProvider()]
+    """The providers crible ships with — keyless only since the open-data
+    cleanup (2026-07-13); the registry seam still accepts keyed plugins."""
+    return [YFinanceProvider()]
 
 
 def is_configured(prov: Provider, env: dict[str, str]) -> bool:

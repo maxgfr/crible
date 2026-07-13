@@ -1,5 +1,5 @@
 # FR-008 — docker compose up with ZERO keys yields a fully working system.
-# Optional phase-2 keys come from .env (never baked into images — NFR-002).
+# The stack is keyless by construction: no provider key is read anywhere.
 
 services:
   ingest:
@@ -12,10 +12,6 @@ services:
       CRIBLE_DATA_DIR: /data
       CRIBLE_BUDGET_PER_HOUR: ${CRIBLE_BUDGET_PER_HOUR:-330}
       CRIBLE_BOOTSTRAP_SAMPLE: ${CRIBLE_BOOTSTRAP_SAMPLE:-}
-      SIMFIN_KEY: ${SIMFIN_KEY:-}
-      FINANCIALREPORTS_KEY: ${FINANCIALREPORTS_KEY:-}
-      FMP_KEY: ${FMP_KEY:-}
-      EODHD_KEY: ${EODHD_KEY:-}
     healthcheck:
       test: ["CMD", "python", "-c", "import pathlib,sys,time; p=pathlib.Path('/data/status.json'); sys.exit(0 if p.exists() or time.time() else 1)"]
       interval: 30s
