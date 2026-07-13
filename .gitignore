@@ -11,10 +11,12 @@ __pycache__/
 node_modules/
 ui/dist/
 
-# data (parquet/duckdb live outside git)
+# data (parquet/duckdb live outside git; the demo-data branch is the one
+# exception, published as an orphan commit by refresh-data.yml)
 data/
 *.duckdb
 *.duckdb.wal
+site-data/
 
 # env & os
 .env

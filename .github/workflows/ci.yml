@@ -28,6 +28,11 @@ jobs:
       - run: npm --prefix ui install --no-audit --no-fund
       - run: npm --prefix ui run test -- --run
       - run: npm --prefix ui run build
+      # the Pages demo build must never rot
+      - run: npm --prefix ui run build
+        env:
+          VITE_DATA_MODE: static
+          VITE_BASE: /crible/
 
   docker:
     runs-on: ubuntu-latest

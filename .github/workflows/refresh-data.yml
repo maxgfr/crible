@@ -1,0 +1,74 @@
+# Nightly demo-data refresh — 100% keyless open data (NFR-009: no secrets
+# beyond GITHUB_TOKEN). Restores the last-good dataset from the demo-data
+# branch, runs one bounded refresh pass (FinanceDatabase universe + Yahoo
+# fundamentals/prices + ESEF audited statements via a fresh GLEIF mapping),
+# then publishes back as a single orphan commit. Any failure — including the
+# export-site min-symbols gate — aborts BEFORE the push, so the live demo
+# always keeps the last-good data.
+
+name: refresh-data
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-data
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      CRIBLE_DATA_DIR: data
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore last-good data from the demo-data branch
+        run: |
+          if git fetch origin demo-data; then
+            git checkout FETCH_HEAD -- data
+            echo "restored last-good data/"
+          else
+            echo "no demo-data branch yet — first refresh starts from scratch"
+          fi
+
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - run: uv sync
+
+      - name: Download the GLEIF ISIN→LEI mapping (never committed)
+        continue-on-error: true # the ESEF cycle self-skips without it
+        run: |
+          mkdir -p data
+          curl -fsSL --retry 3 -o data/isin-lei.zip \
+            https://mapping.gleif.org/api/v2/isin-lei/latest/download
+
+      - name: Bounded keyless refresh (crawl → ESEF → prices → prune → compute)
+        run: uv run crible demo-refresh --deadline 9000
+
+      - name: Export the static site artifacts (min-symbols gate)
+        run: uv run crible export-site --out site-data --min-symbols 50
+
+      - name: Publish the demo-data branch (single orphan commit)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan demo-data-publish
+          git reset
+          git add -f data/raw data/universe.parquet data/snapshot data/status.json site-data
+          git commit -q -m "demo-data: nightly refresh $(date -u +%F)"
+          git push --force origin HEAD:refs/heads/demo-data
+
+      - name: Summary
+        run: |
+          {
+            echo "### Demo data refreshed"
+            echo '```json'
+            cat site-data/manifest.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
