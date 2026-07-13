@@ -9,7 +9,7 @@
 
 **[Try the live demo →](https://maxgfr.github.io/crible/)** — the real screener running entirely in your browser (DuckDB-WASM, open data, no backend).
 
-Screen a worldwide universe of ~161k equities (Europe-depth priority) on real fundamentals —
+Screen a worldwide universe of ~150k equities (Europe-depth priority) on real fundamentals —
 Piotroski F, Altman Z, Beneish M, 150+ transparent ratios — with every number traceable back
 to its source. No account, no data vendor, no monthly bill. `docker compose up` and it's yours.
 
@@ -85,7 +85,7 @@ straight onto a Synology NAS, Unraid, or any Docker host:
 
 ## Data & scores (all keyless)
 
-- **Universe**: [FinanceDatabase](https://github.com/JerBouma/FinanceDatabase) (160,995 equities, 117 countries).
+- **Universe**: [FinanceDatabase](https://github.com/JerBouma/FinanceDatabase) (151,170 equities at the July 2026 refresh, 117 countries).
 - **Data**: Yahoo via [yfinance](https://github.com/ranaroussi/yfinance) (rolling, rate-budgeted) ·
   audited EU figures from [filings.xbrl.org](https://filings.xbrl.org) (ESEF xBRL-JSON) ·
   [Stooq](https://stooq.com) price fallback.
@@ -127,7 +127,7 @@ port, golden-locked to the Python compiler by shared test vectors) and executed 
 there is no backend at all.
 
 - **Open data, nightly**: a GitHub Action refreshes the demo dataset every night from the same
-  keyless sources the self-hosted crawl uses — FinanceDatabase (the full ~161k-listing universe,
+  keyless sources the self-hosted crawl uses — FinanceDatabase (the full ~150k-listing universe,
   searchable), Yahoo via yfinance, filings.xbrl.org (audited ESEF statements) matched through
   the GLEIF ISIN→LEI file. No key, no account, anywhere.
 - **Sample scope**: fundamentals and scores cover the ~100-company bootstrap sample
