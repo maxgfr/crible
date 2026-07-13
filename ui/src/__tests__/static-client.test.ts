@@ -7,9 +7,12 @@ import { createStaticClient } from "../data/static-client";
 import type { QueryRunner } from "../data/static-client";
 import { DslApiError } from "../data/types";
 
-const WHITELIST = [
-  "symbol", "name", "country", "sector", "piotroski_f", "altman_z", "period",
-];
+// name → DuckDB column type, as DESCRIBE reports them
+const SCHEMA: Record<string, string> = {
+  symbol: "VARCHAR", name: "VARCHAR", country: "VARCHAR", sector: "VARCHAR",
+  piotroski_f: "BIGINT", altman_z: "DOUBLE", period: "VARCHAR",
+};
+const WHITELIST = Object.keys(SCHEMA);
 
 const ROWS = [
   { symbol: "AIR.PA", name: "Airbus, SAS", country: "FR", sector: "Industrials", piotroski_f: 8n },
@@ -23,7 +26,9 @@ function scriptedRunner() {
   const runner: QueryRunner = {
     async query(sql: string, params: unknown[] = []) {
       calls.push({ sql, params });
-      if (sql.startsWith("DESCRIBE")) return WHITELIST.map((c) => ({ column_name: c }));
+      if (sql.startsWith("DESCRIBE")) {
+        return WHITELIST.map((c) => ({ column_name: c, column_type: SCHEMA[c] }));
+      }
       if (sql.includes("count(*)")) return [{ total: 2n }];
       if (sql.includes("FROM snapshot_all")) {
         return params[0] === "AIR.PA" ? [{ symbol: "AIR.PA", period: "2025", piotroski_f: 8 }] : [];
@@ -148,6 +153,27 @@ describe("static client — CSV export", () => {
     expect(text).toContain('"Airbus, SAS"'); // comma → quoted
     const select = calls.find((c) => c.sql.includes("SELECT * FROM snapshot_latest"));
     expect(select?.sql).toContain("LIMIT 10000");
+  });
+});
+
+describe("static client — fields", () => {
+  it("derives the query builder field list from one DESCRIBE (types included)", async () => {
+    const { runner, calls } = scriptedRunner();
+    const client = makeClient(runner);
+    const fields = await client.fields();
+    const byName = Object.fromEntries(fields.map((f) => [f.name, f.type]));
+    expect(byName.symbol).toBe("string");
+    expect(byName.piotroski_f).toBe("number");
+    expect(byName.altman_z).toBe("number");
+    // the whitelist reuses the same DESCRIBE — screens don't re-describe
+    await client.screen("piotroski_f >= 7", null, 1, 10);
+    expect(calls.filter((c) => c.sql.startsWith("DESCRIBE"))).toHaveLength(1);
+  });
+
+  it("returns no fields while the demo data is not published yet", async () => {
+    const { runner } = scriptedRunner();
+    const client = makeClient(runner, {}); // every fetch 404s
+    expect(await client.fields()).toEqual([]);
   });
 });
 

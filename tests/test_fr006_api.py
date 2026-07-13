@@ -88,6 +88,20 @@ def test_fr006_presets_and_status_and_healthz(client) -> None:
     assert client.get("/healthz").status_code == 200
 
 
+def test_fr006_fields_endpoint_lists_snapshot_columns_with_types(client) -> None:
+    fields = client.get("/api/fields").json()
+    by_name = {f["name"]: f["type"] for f in fields}
+    assert by_name["symbol"] == "string"
+    assert by_name["country"] == "string"
+    assert by_name["piotroski_f"] == "number"
+    assert by_name["altman_z"] == "number"
+    # the field list IS the live schema — same names the DSL whitelist accepts
+    assert set(by_name) == {
+        "symbol", "period", "piotroski_f", "altman_z", "beneish_m",
+        "return_on_equity", "country", "name", "computed_at",
+    }
+
+
 def test_fr006_fresh_install_no_snapshot_is_200_with_hint(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path / "empty"))
     client = TestClient(create_app())
@@ -97,6 +111,7 @@ def test_fr006_fresh_install_no_snapshot_is_200_with_hint(tmp_path, monkeypatch)
     assert body["rows"] == [] and body["total"] == 0
     assert "ingest" in body["hint"]
     assert client.get("/api/status").status_code == 200
+    assert client.get("/api/fields").json() == []  # no snapshot → empty, never 5xx
 
 
 def test_fr006_spa_is_served_at_root_with_api_reachable(tmp_path, monkeypatch) -> None:

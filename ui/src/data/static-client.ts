@@ -12,6 +12,7 @@ import {
   type CsvExport,
   type DataClient,
   type DemoManifest,
+  type FieldInfo,
   type Preset,
   type ProviderInfo,
   type ScreenResponse,
@@ -56,7 +57,7 @@ export function createStaticClient(options: StaticClientOptions = {}): DataClien
 
   let runnerPromise: Promise<QueryRunner> | null = null;
   let manifestPromise: Promise<DemoManifest | null> | null = null;
-  let whitelistPromise: Promise<Set<string>> | null = null;
+  let describePromise: Promise<FieldInfo[]> | null = null;
 
   const manifest = (): Promise<DemoManifest | null> => {
     manifestPromise ??= fetchImpl(`${base}data/manifest.json`)
@@ -70,13 +71,23 @@ export function createStaticClient(options: StaticClientOptions = {}): DataClien
     return runnerPromise;
   };
 
-  const whitelist = async (): Promise<Set<string>> => {
-    whitelistPromise ??= runner().then(async (r) => {
+  // one DESCRIBE feeds both the DSL whitelist and the query builder's field
+  // list — the two can never drift from the published schema
+  const describe = (): Promise<FieldInfo[]> => {
+    describePromise ??= runner().then(async (r) => {
       const rows = await r.query("DESCRIBE snapshot_latest");
-      return new Set(rows.map((row) => String(row.column_name)));
+      return rows.map((row) => ({
+        name: String(row.column_name),
+        type: String(row.column_type ?? "").toUpperCase().includes("VARCHAR")
+          ? ("string" as const)
+          : ("number" as const),
+      }));
     });
-    return whitelistPromise;
+    return describePromise;
   };
+
+  const whitelist = async (): Promise<Set<string>> =>
+    new Set((await describe()).map((f) => f.name));
 
   const published = async (): Promise<boolean> => (await manifest()) !== null;
 
@@ -176,6 +187,11 @@ export function createStaticClient(options: StaticClientOptions = {}): DataClien
 
     async providers(): Promise<ProviderInfo[]> {
       return json<ProviderInfo[]>("providers.json", []);
+    },
+
+    async fields(): Promise<FieldInfo[]> {
+      if (!(await published())) return [];
+      return describe();
     },
 
     async search(q): Promise<SearchHit[]> {

@@ -617,9 +617,9 @@ table.inventory td.note {
   color: var(--color-primary);
 }
 
-/* ------------------------------------------------- structured quick-filters */
+/* ------------------------------------------------------------ query builder */
 
-.filterbar {
+.querybuilder {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -627,8 +627,8 @@ table.inventory td.note {
   padding: var(--space-1) var(--space-3);
 }
 
-.filterbar select,
-.filterbar input {
+.querybuilder select,
+.querybuilder input {
   font-family: var(--font-mono);
   font-size: var(--scale-small);
   padding: var(--space-1) var(--space-2);
@@ -638,12 +638,43 @@ table.inventory td.note {
   border-radius: var(--radius-sm);
 }
 
-.filterbar input[type="number"] {
+.querybuilder input[type="number"] {
   width: 110px;
 }
 
-.filterbar input:focus,
-.filterbar select:focus {
+.querybuilder input:focus,
+.querybuilder select:focus {
   outline: none;
   border-color: var(--color-primary);
+}
+
+.qb-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.qb-subgroup {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 1px dashed color-mix(in srgb, var(--color-muted) 50%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.qb-op {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  min-width: 3.5ch;
+}
+
+.qb-preview {
+  font-size: var(--scale-small);
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40ch;
 }

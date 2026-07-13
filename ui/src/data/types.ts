@@ -39,6 +39,8 @@ export interface IngestHeartbeat {
   providers?: Record<string, string>;
   esef_resolved?: number;
   esef_unmatched?: number;
+  edgar_resolved?: number;
+  edgar_unmatched?: number;
   ts?: number;
 }
 
@@ -55,6 +57,11 @@ export interface ProviderInfo {
   kind: "keyless" | "free-key" | "paid";
   key_env_var: string | null;
   enabled: boolean;
+}
+
+export interface FieldInfo {
+  name: string;
+  type: "number" | "string";
 }
 
 export interface SearchHit {
@@ -93,6 +100,8 @@ export interface DataClient {
   status(): Promise<StatusResponse>;
   providers(): Promise<ProviderInfo[]>;
   search(q: string): Promise<SearchHit[]>;
+  /** snapshot columns + coarse types — the query builder's field list */
+  fields(): Promise<FieldInfo[]>;
   /** static mode only — null while the nightly refresh has not published yet */
   manifest(): Promise<DemoManifest | null>;
 }

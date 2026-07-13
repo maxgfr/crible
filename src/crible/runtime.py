@@ -84,6 +84,30 @@ class Runtime:
         finally:
             con.close()
 
+    def fields(self) -> list[dict]:
+        """Snapshot columns with coarse types — the query builder's field list.
+
+        Always derived from the live schema (DESCRIBE), never a hand-kept
+        list, so the builder can only offer fields the DSL whitelist accepts.
+        Empty (never an error) while no snapshot exists.
+        """
+        con = duckdb.connect()
+        try:
+            try:
+                self.mount_snapshot(con)
+            except SnapshotMissingError:
+                return []
+            described = con.execute("DESCRIBE snapshot_latest").fetchall()
+        finally:
+            con.close()
+        return [
+            {
+                "name": name,
+                "type": "string" if "VARCHAR" in str(col_type).upper() else "number",
+            }
+            for name, col_type, *_ in described
+        ]
+
     def company(self, symbol: str) -> dict | None:
         """Profile (universe) + full period history (snapshot) for one symbol."""
         profile: dict | None = None

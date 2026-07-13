@@ -122,6 +122,12 @@ def create_app() -> FastAPI:
     def status():
         return runtime().status()
 
+    @app.get("/api/fields")
+    def fields() -> list[dict]:
+        """Snapshot columns + coarse types for the UI query builder — always
+        the live schema, so the builder and the DSL whitelist cannot drift."""
+        return runtime().fields()
+
     @app.get("/api/providers")
     def providers() -> list[dict]:
         """FR-013/FR-014 — read-only provider inventory for the settings view.

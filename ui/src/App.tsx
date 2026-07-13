@@ -9,17 +9,19 @@ import {
   DslApiError,
   STATIC_MODE,
   exportCsv,
+  fields,
   screen,
   status,
   type DslErrorDetail,
+  type FieldInfo,
   type ScreenResponse,
   type StatusResponse,
 } from "./data";
 import { ColumnPicker } from "./components/ColumnPicker";
 import { CompanyDrawer } from "./components/CompanyDrawer";
 import { DemoBanner } from "./components/DemoBanner";
-import { FilterBar } from "./components/FilterBar";
 import { PresetsMenu } from "./components/PresetsMenu";
+import { QueryBuilder } from "./components/QueryBuilder";
 import { ProvidersView } from "./components/ProvidersView";
 import { QueryBar } from "./components/QueryBar";
 import { ResultsGrid } from "./components/ResultsGrid";
@@ -78,6 +80,7 @@ export default function App() {
   const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_COLUMNS);
   const [statusData, setStatusData] = useState<StatusResponse | null>(null);
   const [statusLine, setStatusLine] = useState("");
+  const [fieldInfos, setFieldInfos] = useState<FieldInfo[]>([]);
   const queryInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -104,6 +107,9 @@ export default function App() {
 
   useEffect(() => {
     run(DEFAULT_QUERY);
+    fields()
+      .then(setFieldInfos)
+      .catch(() => {});
     status()
       .then((s) => {
         setStatusData(s);
@@ -179,7 +185,8 @@ export default function App() {
             error={firstRun ? null : error}
             inputRef={queryInputRef}
           />
-          <FilterBar
+          <QueryBuilder
+            fields={fieldInfos}
             onApply={(dsl) => {
               setQuery(dsl);
               run(dsl);

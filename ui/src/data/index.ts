@@ -9,6 +9,7 @@ import type {
   CsvExport,
   DataClient,
   DemoManifest,
+  FieldInfo,
   Preset,
   ProviderInfo,
   ScreenResponse,
@@ -67,6 +68,10 @@ export async function search(q: string): Promise<SearchHit[]> {
   return (await getClient()).search(q);
 }
 
+export async function fields(): Promise<FieldInfo[]> {
+  return (await getClient()).fields();
+}
+
 export async function manifest(): Promise<DemoManifest | null> {
   return (await getClient()).manifest();
 }
@@ -78,6 +83,7 @@ export type {
   DataClient,
   DemoManifest,
   DslErrorDetail,
+  FieldInfo,
   IngestHeartbeat,
   Preset,
   ProviderInfo,

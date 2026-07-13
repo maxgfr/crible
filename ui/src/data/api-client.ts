@@ -8,6 +8,7 @@ import {
   type DataClient,
   type DemoManifest,
   type DslErrorDetail,
+  type FieldInfo,
   type Preset,
   type ProviderInfo,
   type ScreenResponse,
@@ -68,6 +69,13 @@ export async function search(q: string): Promise<SearchHit[]> {
   return (await response.json()) as SearchHit[];
 }
 
+export async function fields(): Promise<FieldInfo[]> {
+  const response = await fetch("/api/fields");
+  if (!response.ok) return [];
+  const body = (await response.json()) as unknown;
+  return Array.isArray(body) ? (body as FieldInfo[]) : [];
+}
+
 export const apiClient: DataClient = {
   screen,
   presets,
@@ -75,6 +83,7 @@ export const apiClient: DataClient = {
   status,
   providers,
   search,
+  fields,
   async exportCsv(query, sort, columns): Promise<CsvExport> {
     return { url: exportCsvUrl(query, sort, columns) };
   },
