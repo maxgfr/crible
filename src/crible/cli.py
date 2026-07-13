@@ -118,6 +118,38 @@ def ingest(
         _fail("nothing to do — pass --bootstrap, --once or --loop")
 
 
+@app.command("demo-refresh")
+def demo_refresh(
+    deadline: float = typer.Option(9000.0, "--deadline", help="Wall-clock budget in seconds"),
+    esef_limit: int = typer.Option(25, "--esef-limit", help="Max ESEF enrichments this run"),
+) -> None:
+    """One bounded keyless refresh pass (the nightly demo-data run)."""
+    from crible.ingest.service import run_refresh
+
+    result = run_refresh(deadline_seconds=deadline, esef_limit=esef_limit)
+    typer.echo(json.dumps(result, indent=2, default=str))
+
+
+@app.command("export-site")
+def export_site_cmd(
+    out: Path = typer.Option(..., "--out", help="Directory to write the static demo artifacts to"),
+    min_symbols: int = typer.Option(50, "--min-symbols", help="Refuse to publish below this snapshot coverage"),
+) -> None:
+    """Export the static artifacts the GitHub Pages demo runs on."""
+    from crible import config
+    from crible.site_export import SiteExportError, export_site
+
+    try:
+        manifest = export_site(config.data_dir(), out, min_symbols=min_symbols)
+    except SiteExportError as exc:
+        _fail(str(exc))
+    typer.echo(
+        f"exported {manifest['snapshot_symbols']} symbols"
+        f" ({manifest['snapshot_rows']} snapshot rows, {manifest['universe_rows']} universe rows)"
+        f" to {out}"
+    )
+
+
 @app.command()
 def compute() -> None:
     """Build and atomically publish the wide snapshot from the raw layer."""

@@ -1,0 +1,258 @@
+{
+  "whitelist": [
+    "symbol",
+    "name",
+    "country",
+    "country_name",
+    "region",
+    "sector",
+    "industry",
+    "exchange",
+    "currency",
+    "period",
+    "revenue",
+    "net_income",
+    "total_assets",
+    "free_cash_flow",
+    "return_on_equity",
+    "debt_to_equity_ratio",
+    "price_to_earnings_ratio",
+    "price_to_book_ratio",
+    "earnings_yield",
+    "piotroski_f",
+    "altman_z",
+    "beneish_m",
+    "composite_rank",
+    "quality_rank",
+    "value_rank"
+  ],
+  "cases": [
+    {
+      "query": "piotroski_f >= 7",
+      "sql": "\"piotroski_f\" >= ?",
+      "params": [
+        7.0
+      ]
+    },
+    {
+      "query": "altman_z > 2.99",
+      "sql": "\"altman_z\" > ?",
+      "params": [
+        2.99
+      ]
+    },
+    {
+      "query": "beneish_m > -1.78",
+      "sql": "\"beneish_m\" > ?",
+      "params": [
+        -1.78
+      ]
+    },
+    {
+      "query": "price_to_earnings_ratio < 12 AND price_to_book_ratio < 1.5",
+      "sql": "(\"price_to_earnings_ratio\" < ?) AND (\"price_to_book_ratio\" < ?)",
+      "params": [
+        12.0,
+        1.5
+      ]
+    },
+    {
+      "query": "return_on_equity > 0.15 AND debt_to_equity_ratio < 1",
+      "sql": "(\"return_on_equity\" > ?) AND (\"debt_to_equity_ratio\" < ?)",
+      "params": [
+        0.15,
+        1.0
+      ]
+    },
+    {
+      "query": "composite_rank >= 80",
+      "sql": "\"composite_rank\" >= ?",
+      "params": [
+        80.0
+      ]
+    },
+    {
+      "query": "country IN ('FR', 'DE') AND piotroski_f >= 7",
+      "sql": "(\"country\" IN (?, ?)) AND (\"piotroski_f\" >= ?)",
+      "params": [
+        "FR",
+        "DE",
+        7.0
+      ]
+    },
+    {
+      "query": "(country = 'JP' OR country = 'US') AND NOT price_to_earnings_ratio > 30",
+      "sql": "((\"country\" = ?) OR (\"country\" = ?)) AND (NOT (\"price_to_earnings_ratio\" > ?))",
+      "params": [
+        "JP",
+        "US",
+        30.0
+      ]
+    },
+    {
+      "query": "NOT (sector = 'Financials' OR sector = 'Real Estate')",
+      "sql": "NOT ((\"sector\" = ?) OR (\"sector\" = ?))",
+      "params": [
+        "Financials",
+        "Real Estate"
+      ]
+    },
+    {
+      "query": "name = 'O\\'Reilly'",
+      "sql": "\"name\" = ?",
+      "params": [
+        "O'Reilly"
+      ]
+    },
+    {
+      "query": "revenue > 1e9",
+      "sql": "\"revenue\" > ?",
+      "params": [
+        1000000000.0
+      ]
+    },
+    {
+      "query": "piotroski_f = 7 OR piotroski_f == 8",
+      "sql": "(\"piotroski_f\" = ?) OR (\"piotroski_f\" = ?)",
+      "params": [
+        7.0,
+        8.0
+      ]
+    },
+    {
+      "query": "country <> 'US' AND country != 'CA'",
+      "sql": "(\"country\" <> ?) AND (\"country\" <> ?)",
+      "params": [
+        "US",
+        "CA"
+      ]
+    },
+    {
+      "query": "sector IN ('Information Technology')",
+      "sql": "\"sector\" IN (?)",
+      "params": [
+        "Information Technology"
+      ]
+    },
+    {
+      "query": "country in ('FR') and piotroski_f >= 7",
+      "sql": "(\"country\" IN (?)) AND (\"piotroski_f\" >= ?)",
+      "params": [
+        "FR",
+        7.0
+      ]
+    },
+    {
+      "query": "country = 'FR' OR country = 'DE' AND piotroski_f >= 8",
+      "sql": "(\"country\" = ?) OR ((\"country\" = ?) AND (\"piotroski_f\" >= ?))",
+      "params": [
+        "FR",
+        "DE",
+        8.0
+      ]
+    },
+    {
+      "query": "revenue >= -2.5e-3",
+      "sql": "\"revenue\" >= ?",
+      "params": [
+        -0.0025
+      ]
+    }
+  ],
+  "sorts": [
+    {
+      "sort": "-composite_rank",
+      "sql": " ORDER BY \"composite_rank\" DESC"
+    },
+    {
+      "sort": "country,-piotroski_f",
+      "sql": " ORDER BY \"country\" ASC, \"piotroski_f\" DESC"
+    },
+    {
+      "sort": "+name",
+      "sql": " ORDER BY \"name\" ASC"
+    },
+    {
+      "sort": "",
+      "sql": ""
+    },
+    {
+      "sort": "symbol , -altman_z",
+      "sql": " ORDER BY \"symbol\" ASC, \"altman_z\" DESC"
+    }
+  ],
+  "errors": [
+    {
+      "query": "piotroski > 7",
+      "message": "unknown field 'piotroski' at position 0 \u2014 did you mean 'piotroski_f'?",
+      "position": 0,
+      "hint": "did you mean 'piotroski_f'?"
+    },
+    {
+      "query": "return_6m > 0.1",
+      "message": "unknown field 'return_6m' at position 0 \u2014 added at snapshot build time (FR-015) \u2014 recompute the snapshot (`crible compute`) after upgrading",
+      "position": 0,
+      "hint": "added at snapshot build time (FR-015) \u2014 recompute the snapshot (`crible compute`) after upgrading"
+    },
+    {
+      "query": "zzz_qqq = 1",
+      "message": "unknown field 'zzz_qqq' at position 0 \u2014 no similar field exists",
+      "position": 0,
+      "hint": "no similar field exists"
+    },
+    {
+      "query": "roe >",
+      "message": "unexpected end of query",
+      "position": 5,
+      "hint": null
+    },
+    {
+      "query": "",
+      "message": "empty query",
+      "position": 0,
+      "hint": null
+    },
+    {
+      "query": "country = 'FR' ;",
+      "message": "unexpected character ';' at position 15",
+      "position": 15,
+      "hint": null
+    },
+    {
+      "query": "country = 'FR' name",
+      "message": "unexpected 'name' at position 15",
+      "position": 15,
+      "hint": null
+    },
+    {
+      "query": "country IN 'FR'",
+      "message": "expected LPAREN but found \"'FR'\" at position 11",
+      "position": 11,
+      "hint": null
+    },
+    {
+      "query": "IN > 3",
+      "message": "expected FIELD but found 'IN' at position 0",
+      "position": 0,
+      "hint": null
+    },
+    {
+      "query": "country IN (1,)",
+      "message": "expected a number or quoted string but found ')' at position 14",
+      "position": 14,
+      "hint": null
+    },
+    {
+      "query": "(country = 'FR'",
+      "message": "unexpected end of query",
+      "position": 15,
+      "hint": null
+    },
+    {
+      "query": "country = ",
+      "message": "unexpected end of query",
+      "position": 10,
+      "hint": null
+    }
+  ]
+}

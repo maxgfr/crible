@@ -23,7 +23,7 @@ from crible.ingest.budget import TokenBucket
 from crible.ingest.crawler import Crawler, CrawlOutcome
 from crible.ingest.queue import CrawlQueue
 from crible.providers.yfinance_provider import YFinanceProvider
-from crible.universe import BootstrapReport, refresh_universe
+from crible.universe import BootstrapReport, UniverseSourceError, refresh_universe
 
 log = logging.getLogger("crible.ingest.service")
 
@@ -136,10 +136,10 @@ def run_bootstrap() -> BootstrapReport:
         con.close()
 
 
-def _make_crawler(con: duckdb.DuckDBPyConnection) -> Crawler:
+def _make_crawler(con: duckdb.DuckDBPyConnection, provider=None) -> Crawler:
     return Crawler(
         queue=CrawlQueue(con),
-        provider=YFinanceProvider(),
+        provider=provider if provider is not None else YFinanceProvider(),
         budget=TokenBucket(capacity=config.budget_per_hour(), window_seconds=3600),
         backoff=BackoffPolicy(),
         data_dir=config.data_dir(),
@@ -321,6 +321,95 @@ def run_compute() -> int:
     publish_snapshot(snapshot, data)
     log.info("compute: published %d rows × %d columns", len(snapshot), len(snapshot.columns))
     return len(snapshot)
+
+
+def run_refresh(
+    deadline_seconds: float = 9000.0,
+    esef_limit: int = 25,
+    *,
+    fetch_universe=None,
+    provider=None,
+    price_provider=None,
+    cycle_limit: int = 10,
+) -> dict:
+    """One bounded, resumable refresh pass — the nightly demo-data run.
+
+    Bootstrap (falling back to the last-good universe.parquet when
+    FinanceDatabase is down) → prioritized crawl on ONE shared token bucket
+    until the queue drains or the deadline passes (repeated ``ingest --once``
+    calls would each get a fresh bucket and bust the hourly budget) → ESEF
+    enrichment → price refresh → prune the raw layer → compute + publish.
+    """
+    from crible.ingest.raw import prune_raw
+    from crible.universe import (
+        export_universe_parquet,
+        fetch_financedatabase,
+        restore_universe_from_parquet,
+    )
+
+    started = time.monotonic()
+    deadline = started + deadline_seconds
+    data = config.data_dir()
+    result: dict = {"universe_restored": False}
+
+    con = _connect()
+    try:
+        try:
+            report = refresh_universe(con, fetch=fetch_universe or fetch_financedatabase)
+            result["universe_loaded"] = report.loaded
+        except UniverseSourceError:
+            if not (data / "universe.parquet").exists():
+                raise
+            log.warning("universe source down — restoring last-good universe.parquet")
+            result["universe_loaded"] = restore_universe_from_parquet(
+                con, data / "universe.parquet"
+            )
+            result["universe_restored"] = True
+        crawler = _make_crawler(con, provider=provider)  # CrawlQueue() re-seeds
+        prioritize_sample(con, bootstrap_sample())
+        export_universe_parquet(con, data)
+
+        fetched = failed = 0
+        while time.monotonic() < deadline:
+            outcome = crawler.run_cycle(limit=cycle_limit)
+            fetched += len(outcome.fetched)
+            failed += len(outcome.failed)
+            if not outcome.fetched and not outcome.failed:
+                break  # nothing due — the queue is drained for this run
+        result["fetched"] = fetched
+        result["failed"] = failed
+        stats = _queue_stats(con)
+    finally:
+        con.close()
+
+    try:
+        result["esef"] = run_esef_cycle(limit=esef_limit)
+    except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
+        log.warning("esef cycle failed: %s", exc)
+        result["esef"] = {"outage": str(exc)}
+    try:
+        result["prices"] = run_price_refresh(crawler.budget, provider=price_provider)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("price refresh failed: %s", exc)
+        result["prices"] = {"error": str(exc)}
+
+    result["pruned"] = prune_raw(data)
+    result["snapshot_rows"] = run_compute()
+    result["took_seconds"] = round(time.monotonic() - started, 1)
+    update_heartbeat(
+        last_refresh={
+            k: result[k]
+            for k in ("fetched", "failed", "pruned", "snapshot_rows",
+                      "universe_restored", "took_seconds")
+        },
+        requests_last_hour=crawler.budget.used_in_window(),
+        budget_per_hour=crawler.budget.capacity,
+        last_cycle={"fetched": fetched, "failed": failed},
+        providers={crawler.provider.id: "healthy"},
+        **stats,
+        ts=time.time(),
+    )
+    return result
 
 
 def run_loop(cycle_limit: int = 40, compute_every_seconds: float = 1800.0) -> None:  # pragma: no cover — long-lived loop

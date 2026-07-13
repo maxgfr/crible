@@ -177,6 +177,26 @@ def export_universe_parquet(con: duckdb.DuckDBPyConnection, data_dir) -> None:
     tmp.rename(final)
 
 
+def restore_universe_from_parquet(con: duckdb.DuckDBPyConnection, path) -> int:
+    """Restore ``companies`` from a previously exported universe.parquet — the
+    last-good fallback when FinanceDatabase is unreachable.
+
+    The parquet is a straight COPY of the table, so rows are inserted as-is;
+    routing through ``bootstrap_universe`` would re-map the already-ISO country
+    codes through ``region_for`` and mis-tag every row as world.
+    """
+    from pathlib import Path
+
+    file = Path(path)
+    if not file.exists():
+        raise UniverseSourceError(f"no last-good universe parquet at {file}")
+    con.execute(SCHEMA)
+    con.execute(
+        f"INSERT OR REPLACE INTO companies SELECT * FROM read_parquet('{file.as_posix()}')"
+    )
+    return con.execute("SELECT count(*) FROM companies").fetchone()[0]
+
+
 def fetch_financedatabase() -> pd.DataFrame:
     """Download the full FinanceDatabase equity universe (network)."""
     try:

@@ -12,6 +12,27 @@ from pathlib import Path
 import pandas as pd
 
 
+def prune_raw(data_dir: Path | str) -> int:
+    """Delete all but the newest raw file per (provider, symbol, statement, freq).
+
+    Lossless for snapshots — ``latest_raw_frames`` only ever reads the newest
+    version — and caps the size of a persisted raw layer (the demo-data branch)
+    no matter how many refresh runs accumulate. Returns the number deleted.
+    """
+    deleted = 0
+    for directory in (Path(data_dir) / "raw").glob("provider=*/symbol=*"):
+        newest: dict[tuple[str, str], Path] = {}
+        # zero-padded ms stamps make lexical order chronological
+        for file in sorted(directory.glob("*.parquet")):
+            statement_type, freq, _ = file.stem.split("-", 2)
+            key = (statement_type, freq)
+            if key in newest:
+                newest[key].unlink()
+                deleted += 1
+            newest[key] = file
+    return deleted
+
+
 def write_raw_statement(
     data_dir: Path | str,
     *,
