@@ -36,25 +36,25 @@ npm --prefix ui run dev             # SPA on :5173, proxies /api to :8000
 Run the full stack locally with `docker compose up`, or the API alone with
 `uv run uvicorn crible.api.main:app --reload`.
 
-The GitHub Pages demo build is a separate mode of the same SPA:
+The GitHub Pages build (the hosted screener) is a separate mode of the same SPA:
 
 ```bash
 VITE_DATA_MODE=static VITE_BASE=/crible/ npm --prefix ui run build
 ```
 
-### Seeding the demo data (maintainers)
+### Seeding the published dataset (maintainers)
 
-The demo dataset normally refreshes nightly via the `refresh-data` workflow.
+The dataset normally refreshes nightly via the `refresh-data` workflow.
 To seed it upfront — or rescue it when Yahoo rate-limits the GitHub runners —
 run the same keyless pipeline from your own machine:
 
 ```bash
-DEADLINE=7200 bash scripts/seed-demo-data.sh   # crawl budget in seconds
+DEADLINE=7200 bash scripts/seed-data.sh   # crawl budget in seconds
 ```
 
 It restores the last-good dataset, crawls politely (~47 symbols/hour at the
 default budget), refuses to publish under 50 covered symbols, force-pushes the
-orphan `demo-data` branch and triggers the Pages deploy. Re-running resumes
+orphan `data` branch and triggers the Pages deploy. Re-running resumes
 instead of starting over.
 
 ## Pull requests

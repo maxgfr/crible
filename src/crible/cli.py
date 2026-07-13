@@ -164,16 +164,15 @@ def bootstrap(
 @app.command("import-prices")
 def import_prices(
     source: str = typer.Argument(
-        ..., help="'huggingface' (US, plain HTTPS) or a path to a Stooq bulk zip (manual download)"
+        ..., help="'huggingface' (US dump, plain HTTPS) or a path to a Stooq bulk zip (worldwide, manual download)"
     ),
     max_age_days: float = typer.Option(
         0, "--max-age-days", help="Skip when the last import is younger than this (0 = always run)"
     ),
 ) -> None:
-    """Distil a price DUMP (no API) into data/prices-latest.parquet.
-
-    Only derived values are stored/published — last close, as-of date and
-    trailing 6-month return per symbol — never the licensed series."""
+    """Import a price DUMP (no API): the windowed OHLCV series into
+    data/prices/ plus the per-symbol distillate (last close, as-of date,
+    trailing 6-month return) into data/prices-latest.parquet (ADR-0007)."""
     from crible import config
     from crible.ingest.price_import import (
         import_huggingface,
@@ -229,13 +228,13 @@ def stooq_download_cmd(
     out: Path = typer.Option(None, "--out", help="Output zip path (default: ./<dataset>.zip)"),
     attempts: int = typer.Option(6, "--attempts", help="Max captcha attempts before giving up"),
     do_import: bool = typer.Option(
-        False, "--import", help="After download, distil it into data/prices-latest.parquet"
+        False, "--import", help="After download, import it (series + distillate, see `import-prices`)"
     ),
 ) -> None:
     """Download a CAPTCHA-gated Stooq bulk archive automatically (proof-of-work + OCR captcha).
 
     Clears Stooq's anti-bot layers headlessly so the worldwide price dumps can be
-    fetched in CI. Only derived values are ever stored (see `import-prices`)."""
+    fetched in CI."""
     from crible.ingest.stooq_fetch import StooqError, download_stooq
 
     target = out or Path(f"{dataset}.zip")
@@ -256,8 +255,8 @@ def stooq_download_cmd(
         )
 
 
-@app.command("demo-refresh")
-def demo_refresh(
+@app.command("refresh")
+def refresh(
     deadline: float = typer.Option(9000.0, "--deadline", help="Wall-clock budget in seconds"),
     esef_limit: int = typer.Option(25, "--esef-limit", help="Max ESEF enrichments this run"),
     edgar_limit: int = typer.Option(25, "--edgar-limit", help="Max EDGAR enrichments this run"),
@@ -266,7 +265,7 @@ def demo_refresh(
         help="Download companyfacts.zip (~1.4 GB) and ingest ALL resolved US issuers (ADR-0005)",
     ),
 ) -> None:
-    """One bounded keyless refresh pass (the nightly demo-data run)."""
+    """One bounded keyless refresh pass (the nightly dataset run)."""
     from crible.ingest.service import run_refresh
 
     result = run_refresh(
@@ -278,10 +277,10 @@ def demo_refresh(
 
 @app.command("export-site")
 def export_site_cmd(
-    out: Path = typer.Option(..., "--out", help="Directory to write the static demo artifacts to"),
+    out: Path = typer.Option(..., "--out", help="Directory to write the static site artifacts to"),
     min_symbols: int = typer.Option(50, "--min-symbols", help="Refuse to publish below this snapshot coverage"),
 ) -> None:
-    """Export the static artifacts the GitHub Pages demo runs on."""
+    """Export the static artifacts the hosted screener runs on."""
     from crible import config
     from crible.site_export import SiteExportError, export_site
 

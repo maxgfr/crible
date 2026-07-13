@@ -1,14 +1,15 @@
 // FR-007 — typed client for the crible API (same-origin FastAPI). This is
-// the self-hosted default; the Pages demo swaps in static-client instead.
+// the self-hosted default; static mode swaps in static-client instead.
 
 import {
   DslApiError,
   type CompanyDetail,
   type CsvExport,
   type DataClient,
-  type DemoManifest,
+  type SiteManifest,
   type DslErrorDetail,
   type FieldInfo,
+  type PriceBar,
   type Preset,
   type ProviderInfo,
   type ScreenResponse,
@@ -76,6 +77,13 @@ export async function fields(): Promise<FieldInfo[]> {
   return Array.isArray(body) ? (body as FieldInfo[]) : [];
 }
 
+export async function prices(symbol: string): Promise<PriceBar[]> {
+  const response = await fetch(`/api/prices/${encodeURIComponent(symbol)}`);
+  if (!response.ok) return [];
+  const body = (await response.json()) as unknown;
+  return Array.isArray(body) ? (body as PriceBar[]) : [];
+}
+
 export const apiClient: DataClient = {
   screen,
   presets,
@@ -84,10 +92,11 @@ export const apiClient: DataClient = {
   providers,
   search,
   fields,
+  prices,
   async exportCsv(query, sort, columns): Promise<CsvExport> {
     return { url: exportCsvUrl(query, sort, columns) };
   },
-  async manifest(): Promise<DemoManifest | null> {
-    return null; // live API — not a static demo
+  async manifest(): Promise<SiteManifest | null> {
+    return null; // live API — not a static build
   },
 };

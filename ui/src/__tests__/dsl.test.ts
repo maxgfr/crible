@@ -1,6 +1,6 @@
 // DSL parity — the TypeScript port must match the Python compiler EXACTLY on
 // the shared golden vectors (ui/src/dsl/golden.json), including error
-// messages, positions and hints, so the in-browser demo can never drift from
+// messages, positions and hints, so the in-browser static build can never drift from
 // the server semantics. The same file is asserted by tests/test_dsl_parity.py.
 
 import { describe, expect, it } from "vitest";

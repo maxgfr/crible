@@ -1,4 +1,4 @@
-// The static (DuckDB-WASM) data client behind the GitHub Pages demo: same
+// The static (DuckDB-WASM) data client behind the hosted screener: same
 // contract as the FastAPI client — same response shapes, same DslApiError
 // detail — over an injected query runner (no wasm in jsdom) and static JSON.
 
@@ -39,6 +39,14 @@ function scriptedRunner() {
       if (sql.includes("FROM universe")) {
         return params[0] === "AIR.PA" || params[0] === "NOFIN.PA" ? [PROFILE] : [];
       }
+      if (sql.includes("FROM prices")) {
+        return params[0] === "AIR.PA"
+          ? [
+              { date: "2026-03-02", open: 100, high: 101, low: 99, close: 100.5,
+                adj_close: 100.4, volume: 1000n, source: "yfinance" },
+            ]
+          : [];
+      }
       return ROWS;
     },
   };
@@ -54,8 +62,12 @@ function stubFetch(files: Record<string, unknown>) {
   return impl as unknown as typeof fetch;
 }
 
+const PRICES_BLOCK = {
+  symbols: 1, bars: 1, window_days: 400, max_date: "2026-03-02",
+  shards: [{ file: "prices-00.parquet", rows: 1, bytes: 512, min_symbol: "AIR.PA", max_symbol: "AIR.PA" }],
+};
 const FILES = {
-  "manifest.json": { schema: 1, generated_at: 1e9, snapshot_symbols: 2 },
+  "manifest.json": { schema: 2, generated_at: 1e9, snapshot_symbols: 2, prices: PRICES_BLOCK },
   "presets.json": [{ id: "quality", name: "Quality", description: "d", dsl: "piotroski_f >= 7" }],
   "status.json": { universe: 8, snapshot: true, ingest: { coverage_pct: 1.2 } },
   "providers.json": [{ id: "yfinance", kind: "keyless", key_env_var: null, enabled: true }],
@@ -170,10 +182,39 @@ describe("static client — fields", () => {
     expect(calls.filter((c) => c.sql.startsWith("DESCRIBE"))).toHaveLength(1);
   });
 
-  it("returns no fields while the demo data is not published yet", async () => {
+  it("returns no fields while the dataset is not published yet", async () => {
     const { runner } = scriptedRunner();
     const client = makeClient(runner, {}); // every fetch 404s
     expect(await client.fields()).toEqual([]);
+  });
+});
+
+describe("static client — prices", () => {
+  it("queries the prices view and normalizes BigInt volume", async () => {
+    const { runner, calls } = scriptedRunner();
+    const client = makeClient(runner);
+    const bars = await client.prices("AIR.PA");
+    expect(bars).toEqual([
+      { date: "2026-03-02", open: 100, high: 101, low: 99, close: 100.5,
+        adj_close: 100.4, volume: 1000, source: "yfinance" },
+    ]);
+    const query = calls.find((c) => c.sql.includes("FROM prices"));
+    expect(query?.sql).toContain("ORDER BY date");
+    expect(query?.params).toEqual(["AIR.PA"]);
+  });
+
+  it("returns [] for a symbol with no series", async () => {
+    const { runner } = scriptedRunner();
+    const client = makeClient(runner);
+    expect(await client.prices("NOPE")).toEqual([]);
+  });
+
+  it("returns [] when the manifest carries no prices block", async () => {
+    const { runner, calls } = scriptedRunner();
+    const noPrices = { ...FILES, "manifest.json": { schema: 2, generated_at: 1e9, snapshot_symbols: 2, prices: null } };
+    const client = makeClient(runner, noPrices);
+    expect(await client.prices("AIR.PA")).toEqual([]);
+    expect(calls.find((c) => c.sql.includes("FROM prices"))).toBeUndefined();
   });
 });
 
@@ -186,7 +227,7 @@ describe("static client — JSON surfaces", () => {
     expect((await client.providers())[0].id).toBe("yfinance");
   });
 
-  it("degrades gracefully when the demo data is not published yet", async () => {
+  it("degrades gracefully when the dataset is not published yet", async () => {
     const { runner } = scriptedRunner();
     const client = makeClient(runner, {}); // every fetch 404s
     const status = await client.status();

@@ -19,7 +19,7 @@ import {
 } from "./data";
 import { ColumnPicker } from "./components/ColumnPicker";
 import { CompanyDrawer } from "./components/CompanyDrawer";
-import { DemoBanner } from "./components/DemoBanner";
+import { CoverageBanner } from "./components/CoverageBanner";
 import { PresetsMenu } from "./components/PresetsMenu";
 import { QueryBuilder } from "./components/QueryBuilder";
 import { ProvidersView } from "./components/ProvidersView";
@@ -189,7 +189,7 @@ export default function App() {
         />
       </header>
 
-      {STATIC_MODE && <DemoBanner />}
+      {STATIC_MODE && <CoverageBanner />}
 
       {route.view === "screener" && (
         <>

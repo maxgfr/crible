@@ -112,6 +112,12 @@ def create_app() -> FastAPI:
             }
         return detail
 
+    @app.get("/api/prices/{symbol}")
+    def prices(symbol: str) -> list[dict]:
+        """Published daily OHLCV bars for the company drawer chart — [] when
+        the symbol has no series (the chart hides; never an error)."""
+        return runtime().prices(symbol)
+
     @app.get("/api/search")
     def search(q: str, limit: int = 20) -> list[dict]:
         """Universe search by symbol/name substring — deep-links the company

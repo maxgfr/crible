@@ -1,9 +1,10 @@
 # Data sources — the public-data audit
 
-Everything crible's core (and its GitHub Pages demo) consumes is **public,
-keyless open data**. This page is the audit trail: every source, what it
-provides, how it is accessed, and under which terms. The zero-key contract is
-CI-enforced (the test suite runs with an empty environment, NFR-009).
+Everything crible's core (and its hosted GitHub Pages screener) consumes is
+**public, keyless open data**. This page is the audit trail: every source,
+what it provides, how it is accessed, and under which terms. The zero-key
+contract is CI-enforced (the test suite runs with an empty environment,
+NFR-009).
 
 ## Sources in the keyless core
 
@@ -15,30 +16,36 @@ CI-enforced (the test suite runs with an empty environment, NFR-009).
 | [filings.xbrl.org](https://filings.xbrl.org) | **Audited** EU fundamentals from official ESEF xBRL-JSON filings | Keyless public JSON:API | Official public filings repository (XBRL International) | Audited EU layer — outranks scraped values at reconciliation (`src/crible/providers/esef.py`, FR-010) |
 | [GLEIF](https://www.gleif.org) ISIN→LEI mapping | Daily relationship file linking ISINs to LEIs | Keyless public download (refreshed upstream daily; fetched per run, never committed) | GLEIF publishes it as open data (CC0) | Resolves EU listings to their ESEF filer (`src/crible/providers/gleif.py`) |
 
-The GitHub Pages demo is built exclusively from this table: the nightly
-`refresh-data` workflow (and `scripts/seed-demo-data.sh`) run the same keyless
-pipeline and publish Parquet + JSON artifacts to the `demo-data` branch and
+The hosted screener is built exclusively from this table: the nightly
+`refresh-data` workflow (and `scripts/seed-data.sh`) run the same keyless
+pipeline and publish Parquet + JSON artifacts to the `data` branch and
 the rolling [`data-latest` release](https://github.com/maxgfr/crible/releases/tag/data-latest)
-(ADR-0006 — what `crible bootstrap` restores). The demo's Providers view is
-exported with an empty environment, so it always reports the honest keyless
-state.
+(ADR-0006, ADR-0007 — what `crible bootstrap` restores). The site's Providers
+view is exported with an empty environment, so it always reports the honest
+keyless state.
 
 **The yfinance redistribution caveat, stated plainly.** Yahoo's data is
 exchange-licensed and its terms allow personal use only — it is *free to
-access*, not *open data*. The published dataset therefore keeps the scraped
-sample deliberately small (~100 companies), an assumed and documented risk;
-everything else in it (SEC EDGAR, ESEF, GLEIF, FinanceDatabase) is cleanly
-redistributable. A fully-redistributable dataset would drop Yahoo — and with
-it all price-based ratios, because **no open OHLCV price source exists**:
-exchanges monetize market data, and Yahoo/Google merely sublicense it.
+access*, not *open data*. The published dataset carries the crawled daily
+OHLCV **series** for the sampled symbols (ADR-0007, decision 2026-07-13) — an
+explicitly assumed, documented redistribution risk. The scraped fundamentals
+sample stays deliberately small (~100 companies); everything else in the
+dataset (SEC EDGAR, ESEF, GLEIF, FinanceDatabase) is cleanly redistributable.
+A fully-redistributable dataset would drop Yahoo — and with it the price
+series and all price-based ratios, because **no open OHLCV price source
+exists**: exchanges monetize market data, and Yahoo/Google merely sublicense
+it.
 
-**Demo footprint.** The demo ships the full universe parquet (~4 MB — a
+**Site footprint.** The site ships the full universe parquet (~4 MB — a
 one-time, browser-cached fetch that powers search over all 151k listings).
 Since the EDGAR bulk sweep (2026-07-13), the snapshot covers the whole US
 market (audited fundamentals, 8 fiscal years max) plus the crawled European
-sample — tens of MB of parquet, still fetched via HTTP range requests. What
-Pages serves is only `site-data/`; the raw layer lives on the branch/release
-for bootstrap purposes and never reaches the browser.
+sample — tens of MB of parquet, still fetched via HTTP range requests. It also
+ships the daily price series as symbol-sorted, size-bounded shards
+(`site-data/prices-*.parquet`, ~400-day window; each shard is kept under the
+95 MB git wall and the total is watched via the manifest `prices.bytes`). What
+Pages serves is only `site-data/`; the rest of the raw layer lives on the
+branch/release for bootstrap purposes.
 
 ## Google Finance — evaluated and rejected (2026-07-13)
 
@@ -57,19 +64,23 @@ Any of those paths would break at least one core contract (zero-key,
 zero-cost, public data, ToS-respecting). The role Google Finance would have
 filled is already covered by yfinance + ESEF.
 
-## Imported price dumps — derived values only (2026-07-13)
+## Imported price dumps — published series (2026-07-13)
 
 No open-licensed OHLCV source exists (exchanges monetize market data), but
-free full-history DUMPS do. crible's policy: the SERIES are never stored nor
-republished — `crible import-prices` distils each symbol into ONE derived row
-(last close, as-of date, trailing 6-month return) in
-`data/prices-latest.parquet`, which the snapshot consumes as a fallback when
-the crawl has no bars (staleness stays visible via `price_asof`).
+free full-history DUMPS do. Under ADR-0007 (decision 2026-07-13), crible now
+publishes the price **series** from these dumps too, an explicitly assumed
+redistribution risk — neither dump carries an open license. `crible
+import-prices` writes two artifacts per source: the windowed OHLCV series
+(last ~400 days) into `data/prices/<source>.parquet`, exported to the site as
+`site-data/prices-*.parquet`; and the per-symbol distillate (last close,
+as-of date, trailing 6-month return) into `data/prices-latest.parquet`, which
+the snapshot still consumes as a valuation/momentum fallback when the crawl
+has no bars (staleness stays visible via `price_asof`).
 
 | Dump | Coverage | Access | Freshness | Terms |
 |---|---|---|---|---|
-| [paperswithbacktest/Stocks-Daily-Price](https://huggingface.co/datasets/paperswithbacktest/Stocks-Daily-Price) | ~7k US listings, daily, full history | 4 parquet shards, plain HTTPS, **no key/API** — pulled weekly by the nightly | Refreshed ~monthly (2026-07-09 at audit time) | License "other" (unspecified) — hence derived-values-only |
-| [Stooq bulk archives](https://stooq.com/db/h/) | Worldwide (US, DE, UK, JP, PL…), daily, decades | **`crible stooq-download <dataset> --import`** clears the two anti-bot layers headlessly (SHA-256 proof-of-work + a 4-char image captcha, OCR'd by the optional `captcha` extra; verified 2026-07-13) — or manual download then `crible import-prices <zip>` | Daily | No published license — same derived-values-only policy |
+| [paperswithbacktest/Stocks-Daily-Price](https://huggingface.co/datasets/paperswithbacktest/Stocks-Daily-Price) | ~7k US listings, daily, full history | 4 parquet shards, plain HTTPS, **no key/API** — pulled weekly by the nightly | Refreshed ~monthly (2026-07-09 at audit time) | License "other" (unspecified) — series published as an assumed risk |
+| [Stooq bulk archives](https://stooq.com/db/h/) | Worldwide (US, DE, UK, JP, PL…), daily, decades | **`crible stooq-download <dataset> --import`** clears the two anti-bot layers headlessly (SHA-256 proof-of-work + a 4-char image captcha, OCR'd by the optional `captcha` extra; verified 2026-07-13) — or manual download then `crible import-prices <zip>` | Daily | No published license — series published as an assumed risk. Stooq bars are pre-adjusted, so `adj_close` stays NULL |
 
 The `import-prices` workflow (manual dispatch) forces a HuggingFace refresh +
 snapshot recompute + republish anytime; the nightly refresh pulls it weekly
@@ -83,10 +94,10 @@ on its own.
   code paths were removed. The bulk archives stay a supported DUMP source: as of
   2026-07-13 `crible stooq-download` clears that same proof-of-work plus the
   download image captcha headlessly (the captcha is OCR'd by the optional
-  `captcha` extra), still storing only derived values.
+  `captcha` extra), and its series are published under the ADR-0007 policy.
 - **SimFin / FMP / EODHD keyed plugins** — deleted. SimFin's free license is
   personal-research only and even paid tiers bar redistribution; the others
   are commercial services. Keeping crible fully open data means the shipped
   catalog is keyless-only. The provider *seam* remains
   (`src/crible/providers/base.py`): third-party keyed plugins stay possible,
-  off by default, never part of the core or the demo.
+  off by default, never part of the core or the hosted dataset.

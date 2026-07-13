@@ -3,7 +3,7 @@
 `ui/src/dsl/golden.json` is the single source of truth both suites assert
 against: every (query → SQL, params) vector and every error (message,
 position, hint) must match EXACTLY in pytest and vitest, so the in-browser
-demo can never drift from the server semantics.
+static build can never drift from the server semantics.
 """
 
 from __future__ import annotations

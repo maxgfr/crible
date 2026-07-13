@@ -19,7 +19,7 @@ body:
       options:
         - Self-hosted (docker compose)
         - Self-hosted (uv / local dev)
-        - Live demo (maxgfr.github.io/crible)
+        - Hosted site (maxgfr.github.io/crible)
         - CLI
         - API
     validations:

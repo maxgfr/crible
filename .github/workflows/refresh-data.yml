@@ -1,10 +1,10 @@
-# Nightly demo-data refresh — 100% keyless open data (NFR-009: no secrets
-# beyond GITHUB_TOKEN). Restores the last-good dataset from the demo-data
-# branch, runs one bounded refresh pass (FinanceDatabase universe + Yahoo
+# Nightly dataset refresh — 100% keyless open data (NFR-009: no secrets
+# beyond GITHUB_TOKEN). Restores the last-good dataset from the data branch,
+# runs one bounded refresh pass (FinanceDatabase universe + Yahoo
 # fundamentals/prices + ESEF audited statements via a fresh GLEIF mapping +
 # EDGAR audited US statements), then publishes back as a single orphan
 # commit. Any failure — including the export-site min-symbols gate — aborts
-# BEFORE the push, so the live demo always keeps the last-good data.
+# BEFORE the push, so the hosted site always keeps the last-good data.
 
 name: refresh-data
 
@@ -27,17 +27,17 @@ jobs:
       CRIBLE_DATA_DIR: data
       # SEC fair-access: a declared User-Agent naming the operator WITH a
       # contact email — www.sec.gov 403s UAs without one (seen 2026-07-13)
-      CRIBLE_SEC_USER_AGENT: "crible-demo (maxgolfier@gmail.com; +https://github.com/${{ github.repository }})"
+      CRIBLE_SEC_USER_AGENT: "crible (maxgolfier@gmail.com; +https://github.com/${{ github.repository }})"
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore last-good data from the demo-data branch
+      - name: Restore last-good data from the data branch
         run: |
-          if git fetch origin demo-data; then
+          if git fetch origin data; then
             git checkout FETCH_HEAD -- data
             echo "restored last-good data/"
           else
-            echo "no demo-data branch yet — first refresh starts from scratch"
+            echo "no data branch yet — first refresh starts from scratch"
           fi
 
       - uses: astral-sh/setup-uv@v5
@@ -51,7 +51,10 @@ jobs:
           curl -fsSL --retry 3 -o data/isin-lei.zip \
             https://mapping.gleif.org/api/v2/isin-lei/latest/download
 
-      - name: Weekly US price import (dump distillate — derived values only)
+      # the worldwide price series come from the yfinance crawl below (Europe-
+      # first) + the optional Stooq worldwide dump (import-prices workflow);
+      # this weekly step just tops up US listings from the HuggingFace dump
+      - name: Weekly HuggingFace price dump (US listings — series + distillate)
         continue-on-error: true # prices are an enrichment, never a gate
         run: uv run crible import-prices huggingface --max-age-days 6
 
@@ -59,13 +62,13 @@ jobs:
         # deadline trimmed to 2h: the EDGAR bulk sweep (~10k US issuers from
         # one public-domain archive) takes the reclaimed time; ESEF cadence
         # raised — filings.xbrl.org is not budget-bound like Yahoo
-        run: uv run crible demo-refresh --deadline 7200 --esef-limit 100 --edgar-bulk
+        run: uv run crible refresh --deadline 7200 --esef-limit 100 --edgar-bulk
 
       - name: Export the static site artifacts (min-symbols gate)
         run: uv run crible export-site --out site-data --min-symbols 50
 
-      - name: Publish the demo-data branch (single orphan commit)
-        run: bash scripts/publish-demo-data.sh
+      - name: Publish the data branch (single orphan commit)
+        run: bash scripts/publish-data.sh
 
       - name: Publish the rolling data-latest release assets
         env:
@@ -75,7 +78,7 @@ jobs:
       - name: Summary
         run: |
           {
-            echo "### Demo data refreshed"
+            echo "### Dataset refreshed"
             echo '```json'
             cat site-data/manifest.json
             echo '```'

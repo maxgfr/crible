@@ -603,9 +603,9 @@ table.inventory td.note {
   background: color-mix(in srgb, var(--color-primary) 14%, transparent);
 }
 
-/* ------------------------------------------------- static demo banner */
+/* ------------------------------------------------- static coverage banner */
 
-.demo-banner {
+.coverage-banner {
   padding: var(--space-1) var(--space-3);
   font-size: var(--scale-small);
   color: var(--color-muted);
@@ -613,8 +613,36 @@ table.inventory td.note {
   border-bottom: 1px solid color-mix(in srgb, var(--color-muted) 25%, transparent);
 }
 
-.demo-banner a {
+.coverage-banner a {
   color: var(--color-primary);
+}
+
+/* ------------------------------------------------- company drawer price chart */
+
+.price-chart {
+  margin: var(--space-2) 0 var(--space-3);
+}
+
+.price-chart svg {
+  display: block;
+  width: 100%;
+  height: 120px;
+  overflow: visible;
+}
+
+.price-chart-line {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.price-chart-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--scale-small);
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ------------------------------------------------------------ query builder */

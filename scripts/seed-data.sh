@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Seed the GitHub Pages demo dataset from THIS machine — the upfront path for
-# the first launch, and the rescue path whenever Yahoo rate-limits the GitHub
+# Seed the published dataset from THIS machine — the upfront path for the
+# first launch, and the rescue path whenever Yahoo rate-limits the GitHub
 # runners. Everything keyless: FinanceDatabase universe, Yahoo fundamentals/
 # prices via yfinance, audited ESEF statements via a fresh GLEIF mapping.
 #
-#   DEADLINE=7200 bash scripts/seed-demo-data.sh
+#   DEADLINE=7200 bash scripts/seed-data.sh
 #
 # Resumable: re-running skips symbols still inside their freshness window and
 # extends coverage instead of starting over.
@@ -16,9 +16,9 @@ MIN_SYMBOLS="${MIN_SYMBOLS:-50}"
 export CRIBLE_DATA_DIR="${CRIBLE_DATA_DIR:-data}"
 
 # 1. start from the published last-good dataset when one exists
-if git fetch origin demo-data 2> /dev/null; then
+if git fetch origin data 2> /dev/null; then
   git checkout FETCH_HEAD -- data
-  echo "restored last-good data/ from the demo-data branch"
+  echo "restored last-good data/ from the data branch"
 fi
 
 # 2. fresh GLEIF ISIN→LEI mapping (best-effort — the ESEF cycle self-skips without it)
@@ -28,15 +28,15 @@ curl -fsSL --retry 3 -o "$CRIBLE_DATA_DIR/isin-lei.zip" \
   || echo "GLEIF download failed — ESEF enrichment will be skipped this run"
 
 # 3. bounded keyless refresh: crawl (sample first) → ESEF → prices → prune → compute
-uv run crible demo-refresh --deadline "$DEADLINE"
+uv run crible refresh --deadline "$DEADLINE"
 
 # 4. the never-publish-empty gate
 uv run crible export-site --out site-data --min-symbols "$MIN_SYMBOLS"
 
-# 5. publish the orphan demo-data branch (plumbing — safe on a dirty checkout)
-bash "$(dirname "$0")/publish-demo-data.sh"
+# 5. publish the orphan data branch (plumbing — safe on a dirty checkout)
+bash "$(dirname "$0")/publish-data.sh"
 
-# 6. a demo-data push does NOT trigger pages.yml (it only listens to main +
+# 6. a data push does NOT trigger pages.yml (it only listens to main +
 #    refresh-data runs) — kick the deploy explicitly
 gh workflow run pages.yml \
   || echo "could not trigger the deploy — run: gh workflow run pages.yml"

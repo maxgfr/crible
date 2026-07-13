@@ -1,7 +1,8 @@
-# On-demand price refresh: pull the HuggingFace (US) distillate AND the Stooq
-# worldwide dump, recompute the snapshot with them, republish. The weekly HF
-# pull already runs inside refresh-data; this dispatch exists to force one
-# anytime and to add Stooq's worldwide coverage.
+# On-demand price refresh: pull the HuggingFace (US) dump AND the Stooq
+# worldwide dump — windowed OHLCV series + per-symbol distillate (ADR-0007) —
+# recompute the snapshot with them, republish. The weekly HF pull already runs
+# inside refresh-data; this dispatch exists to force one anytime and to add
+# Stooq's worldwide coverage.
 # Stooq is CAPTCHA-gated — `crible stooq-download` clears the proof-of-work +
 # image captcha headlessly (SHA-256 hashcash + ddddocr OCR), so it runs here in
 # CI. It stays best-effort (continue-on-error): prices are an enrichment, never
@@ -32,9 +33,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore last-good data from the demo-data branch
+      - name: Restore last-good data from the data branch
         run: |
-          git fetch origin demo-data
+          git fetch origin data
           git checkout FETCH_HEAD -- data
 
       # ddddocr (the captcha OCR) pulls opencv-python (not headless) → needs libGL.
@@ -45,10 +46,10 @@ jobs:
       - run: uv python install 3.12
       - run: uv sync --extra captcha
 
-      - name: Import the HuggingFace price dump distillate (US, derived values only)
+      - name: Import the HuggingFace price dump (US — series + distillate)
         run: uv run crible import-prices huggingface
 
-      - name: Fetch the Stooq worldwide dump (proof-of-work + OCR captcha, derived values only)
+      - name: Fetch the Stooq worldwide dump (proof-of-work + OCR captcha)
         if: ${{ inputs.stooq_dataset != '' }}
         continue-on-error: true # prices are an enrichment, never a gate
         run: |
@@ -61,15 +62,15 @@ jobs:
       - name: Export the static site artifacts (min-symbols gate)
         run: uv run crible export-site --out site-data --min-symbols 50
 
-      - name: Publish the demo-data branch (single orphan commit)
-        run: bash scripts/publish-demo-data.sh
+      - name: Publish the data branch (single orphan commit)
+        run: bash scripts/publish-data.sh
 
       - name: Publish the rolling data-latest release assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/publish-data-release.sh
 
-      - name: Redeploy the Pages demo
+      - name: Redeploy the Pages site
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run pages.yml

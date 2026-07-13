@@ -1,4 +1,4 @@
-// The static data client behind the GitHub Pages demo: the SAME DataClient
+// The static data client behind the hosted screener: the SAME DataClient
 // contract as api-client, but the DSL compiles in the browser (ui/src/dsl —
 // golden-locked to the Python compiler) and queries run in DuckDB-WASM over
 // the published Parquet artifacts. JSON surfaces (presets/status/providers/
@@ -11,8 +11,9 @@ import {
   type CompanyDetail,
   type CsvExport,
   type DataClient,
-  type DemoManifest,
+  type SiteManifest,
   type FieldInfo,
+  type PriceBar,
   type Preset,
   type ProviderInfo,
   type ScreenResponse,
@@ -32,7 +33,7 @@ export interface StaticClientOptions {
 
 const MAX_LIMIT = 10_000; // mirrors crible.store.MAX_LIMIT
 const NOT_PUBLISHED_HINT =
-  "demo data not published yet — the nightly refresh publishes the first snapshot";
+  "dataset not published yet — the nightly refresh publishes the first snapshot";
 
 function normalizeValue(value: unknown): unknown {
   if (typeof value === "bigint") return Number(value);
@@ -52,19 +53,26 @@ function csvCell(value: unknown): string {
 export function createStaticClient(options: StaticClientOptions = {}): DataClient {
   const base = options.baseUrl ?? import.meta.env.BASE_URL;
   const fetchImpl = options.fetchImpl ?? fetch.bind(globalThis);
-  const makeRunner =
-    options.runner ?? (() => import("./duckdb").then((m) => m.createDuckDbRunner(base)));
 
   let runnerPromise: Promise<QueryRunner> | null = null;
-  let manifestPromise: Promise<DemoManifest | null> | null = null;
+  let manifestPromise: Promise<SiteManifest | null> | null = null;
   let describePromise: Promise<FieldInfo[]> | null = null;
 
-  const manifest = (): Promise<DemoManifest | null> => {
+  const manifest = (): Promise<SiteManifest | null> => {
     manifestPromise ??= fetchImpl(`${base}data/manifest.json`)
-      .then((r) => (r.ok ? (r.json() as Promise<DemoManifest>) : null))
+      .then((r) => (r.ok ? (r.json() as Promise<SiteManifest>) : null))
       .catch(() => null);
     return manifestPromise;
   };
+
+  // the DuckDB runner needs the price-shard list up front (views are created
+  // at connect time) — resolve it from the manifest before booting DuckDB
+  const makeRunner =
+    options.runner ??
+    (async () => {
+      const shards = (await manifest())?.prices?.shards.map((s) => s.file) ?? [];
+      return import("./duckdb").then((m) => m.createDuckDbRunner(base, shards));
+    });
 
   const runner = (): Promise<QueryRunner> => {
     runnerPromise ??= makeRunner();
@@ -192,6 +200,19 @@ export function createStaticClient(options: StaticClientOptions = {}): DataClien
     async fields(): Promise<FieldInfo[]> {
       if (!(await published())) return [];
       return describe();
+    },
+
+    async prices(symbol): Promise<PriceBar[]> {
+      // no prices block → no `prices` view was registered; nothing to query
+      if (!(await manifest())?.prices) return [];
+      const r = await runner();
+      // strftime in SQL keeps the shape byte-identical to the API contract
+      const rows = await r.query(
+        "SELECT strftime(date, '%Y-%m-%d') AS date, open, high, low, close," +
+          " adj_close, volume, source FROM prices WHERE symbol = ? ORDER BY date",
+        [symbol],
+      );
+      return rows.map(normalizeRow) as unknown as PriceBar[];
     },
 
     async search(q): Promise<SearchHit[]> {

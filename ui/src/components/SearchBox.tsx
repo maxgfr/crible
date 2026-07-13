@@ -1,6 +1,6 @@
 // Universe search — symbol/name substring over all ~161k listings (crawled or
 // not), debounced, keyboard-free minimal dropdown. Picking a hit deep-links
-// the company drawer. Works identically in api and static (demo) mode.
+// the company drawer. Works identically in api and static mode.
 
 import { useEffect, useRef, useState } from "react";
 import { search, type SearchHit } from "../data";

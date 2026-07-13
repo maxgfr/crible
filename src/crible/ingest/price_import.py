@@ -7,11 +7,14 @@ Two dump families:
   (Stooq gates automated downloads behind a CAPTCHA) — worldwide coverage;
   Stooq symbols are mapped onto the universe's Yahoo-style tickers.
 
-Licensing (documented in docs/DATA-SOURCES.md): neither dump carries an open
-license, so crible never stores or republishes the SERIES. The import distils
-each symbol into ONE row of derived values — last close, as-of date, trailing
-6-month return — in data/prices-latest.parquet. That table is what the
-snapshot consumes (valuation ratios, momentum) and what the demo publishes.
+Each import produces TWO artifacts (ADR-0007, 2026-07-13 — the published
+dataset carries the price series; neither dump has an open license and the
+redistribution risk is explicitly assumed, see docs/DATA-SOURCES.md):
+- the windowed OHLCV series in data/prices/<source>.parquet (lean schema,
+  whole-file replace) — exported to the site as prices-*.parquet shards;
+- the one-row-per-symbol distillate (last close, as-of date, trailing
+  6-month return) in data/prices-latest.parquet — what the snapshot consumes
+  for valuation/momentum when the crawl has no bars.
 """
 
 from __future__ import annotations
@@ -26,6 +29,8 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
+
+from crible.price_series import SERIES_WINDOW_DAYS, write_series
 
 log = logging.getLogger("crible.ingest.price_import")
 
@@ -118,9 +123,9 @@ def _distill(bars: pd.DataFrame) -> tuple[float, str, float] | None:
 def import_huggingface(
     data_dir: Path | str, shards: list[str] | None = None
 ) -> ImportReport:
-    """Distil the HF daily-price shards into prices-latest rows.
+    """Import the HF daily-price shards: windowed OHLCV series + distillate.
 
-    One DuckDB aggregate over the shards (only ~400 days of bars are read);
+    One DuckDB pass over the shards (only the series window of bars is read);
     symbols outside the universe are counted and dropped.
     """
     shards = shards if shards is not None else HF_SHARDS
@@ -130,13 +135,23 @@ def import_huggingface(
         if any(str(s).startswith("http") for s in shards):
             con.execute("INSTALL httpfs; LOAD httpfs;")
         placeholders = ", ".join("?" for _ in shards)
+        series = con.execute(
+            f"""
+            SELECT symbol, CAST(date AS DATE) AS date,
+                   open, high, low, close, adj_close, volume
+            FROM read_parquet([{placeholders}])
+            WHERE close IS NOT NULL AND close > 0
+              AND date >= strftime(current_date - INTERVAL {SERIES_WINDOW_DAYS} DAY, '%Y-%m-%d')
+            """,
+            list(shards),
+        ).fetchdf()
         rows = con.execute(
             f"""
             WITH bars AS (
                 SELECT symbol, date, adj_close AS close
                 FROM read_parquet([{placeholders}])
                 WHERE adj_close IS NOT NULL AND adj_close > 0
-                  AND date >= strftime(current_date - INTERVAL 400 DAY, '%Y-%m-%d')
+                  AND date >= strftime(current_date - INTERVAL {SERIES_WINDOW_DAYS} DAY, '%Y-%m-%d')
             ),
             latest AS (
                 SELECT symbol, arg_max(close, date) AS close, max(date) AS price_asof
@@ -172,6 +187,9 @@ def import_huggingface(
     skipped = len(rows) - len(fresh)
     if not fresh.empty:
         _merge_and_publish(data_dir, fresh)
+    series = series[series["symbol"].isin(known)]
+    if len(series):
+        write_series(data_dir, "huggingface", series.assign(source="huggingface"))
     log.info("import-prices: %d symbols from huggingface (%d outside the universe)",
              len(fresh), skipped)
     return ImportReport(source="huggingface", imported=len(fresh), skipped_unknown=skipped)
@@ -192,12 +210,23 @@ def map_stooq_symbol(name: str) -> str | None:
     return ticker.upper() + mapped
 
 
+def _stooq_number(value: str | None) -> float:
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return float("nan")
+
+
 def import_stooq(data_dir: Path | str, archive: Path | str) -> ImportReport:
-    """Distil a manually-downloaded Stooq bulk archive (CSV members named
-    <ticker>.<exchange>.txt, dates YYYYMMDD)."""
+    """Import a manually-downloaded Stooq bulk archive (CSV members named
+    <ticker>.<exchange>.txt, dates YYYYMMDD): windowed series + distillate.
+
+    Stooq publishes pre-adjusted bars without a separate adjusted close, so
+    ``adj_close`` stays NULL — never fabricated."""
     known = universe_symbols(data_dir)
     now = time.time()
     records: list[dict] = []
+    series_parts: list[pd.DataFrame] = []
     skipped = 0
     with zipfile.ZipFile(archive) as bundle:
         for member in bundle.namelist():
@@ -215,7 +244,14 @@ def import_stooq(data_dir: Path | str, archive: Path | str) -> ImportReport:
                     date, close = normalized.get("date"), normalized.get("close")
                     if not date or not close:
                         continue
-                    rows.append({"date": f"{date[:4]}-{date[4:6]}-{date[6:8]}", "close": float(close)})
+                    rows.append(
+                        {"date": f"{date[:4]}-{date[4:6]}-{date[6:8]}",
+                         "open": _stooq_number(normalized.get("open")),
+                         "high": _stooq_number(normalized.get("high")),
+                         "low": _stooq_number(normalized.get("low")),
+                         "close": float(close),
+                         "volume": _stooq_number(normalized.get("vol"))}
+                    )
             if not rows:
                 continue
             distilled = _distill(pd.DataFrame(rows))
@@ -226,8 +262,17 @@ def import_stooq(data_dir: Path | str, archive: Path | str) -> ImportReport:
                 {"symbol": symbol, "close": close, "price_asof": asof,
                  "return_6m": return_6m, "source": "stooq", "imported_at": now}
             )
+            bars = pd.DataFrame(rows).assign(date=lambda f: pd.to_datetime(f["date"]))
+            cutoff = bars["date"].max() - pd.Timedelta(days=SERIES_WINDOW_DAYS)
+            series_parts.append(
+                bars[bars["date"] > cutoff].assign(
+                    symbol=symbol, adj_close=float("nan"), source="stooq"
+                )
+            )
     fresh = pd.DataFrame(records)
     if not fresh.empty:
         _merge_and_publish(data_dir, fresh)
+    if series_parts:
+        write_series(data_dir, "stooq", pd.concat(series_parts, ignore_index=True))
     log.info("import-prices: %d symbols from stooq (%d members unmapped)", len(fresh), skipped)
     return ImportReport(source="stooq", imported=len(fresh), skipped_unknown=skipped)

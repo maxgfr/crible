@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
-# Publish the demo dataset as GitHub Release assets on the rolling
-# `data-latest` release — the stable download URL `crible bootstrap` prefers
-# over the demo-data branch. Called by refresh-data.yml right after
-# publish-demo-data.sh and shares its never-publish-empty gate
-# (site-data/manifest.json). Requires the gh CLI (GH_TOKEN in CI).
+# Publish the dataset as GitHub Release assets on the rolling `data-latest`
+# release — the stable download URL `crible bootstrap` prefers over the data
+# branch. Called by refresh-data.yml right after publish-data.sh and shares
+# its never-publish-empty gate (site-data/manifest.json). Requires the gh CLI
+# (GH_TOKEN in CI).
 #
 # Assets:
-#   crible-data.tar.gz   data/raw + data/universe.parquet + data/snapshot (+ status.json)
+#   crible-data.tar.gz   data/raw + data/universe.parquet + data/snapshot
+#                        (+ status.json, prices-latest.parquet, data/prices)
 #   universe.parquet     the site-data copies, individually downloadable
 #   snapshot.parquet
+#   prices-*.parquet     the OHLCV series shards (when series exist)
+#
+# --clobber replaces same-named assets but never deletes: if the shard count
+# shrinks, a stale prices-NN.parquet can linger — the tarball and
+# site-data/manifest.json stay authoritative.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
@@ -23,12 +29,18 @@ tarball="$workdir/crible-data.tar.gz"
 paths=(data/raw data/universe.parquet data/snapshot)
 [ -f data/status.json ] && paths+=(data/status.json)
 [ -f data/prices-latest.parquet ] && paths+=(data/prices-latest.parquet)
+[ -d data/prices ] && paths+=(data/prices)
 tar -czf "$tarball" "${paths[@]}"
+
+assets=("$tarball" site-data/universe.parquet site-data/snapshot.parquet)
+for shard in site-data/prices-*.parquet; do
+  [ -f "$shard" ] && assets+=("$shard")
+done
 
 # a rolling release: created once, assets clobbered nightly; --latest=false so
 # it never shadows the versioned application releases
 gh release view data-latest > /dev/null 2>&1 || gh release create data-latest \
   --latest=false --title "Rolling open dataset (nightly)" \
   --notes "Nightly keyless open-data refresh. Bootstrap a self-hosted crible from it with \`crible bootstrap\` — no crawl needed."
-gh release upload data-latest "$tarball" site-data/universe.parquet site-data/snapshot.parquet --clobber
+gh release upload data-latest "${assets[@]}" --clobber
 echo "released data-latest assets ($(du -h "$tarball" | cut -f1 | tr -d ' ') tarball)"

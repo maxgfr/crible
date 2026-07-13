@@ -1,6 +1,6 @@
 // FR-007 — the shared data contract. One DataClient interface, two
 // implementations: api-client (same-origin FastAPI, the self-hosted default)
-// and static-client (DuckDB-WASM over published Parquet, the Pages demo).
+// and static-client (DuckDB-WASM over published Parquet, the hosted site).
 
 export interface ScreenResponse {
   rows: Record<string, unknown>[];
@@ -71,14 +71,44 @@ export interface SearchHit {
   sector: string | null;
 }
 
-export interface DemoManifest {
+export interface PriceShard {
+  file: string;
+  rows: number;
+  bytes: number;
+  min_symbol: string;
+  max_symbol: string;
+}
+
+export interface PriceManifest {
+  symbols: number;
+  bars: number;
+  window_days: number;
+  max_date: string;
+  shards: PriceShard[];
+}
+
+export interface SiteManifest {
   schema: number;
   generated_at: number;
   universe_rows: number;
   snapshot_rows: number;
   snapshot_symbols: number;
+  prices: PriceManifest | null;
   sample: string[];
   commit: string | null;
+}
+
+/** One daily bar — the drawer price chart's input. Fields are nullable
+ *  because Stooq has no adjusted close and some sources omit volume. */
+export interface PriceBar {
+  date: string;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  adj_close: number | null;
+  volume: number | null;
+  source: string;
 }
 
 export class DslApiError extends Error {
@@ -102,6 +132,8 @@ export interface DataClient {
   search(q: string): Promise<SearchHit[]>;
   /** snapshot columns + coarse types — the query builder's field list */
   fields(): Promise<FieldInfo[]>;
+  /** published daily bars for one symbol, oldest first — [] when it has none */
+  prices(symbol: string): Promise<PriceBar[]>;
   /** static mode only — null while the nightly refresh has not published yet */
-  manifest(): Promise<DemoManifest | null>;
+  manifest(): Promise<SiteManifest | null>;
 }

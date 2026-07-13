@@ -1,5 +1,5 @@
 """crible bootstrap — initialize data/ from the published open dataset:
-release assets first, demo-data branch fallback, safe tar extraction, and
+release assets first, data branch fallback, safe tar extraction, and
 never clobbering an existing layer without --force."""
 
 from __future__ import annotations
@@ -51,9 +51,9 @@ RELEASE_TAR = _tarball(
 # also carries site-data/, which bootstrap must ignore
 BRANCH_TAR = _tarball(
     [
-        "crible-demo-data/data/universe.parquet",
-        "crible-demo-data/data/snapshot/snapshot.parquet",
-        "crible-demo-data/site-data/universe.parquet",
+        "crible-data/data/universe.parquet",
+        "crible-data/data/snapshot/snapshot.parquet",
+        "crible-data/site-data/universe.parquet",
     ]
 )
 HOSTILE_TAR = _tarball(
@@ -94,7 +94,7 @@ def test_bootstrap_prefers_the_release_asset(tmp_path) -> None:
     assert http.calls == [release_asset_url(REPO)]  # the branch is never hit
 
 
-def test_bootstrap_falls_back_to_the_demo_data_branch(tmp_path) -> None:
+def test_bootstrap_falls_back_to_the_data_branch(tmp_path) -> None:
     http = FakeHttp({branch_tarball_url(REPO): FakeResponse(200, BRANCH_TAR)})
     report = bootstrap_data(tmp_path / "data", repo=REPO, http=http)
     assert report.source == "branch" and report.files == 2

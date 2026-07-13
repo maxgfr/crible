@@ -1,5 +1,5 @@
 // FR-004 — 1:1 TypeScript port of src/crible/dsl/parser.py for the static
-// (DuckDB-WASM) demo. Same grammar, same token kinds, same error messages,
+// (DuckDB-WASM) static build. Same grammar, same token kinds, same error messages,
 // positions and hints — parity is locked by golden.json, asserted by BOTH
 // tests/test_dsl_parity.py and ui/src/__tests__/dsl.test.ts. Any change here
 // must land in the Python parser (and regenerate the golden file) too.

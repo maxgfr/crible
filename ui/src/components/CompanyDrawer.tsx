@@ -4,6 +4,7 @@
 
 import { Fragment, useEffect, useState } from "react";
 import { company, type CompanyDetail } from "../data";
+import { PriceChart } from "./PriceChart";
 
 interface Props {
   symbol: string;
@@ -64,6 +65,7 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
             <span className="badge">{String(detail.profile.country ?? "?")}</span>
             <span className="badge">{String(detail.profile.sector ?? "?")}</span>
           </h2>
+          <PriceChart symbol={symbol} />
           {detail.periods.length === 0 ? (
             <p className="meta">
               Not crawled yet — universe metadata only. It is queued by region priority; check the

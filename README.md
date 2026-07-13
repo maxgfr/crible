@@ -7,7 +7,7 @@
 
 **The fundamental stock screener that runs on your own machine — zero API keys, zero subscription, forever.**
 
-**[Try the live demo →](https://maxgfr.github.io/crible/)** — the real screener running entirely in your browser (DuckDB-WASM, open data, no backend).
+**[Open the screener →](https://maxgfr.github.io/crible/)** — the real screener running entirely in your browser (DuckDB-WASM, open data, no backend).
 
 Screen a worldwide universe of ~150k equities (Europe-depth priority) on real fundamentals —
 Piotroski F, Altman Z, Beneish M, 150+ transparent ratios — with every number traceable back
@@ -80,7 +80,7 @@ crible --data-dir ~/crible-data fields                   # every filterable colu
 
 The nightly refresh publishes its open dataset twice: as assets on the rolling
 [`data-latest` release](https://github.com/maxgfr/crible/releases/tag/data-latest) and on the
-`demo-data` branch. A fresh install can pull it and screen immediately:
+`data` branch. A fresh install can pull it and screen immediately:
 
 ```bash
 uv run crible bootstrap                      # data/ restored from the published dataset
@@ -94,7 +94,7 @@ The normal ingest loop then extends the dataset from wherever the bootstrap left
 - `docker compose up` — the `ingest` service is the built-in "cron": a continuous,
   rate-budgeted crawl loop that recomputes and republishes the snapshot after every cycle.
 - Your own cron running one bounded pass, e.g. nightly:
-  `17 2 * * * cd crible && uv run crible demo-refresh --deadline 9000` (exactly what the
+  `17 2 * * * cd crible && uv run crible refresh --deadline 9000` (exactly what the
   GitHub Action does).
 - Consume-only (no crawling at all): re-pull the published nightly dataset with
   `crible bootstrap --force` on a cron — the `data-latest` release is refreshed every night
@@ -155,25 +155,33 @@ to its component values. Ranks are computed at snapshot build time: after
 upgrading, run `crible compute` (or wait for the next crawl cycle) to get the
 columns.
 
-## The live demo — how it works
+## The hosted screener — how it works
 
-The [demo](https://maxgfr.github.io/crible/) is not a video or a mock: it is the real screener
-running **entirely in your browser**. The same filter DSL is compiled client-side (a TypeScript
-port, golden-locked to the Python compiler by shared test vectors) and executed by
+The [hosted screener](https://maxgfr.github.io/crible/) is not a video or a mock: it is the real
+screener running **entirely in your browser**. The same filter DSL is compiled client-side (a
+TypeScript port, golden-locked to the Python compiler by shared test vectors) and executed by
 **DuckDB-WASM** over Parquet artifacts fetched with HTTP range requests from GitHub Pages —
-there is no backend at all.
+there is no backend at all. Nothing here is unavailable when you self-host; the site *is* the
+product, running on the published dataset.
 
-- **Open data, nightly**: a GitHub Action refreshes the demo dataset every night from the same
+- **Open data, nightly**: a GitHub Action refreshes the dataset every night from the same
   keyless sources the self-hosted crawl uses — FinanceDatabase (the full ~150k-listing universe,
   searchable), Yahoo via yfinance, SEC EDGAR (audited US statements, public domain) and
   filings.xbrl.org (audited ESEF statements) matched through the GLEIF ISIN→LEI file. No key,
   no account, anywhere. The same dataset is downloadable (`crible bootstrap`).
-- **Coverage**: audited fundamentals cover the **entire US market** (~10k issuers via the
-  nightly EDGAR bulk sweep — price-free scores only where Yahoo prices are missing) plus the
-  crawled European sample (CAC 40 + DAX 40, extended nightly by the crawl + ESEF); the full
-  rolling crawl of the whole universe is what self-hosting gives you.
+- **Worldwide universe**: the full ~150k-listing FinanceDatabase universe (117 countries) is
+  searchable from the first load — this is a worldwide screener, not a US one. Every listing
+  deep-links its company drawer whether or not it has been crawled yet.
+- **Coverage**: audited fundamentals span the **entire US market** (~10k issuers via the nightly
+  EDGAR bulk sweep — price-free scores where Yahoo prices are missing) and the European filers
+  (ESEF), on top of the Europe-first rolling crawl (CAC 40 + DAX 40 and outward). Self-hosting
+  runs the same worldwide crawl from the same code.
+- **Daily price series**: alongside the fundamentals, the site ships the crawled daily OHLCV
+  series (~400-day window) as size-bounded Parquet shards — worldwide, not US-only (the
+  yfinance Europe/US crawl plus optional Stooq worldwide dumps) — so the company drawer draws a
+  real 1-year price chart, not just derived ratios.
 - **Last-good guarantee**: a refresh that fails or covers too few symbols never publishes —
-  the demo keeps the previous dataset, and its Status view shows data freshness honestly.
+  the site keeps the previous dataset, and its Status view shows data freshness honestly.
 
 ## Status
 

@@ -2,7 +2,7 @@
 
 The nightly refresh publishes the dataset twice: as GitHub Release assets on
 the rolling ``data-latest`` release (preferred — a stable download URL) and as
-the orphan ``demo-data`` branch (fallback — exists as soon as the first
+the orphan ``data`` branch (fallback — exists as soon as the first
 refresh ran). ``crible bootstrap`` pulls whichever answers first, extracts
 only the ``data/`` layer (safe extraction: no links, no path escapes), and
 leaves keeping it fresh to the normal ingest loop.
@@ -44,14 +44,14 @@ def release_asset_url(repo: str) -> str:
 
 
 def branch_tarball_url(repo: str) -> str:
-    return f"https://codeload.github.com/{repo}/tar.gz/refs/heads/demo-data"
+    return f"https://codeload.github.com/{repo}/tar.gz/refs/heads/data"
 
 
 def _data_relpath(name: str) -> PurePosixPath | None:
     """The member's path inside the data/ layer, or None to skip it.
 
     The release tarball roots members at ``data/…``; the codeload branch
-    tarball prefixes them with ``<repo>-demo-data/``. Anything outside data/
+    tarball prefixes them with ``<repo>-data/``. Anything outside data/
     (site-data, README…) and anything path-traversing is skipped.
     """
     parts = PurePosixPath(name).parts

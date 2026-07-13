@@ -1,9 +1,10 @@
-"""Site export — the static artifacts the GitHub Pages demo runs on.
+"""Site export — the static artifacts the hosted screener runs on.
 
-`export_site` publishes the universe + snapshot Parquet and the JSON surfaces
-(presets/providers/status/manifest) into an output directory, and is the
-"never publish an empty demo" gate: it fails below a minimum symbol count so
-the nightly workflow keeps the last-good data instead.
+`export_site` publishes the universe + snapshot Parquet, the price-series
+shards and the JSON surfaces (presets/providers/status/manifest) into an
+output directory, and is the "never publish an empty dataset" gate: it fails
+below a minimum symbol count so the nightly workflow keeps the last-good
+data instead.
 """
 
 from __future__ import annotations
@@ -56,10 +57,12 @@ def test_export_site_emits_all_artifacts_and_manifest(data_dir, tmp_path_factory
     ):
         assert (out / name).exists(), name
 
-    assert manifest["schema"] == 1
+    assert manifest["schema"] == 2
     assert manifest["universe_rows"] == 8
     assert manifest["snapshot_rows"] == 3
     assert manifest["snapshot_symbols"] == 3
+    assert manifest["prices"] is None  # no series in this fixture — enrichment, not a gate
+    assert not list(out.glob("prices-*.parquet"))
     assert isinstance(manifest["sample"], list) and manifest["sample"]
     assert manifest["generated_at"] > 0
     assert json.loads((out / "manifest.json").read_text()) == json.loads(
@@ -73,6 +76,23 @@ def test_export_site_emits_all_artifacts_and_manifest(data_dir, tmp_path_factory
     assert con.execute(
         f"SELECT count(DISTINCT symbol) FROM read_parquet('{(out / 'snapshot.parquet').as_posix()}')"
     ).fetchone()[0] == 3
+
+
+def test_export_site_ships_the_price_series_shards(data_dir, tmp_path_factory) -> None:
+    from tests.test_price_series import write_yf_bars, yf_frame
+
+    write_yf_bars(data_dir, "AIR.PA", yf_frame(days=5, start="2026-03-02"))
+    out = tmp_path_factory.mktemp("site")
+    manifest = export_site(data_dir, out, min_symbols=2)
+
+    assert manifest["prices"]["symbols"] == 1
+    assert manifest["prices"]["bars"] == 5
+    assert manifest["prices"]["max_date"] == "2026-03-06"
+    (shard,) = manifest["prices"]["shards"]
+    assert (out / shard["file"]).exists()
+    table = pd.read_parquet(out / shard["file"])
+    assert list(table["symbol"].unique()) == ["AIR.PA"]
+    assert str(table["date"].iloc[0]) == "2026-03-02"
 
 
 def test_export_site_presets_are_the_shipped_presets(data_dir, tmp_path_factory) -> None:

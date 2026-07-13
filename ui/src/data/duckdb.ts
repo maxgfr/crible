@@ -1,5 +1,5 @@
-// DuckDB-WASM bootstrap for the static demo — self-hosted bundles (Vite ?url
-// imports, no CDN: the demo stays fully served from GitHub Pages) reading the
+// DuckDB-WASM bootstrap for static mode — self-hosted bundles (Vite ?url
+// imports, no CDN: the site stays fully served from GitHub Pages) reading the
 // published Parquet artifacts over HTTP range requests. The snapshot_latest
 // view is copied verbatim from crible/runtime.py:mount_snapshot.
 
@@ -15,7 +15,10 @@ const BUNDLES: duckdb.DuckDBBundles = {
   eh: { mainModule: wasmEh, mainWorker: workerEh },
 };
 
-export async function createDuckDbRunner(base: string): Promise<QueryRunner> {
+export async function createDuckDbRunner(
+  base: string,
+  priceShards: string[] = [],
+): Promise<QueryRunner> {
   const bundle = await duckdb.selectBundle(BUNDLES);
   const worker = new Worker(bundle.mainWorker!);
   const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
@@ -28,6 +31,9 @@ export async function createDuckDbRunner(base: string): Promise<QueryRunner> {
   await db.registerFileURL(
     "snapshot.parquet", url("snapshot.parquet"), duckdb.DuckDBDataProtocol.HTTP, false,
   );
+  for (const shard of priceShards) {
+    await db.registerFileURL(shard, url(shard), duckdb.DuckDBDataProtocol.HTTP, false);
+  }
 
   const conn = await db.connect();
   await conn.query("CREATE VIEW universe AS SELECT * FROM read_parquet('universe.parquet')");
@@ -40,6 +46,12 @@ export async function createDuckDbRunner(base: string): Promise<QueryRunner> {
         FROM snapshot_all s
     ) WHERE _rn = 1
   `);
+  // symbol-sorted, disjoint shards → DuckDB prunes non-matching ones on a
+  // footer read; only registered when the manifest lists a prices block
+  if (priceShards.length) {
+    const list = priceShards.map((s) => `'${s}'`).join(", ");
+    await conn.query(`CREATE VIEW prices AS SELECT * FROM read_parquet([${list}])`);
+  }
 
   return {
     async query(sql: string, params: unknown[] = []): Promise<Record<string, unknown>[]> {

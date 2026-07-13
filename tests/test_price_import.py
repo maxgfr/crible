@@ -1,7 +1,8 @@
-"""import-prices — dump distillation (no API): HuggingFace parquet shards and
-Stooq bulk archives become ONE derived row per symbol (close, as-of,
-return_6m) in prices-latest.parquet; the snapshot falls back to it when the
-crawl has no bars. The licensed series themselves are never stored."""
+"""import-prices — dump imports (no API): HuggingFace parquet shards and
+Stooq bulk archives yield the windowed OHLCV series (data/prices/<source>.parquet,
+published — ADR-0007) plus ONE derived row per symbol (close, as-of,
+return_6m) in prices-latest.parquet; the snapshot falls back to the latter
+when the crawl has no bars."""
 
 from __future__ import annotations
 
@@ -56,6 +57,21 @@ def test_huggingface_import_distils_known_symbols(tmp_path) -> None:
     assert row["source"] == "huggingface"
 
 
+def test_huggingface_import_persists_the_series_store(tmp_path) -> None:
+    """The windowed OHLCV series lands in data/prices/ (ADR-0007), filtered
+    to the universe like the distillate."""
+    _universe(tmp_path)
+    import_huggingface(tmp_path, shards=[_shard(tmp_path)])
+
+    series = pd.read_parquet(tmp_path / "prices" / "huggingface.parquet")
+    assert set(series["symbol"]) == {"AAPL"}  # ZZUNKNOWN dropped
+    assert list(series.columns) == [
+        "symbol", "date", "open", "high", "low", "close", "adj_close", "volume", "source",
+    ]
+    assert (series["source"] == "huggingface").all()
+    assert series["close"].notna().all()
+
+
 def test_stooq_import_maps_exchange_suffixes(tmp_path) -> None:
     assert map_stooq_symbol("data/us/aapl.us.txt") == "AAPL"
     assert map_stooq_symbol("bmw.de.txt") == "BMW.DE"
@@ -77,6 +93,12 @@ def test_stooq_import_maps_exchange_suffixes(tmp_path) -> None:
     table = load_prices_latest(tmp_path).set_index("symbol")
     assert table.loc["BMW.DE", "close"] == 62.0
     assert table.loc["BMW.DE", "source"] == "stooq"
+
+    # the series store: OHLCV kept, adj_close NULL (Stooq is pre-adjusted)
+    series = pd.read_parquet(tmp_path / "prices" / "stooq.parquet")
+    assert set(series["symbol"]) == {"BMW.DE"}
+    assert series["adj_close"].isna().all()
+    assert series["open"].notna().all() and series["volume"].notna().all()
 
 
 def test_merge_keeps_the_newest_asof_per_symbol(tmp_path) -> None:

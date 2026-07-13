@@ -1,6 +1,6 @@
 # 0006. Dataset distribution: demo-data branch + rolling data-latest release + bootstrap
 
-- **Status:** accepted (2026-07-13)
+- **Status:** accepted (2026-07-13); amended by [ADR-0007](0007-publish-price-series-hosted-site-is-the-product.md) — the branch was renamed `demo-data` → `data` and the published set gained the daily price series. This ADR is kept as history; read the branch name as `data` throughout.
 
 ## Context
 Self-hosters previously started from an empty `data/` and waited hours for the first crawl to land rows. Meanwhile the nightly `refresh-data` workflow already publishes the full open dataset (raw layer + universe + snapshot + site artifacts) as one orphan commit on the `demo-data` branch, with a never-publish-empty gate and a last-good guarantee. GitHub constraints shape the options: files >100 MiB are blocked from normal git, Git LFS objects are not served by Pages, release assets go up to 2 GB, and committing data to `main` would bloat its history nightly (the Flat Data pattern's cost).

@@ -1,4 +1,4 @@
-// The data seam. VITE_DATA_MODE=static (the GitHub Pages demo) resolves the
+// The data seam. VITE_DATA_MODE=static (the hosted screener) resolves the
 // DuckDB-WASM client through a dynamic import — dead-branch-eliminated from
 // the default api build, code-split into a lazy chunk in static builds. The
 // self-hosted bundle is byte-for-byte unaffected.
@@ -8,8 +8,9 @@ import type {
   CompanyDetail,
   CsvExport,
   DataClient,
-  DemoManifest,
+  SiteManifest,
   FieldInfo,
+  PriceBar,
   Preset,
   ProviderInfo,
   ScreenResponse,
@@ -72,7 +73,11 @@ export async function fields(): Promise<FieldInfo[]> {
   return (await getClient()).fields();
 }
 
-export async function manifest(): Promise<DemoManifest | null> {
+export async function prices(symbol: string): Promise<PriceBar[]> {
+  return (await getClient()).prices(symbol);
+}
+
+export async function manifest(): Promise<SiteManifest | null> {
   return (await getClient()).manifest();
 }
 
@@ -81,10 +86,13 @@ export type {
   CompanyDetail,
   CsvExport,
   DataClient,
-  DemoManifest,
+  SiteManifest,
   DslErrorDetail,
   FieldInfo,
   IngestHeartbeat,
+  PriceBar,
+  PriceManifest,
+  PriceShard,
   Preset,
   ProviderInfo,
   ScreenResponse,

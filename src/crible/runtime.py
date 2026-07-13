@@ -143,6 +143,17 @@ class Runtime:
         clean_profile = {k: (None if pd.isna(v) else v) for k, v in profile.items()}
         return {"profile": clean_profile, "periods": periods}
 
+    def prices(self, symbol: str) -> list[dict]:
+        """Published daily bars for one symbol, oldest first — [] when the
+        symbol has no series (the drawer chart hides; never an error)."""
+        from crible.price_series import load_symbol_series
+
+        series = load_symbol_series(self.data_dir, symbol)
+        if series.empty:
+            return []
+        series = series.assign(date=series["date"].dt.strftime("%Y-%m-%d"))
+        return json.loads(series.drop(columns=["symbol"]).to_json(orient="records"))
+
     def search(self, q: str, limit: int = 20) -> list[dict]:
         """Symbol/name substring search over the universe — the way a 161k-row
         universe stays browsable before (and beyond) crawl coverage."""

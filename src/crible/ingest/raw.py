@@ -16,7 +16,7 @@ def prune_raw(data_dir: Path | str) -> int:
     """Delete all but the newest raw file per (provider, symbol, statement, freq).
 
     Lossless for snapshots — ``latest_raw_frames`` only ever reads the newest
-    version — and caps the size of a persisted raw layer (the demo-data branch)
+    version — and caps the size of a persisted raw layer (the data branch)
     no matter how many refresh runs accumulate. Returns the number deleted.
     """
     deleted = 0

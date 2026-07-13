@@ -1,10 +1,11 @@
-"""Static-site export — the artifacts the GitHub Pages demo runs on.
+"""Static-site export — the artifacts the hosted screener runs on.
 
-Copies the published universe/snapshot Parquet and emits the JSON surfaces
-(presets, providers, status, manifest) into an output directory. Doubles as
-the "never publish an empty demo" gate: it refuses to write anything when the
-snapshot is missing or covers fewer symbols than ``min_symbols``, so the
-nightly workflow keeps the last-good data instead.
+Copies the published universe/snapshot Parquet, exports the price-series
+shards and emits the JSON surfaces (presets, providers, status, manifest)
+into an output directory. Doubles as the "never publish an empty dataset"
+gate: it refuses to write anything when the snapshot is missing or covers
+fewer symbols than ``min_symbols``, so the nightly workflow keeps the
+last-good data instead.
 """
 
 from __future__ import annotations
@@ -20,12 +21,13 @@ import duckdb
 
 from crible.ingest.service import bootstrap_sample
 from crible.presets import PRESETS
+from crible.price_series import export_price_shards
 from crible.providers.catalog import default_catalog, inventory
 from crible.runtime import Runtime
 
 
 class SiteExportError(RuntimeError):
-    """The export was refused — publishing would break the live demo."""
+    """The export was refused — publishing would break the hosted site."""
 
 
 def export_site(data_dir: Path | str, out_dir: Path | str, min_symbols: int = 50) -> dict:
@@ -59,20 +61,24 @@ def export_site(data_dir: Path | str, out_dir: Path | str, min_symbols: int = 50
     out.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(universe, out / "universe.parquet")
     shutil.copyfile(snapshot, out / "snapshot.parquet")
+    # the OHLCV series shards (ADR-0007) — None when no series exist yet;
+    # prices are an enrichment, never a gate
+    prices = export_price_shards(data, out)
 
     status = runtime.status()
     status.pop("data_dir", None)  # no local paths in the published surface
     (out / "presets.json").write_text(json.dumps([asdict(p) for p in PRESETS.values()], indent=2))
-    # empty env by construction: the demo honestly reports the keyless state
+    # empty env by construction: the site honestly reports the keyless state
     (out / "providers.json").write_text(json.dumps(inventory(default_catalog(), {}), indent=2))
     (out / "status.json").write_text(json.dumps(status, default=str))
 
     manifest = {
-        "schema": 1,
+        "schema": 2,
         "generated_at": time.time(),
         "universe_rows": universe_rows,
         "snapshot_rows": snapshot_rows,
         "snapshot_symbols": snapshot_symbols,
+        "prices": prices,
         "sample": bootstrap_sample(),
         "commit": os.environ.get("GITHUB_SHA"),
     }
