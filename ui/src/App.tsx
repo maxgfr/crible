@@ -18,6 +18,7 @@ import {
 import { ColumnPicker } from "./components/ColumnPicker";
 import { CompanyDrawer } from "./components/CompanyDrawer";
 import { DemoBanner } from "./components/DemoBanner";
+import { FilterBar } from "./components/FilterBar";
 import { PresetsMenu } from "./components/PresetsMenu";
 import { ProvidersView } from "./components/ProvidersView";
 import { QueryBar } from "./components/QueryBar";
@@ -177,6 +178,12 @@ export default function App() {
             running={running}
             error={firstRun ? null : error}
             inputRef={queryInputRef}
+          />
+          <FilterBar
+            onApply={(dsl) => {
+              setQuery(dsl);
+              run(dsl);
+            }}
           />
           <div className="toolbar">
             <PresetsMenu
