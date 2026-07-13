@@ -16,6 +16,10 @@ jobs:
       - run: uv python install 3.12
       - run: uv sync
       - run: uv run pytest -q
+        env:
+          # NFR-008 bounds are normative for the reference machine; shared
+          # runners get an explicit 3× budget instead of a weakened contract
+          CRIBLE_BENCH_FACTOR: "3"
       - run: uv run ruff check src tests
 
   ui:

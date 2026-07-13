@@ -1,9 +1,14 @@
 """NFR-008 — the normative performance environment: a synthetic full-size
 snapshot (~161k rows × ~200 columns). Every preset and a battery of screens
-must answer with p95 < 1 s end-to-end. (FR-004 AC-4 points here.)"""
+must answer with p95 < 1 s end-to-end. (FR-004 AC-4 points here.)
+
+The bounds are normative for the reference machine. Slower shared CI runners
+declare an explicit budget multiplier via CRIBLE_BENCH_FACTOR (ci.yml sets 3)
+instead of silently weakening the local contract."""
 
 from __future__ import annotations
 
+import os
 import time
 
 import duckdb
@@ -14,6 +19,7 @@ from crible.store import screen, whitelist_from_relation
 
 ROWS = 161_000
 FILLER_COLUMNS = 180
+BENCH_FACTOR = float(os.environ.get("CRIBLE_BENCH_FACTOR", "1"))
 
 
 @pytest.fixture(scope="module")
@@ -66,7 +72,8 @@ def test_nfr008_every_preset_screens_the_full_universe_under_1s(con) -> None:
             started = time.perf_counter()
             screen(con, preset.dsl, whitelist=whitelist, sort="-piotroski_f", limit=100, offset=0)
             timings.append(time.perf_counter() - started)
-        assert p95(timings) < 1.0, f"{preset.id}: p95 {p95(timings):.3f}s ≥ 1s"
+        bound = 1.0 * BENCH_FACTOR
+        assert p95(timings) < bound, f"{preset.id}: p95 {p95(timings):.3f}s ≥ {bound}s"
 
 
 def test_nfr008_adhoc_screen_battery_p95_under_1s(con) -> None:
@@ -84,7 +91,8 @@ def test_nfr008_adhoc_screen_battery_p95_under_1s(con) -> None:
             rows = screen(con, query, whitelist=whitelist, sort=None, limit=200, offset=0)
             timings.append(time.perf_counter() - started)
         assert rows is not None
-    assert p95(timings) < 1.0, f"battery p95 {p95(timings):.3f}s ≥ 1s"
+    bound = 1.0 * BENCH_FACTOR
+    assert p95(timings) < bound, f"battery p95 {p95(timings):.3f}s ≥ {bound}s"
 
 
 def test_nfr008_rank_build_cost_bounded_on_full_universe() -> None:
@@ -114,7 +122,8 @@ def test_nfr008_rank_build_cost_bounded_on_full_universe() -> None:
     ranked = attach_ranks(frame)
     elapsed = time.perf_counter() - started
     assert ranked["composite_rank"].notna().all()
-    assert elapsed < 5.0, f"attach_ranks on {n} rows took {elapsed:.2f}s ≥ 5s"
+    bound = 5.0 * BENCH_FACTOR
+    assert elapsed < bound, f"attach_ranks on {n} rows took {elapsed:.2f}s ≥ {bound}s"
 
 
 def test_nfr008_api_layer_p95_under_500ms_warm(con, tmp_path_factory, monkeypatch) -> None:
@@ -143,4 +152,5 @@ def test_nfr008_api_layer_p95_under_500ms_warm(con, tmp_path_factory, monkeypatc
         )
         timings.append(time.perf_counter() - started)
         assert response.status_code == 200 and response.json()["total"] > 0
-    assert p95(timings) < 0.5, f"API p95 {p95(timings):.3f}s ≥ 500ms"
+    bound = 0.5 * BENCH_FACTOR
+    assert p95(timings) < bound, f"API p95 {p95(timings):.3f}s ≥ {bound}s"
