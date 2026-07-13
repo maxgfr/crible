@@ -183,6 +183,18 @@ export function StatusView() {
                   <td className={ingest.esef_unmatched ? "num-warn" : ""}>{ingest.esef_unmatched}</td>
                 </tr>
               )}
+              {ingest.edgar_resolved !== undefined && (
+                <tr>
+                  <th scope="row">EDGAR matched</th>
+                  <td>{ingest.edgar_resolved}</td>
+                </tr>
+              )}
+              {ingest.edgar_unmatched !== undefined && (
+                <tr>
+                  <th scope="row">EDGAR unmatched</th>
+                  <td className={ingest.edgar_unmatched ? "num-warn" : ""}>{ingest.edgar_unmatched}</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

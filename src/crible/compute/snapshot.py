@@ -48,13 +48,14 @@ def build_symbol_snapshot(
     canonical = build_canonical(frames)
     audited_fields: dict[str, list[str]] = {}
     if audited_frames:
-        from crible.compute.reconcile import reconcile
+        from crible.compute.reconcile import align_periods, reconcile
 
         audited = build_canonical(audited_frames)
         if canonical.empty:
             canonical = audited
             audited_fields = {str(p): [c for c in audited.columns if pd.notna(audited.loc[p, c])] for p in audited.index}
         elif not audited.empty:
+            audited = align_periods(audited, canonical.index)
             result = reconcile(canonical, audited, symbol=symbol)
             canonical = result.merged
             audited_fields = result.audited_fields
@@ -142,19 +143,32 @@ def attach_universe(snapshot: pd.DataFrame, data_dir: Path | str) -> pd.DataFram
     return snapshot.merge(universe[keep], on="symbol", how="left")
 
 
+def _frames_provider(frames: dict[tuple[str, str], pd.DataFrame], default: str) -> str:
+    """Provider id from the raw layer's ``_provider`` metadata column."""
+    for frame in frames.values():
+        if "_provider" in frame.columns and len(frame):
+            return str(frame["_provider"].iloc[0])
+    return default
+
+
 def build_snapshot(data_dir: Path | str, symbols: list[str] | None = None) -> pd.DataFrame:
     todo = symbols if symbols is not None else crawled_symbols(data_dir)
     parts = []
     for symbol in todo:
-        scraped = {
-            **latest_raw_frames(data_dir, symbol, provider="yfinance"),
-            **latest_raw_frames(data_dir, symbol, provider="stooq"),
+        scraped = latest_raw_frames(data_dir, symbol, provider="yfinance")
+        # the audited layer: ESEF for the EU, EDGAR for the US — a symbol
+        # realistically has one of the two
+        audited = {
+            **latest_raw_frames(data_dir, symbol, provider="esef"),
+            **latest_raw_frames(data_dir, symbol, provider="edgar"),
         }
-        audited = latest_raw_frames(data_dir, symbol, provider="esef")
         if not scraped and not audited:
             continue
         part = build_symbol_snapshot(
-            symbol, scraped or audited, audited_frames=audited if scraped else None
+            symbol,
+            scraped or audited,
+            provider="yfinance" if scraped else _frames_provider(audited, "esef"),
+            audited_frames=audited if scraped else None,
         )
         if not part.empty:
             parts.append(part)

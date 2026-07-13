@@ -1,6 +1,6 @@
 // T-020 — providers & settings: read-only inventory (keyless built-ins +
-// plugin providers keyed off/on), the .env pointer, the EODHD upgrade
-// path, and the theme preference. The table is the hero here too.
+// any plugin providers), and the theme preference. The table is the hero
+// here too. The shipped catalog is keyless-only (open-data cleanup).
 
 import { useEffect, useState } from "react";
 import { providers, type ProviderInfo } from "../data";
@@ -13,14 +13,11 @@ interface Props {
 
 const BUILT_INS = [
   { id: "esef", note: "audited EU statements — filings.xbrl.org" },
-  { id: "stooq", note: "price fallback (budget-free)" },
+  { id: "edgar", note: "audited US statements — SEC EDGAR companyfacts" },
 ];
 
 const NOTES: Record<string, string> = {
   yfinance: "primary keyless source — rolling, rate-budgeted crawl",
-  simfin: "annual EU/US statements (free tier)",
-  fmp_free: "annual statements (free tier)",
-  eodhd: "€59.99/mo — deepest EU fundamentals; the one paid upgrade path (see srd/prds)",
 };
 
 function StatePill({ provider }: { provider: ProviderInfo }) {
@@ -83,9 +80,10 @@ export function ProvidersView({ theme, onTheme }: Props) {
         {plugins === null && !failed && <div className="skeleton-block" aria-hidden="true" />}
 
         <p className="teach">
-          Keys live in <code>.env</code> next to <code>docker-compose.yml</code> — add{" "}
-          <code>SIMFIN_KEY=…</code> and restart the stack; a provider without a key simply
-          stays off. Zero-key operation is the contract: nothing here is ever required.
+          Every bundled source is keyless open data — there is nothing to configure in{" "}
+          <code>.env</code>. Third-party keyed plugins remain possible through the provider
+          seam (one without its key simply stays off), but zero-key operation is the
+          contract: nothing here is ever required.
         </p>
 
         <h3>Appearance</h3>

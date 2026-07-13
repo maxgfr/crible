@@ -20,3 +20,12 @@ def database_path() -> Path:
 
 def budget_per_hour() -> int:
     return int(os.environ.get("CRIBLE_BUDGET_PER_HOUR", DEFAULT_BUDGET_PER_HOUR))
+
+
+DEFAULT_SEC_USER_AGENT = "crible (https://github.com/maxgfr/crible)"
+
+
+def sec_user_agent() -> str:
+    """SEC fair-access requires a declared User-Agent naming the operator —
+    set CRIBLE_SEC_USER_AGENT to include a contact email for your instance."""
+    return os.environ.get("CRIBLE_SEC_USER_AGENT", DEFAULT_SEC_USER_AGENT)

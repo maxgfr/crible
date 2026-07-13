@@ -17,6 +17,34 @@ log = logging.getLogger("crible.compute.reconcile")
 DISCREPANCY_THRESHOLD = 0.05
 
 
+def align_periods(audited: pd.DataFrame, scraped_index: pd.Index) -> pd.DataFrame:
+    """Relabel audited periods onto the scraped label of the same fiscal year.
+
+    Providers label the same fiscal period differently — ESEF by year
+    ("2024"), EDGAR and yfinance by end date ("2024-09-28" vs "2024-09-30") —
+    and ``reconcile`` skips audited periods absent from the scraped index, so
+    without alignment the audited layer never overrides anything. Matching is
+    by the 4-digit year prefix; an audited period is left untouched when it
+    already matches, when the year is ambiguous (several scraped periods), or
+    when the target label is already taken — conservative by design.
+    """
+    scraped_labels = {str(label) for label in scraped_index}
+    by_year: dict[str, list[str]] = {}
+    for label in scraped_labels:
+        by_year.setdefault(label[:4], []).append(label)
+    renames: dict[str, str] = {}
+    audited_labels = {str(label) for label in audited.index}
+    for label in audited.index:
+        text = str(label)
+        candidates = by_year.get(text[:4], [])
+        if text in scraped_labels or len(candidates) != 1:
+            continue
+        target = candidates[0]
+        if target not in audited_labels:
+            renames[label] = target
+    return audited.rename(index=renames) if renames else audited
+
+
 @dataclass
 class Reconciliation:
     merged: pd.DataFrame

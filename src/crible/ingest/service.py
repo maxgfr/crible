@@ -269,6 +269,99 @@ def run_esef_cycle(limit: int = 5, client=None, mapping: dict[str, str] | None =
         con.close()
 
 
+EDGAR_REFRESH_SECONDS = 90 * 24 * 3600
+EDGAR_SCHEMA = """
+CREATE TABLE IF NOT EXISTS edgar_tasks (
+    symbol          VARCHAR PRIMARY KEY,
+    cik             BIGINT NOT NULL,
+    last_fetched_at DOUBLE
+)
+"""
+
+
+def run_edgar_cycle(limit: int = 5, client=None, ticker_map: dict[str, int] | None = None) -> dict:
+    """FR-016 — the EDGAR enrichment cycle: US companies whose ticker resolves
+    in the SEC directory (company_tickers.json) get audited figures pulled
+    from companyfacts into provider='edgar' raw statements. Outages are
+    recorded and the cycle resumes next time; unmatched listings are counted,
+    never errored — symmetric with the ESEF cycle."""
+    from crible.providers.edgar import facts_to_frames, resolve_ciks
+
+    data = config.data_dir()
+    outcome: dict = {"enriched": [], "unmatched": 0, "outage": None, "skipped": None}
+
+    con = _connect()
+    try:
+        con.execute(EDGAR_SCHEMA)
+        companies = [
+            {"symbol": s}
+            for (s,) in con.execute(
+                "SELECT symbol FROM companies WHERE region = 'us' AND NOT delisted"
+            ).fetchall()
+        ]
+        if not companies:
+            outcome["skipped"] = "no US companies in the universe yet"
+            return outcome
+        if ticker_map is None:
+            if client is None:
+                from crible.providers.edgar import EdgarClient
+
+                client = EdgarClient()
+            try:
+                ticker_map = client.company_tickers()
+            except Exception as exc:  # noqa: BLE001 — outage: record, resume next cycle
+                outcome["outage"] = f"company_tickers.json: {exc}"
+                log.warning("edgar: %s — resuming next cycle", outcome["outage"])
+                return outcome
+        resolved, unmatched = resolve_ciks(companies, ticker_map)
+        outcome["unmatched"] = len(unmatched)
+        # FR-016: the unmatched-US-listings metric is visible in status
+        update_heartbeat(edgar_unmatched=len(unmatched), edgar_resolved=len(resolved))
+        for symbol, cik in resolved.items():
+            con.execute(
+                "INSERT INTO edgar_tasks (symbol, cik) VALUES (?, ?) ON CONFLICT (symbol) DO NOTHING",
+                [symbol, cik],
+            )
+        due = con.execute(
+            "SELECT symbol, cik FROM edgar_tasks WHERE last_fetched_at IS NULL"
+            " OR last_fetched_at < ? ORDER BY last_fetched_at NULLS FIRST LIMIT ?",
+            [time.time() - EDGAR_REFRESH_SECONDS, limit],
+        ).fetchall()
+        if not due:
+            return outcome
+
+        if client is None:
+            from crible.providers.edgar import EdgarClient
+
+            client = EdgarClient()
+        from crible.ingest.raw import write_raw_statement
+
+        for symbol, cik in due:
+            try:
+                frames = facts_to_frames(client.companyfacts(int(cik)))
+                fetched_at = time.time()
+                for (statement_type, freq), frame in frames.items():
+                    write_raw_statement(
+                        data, symbol=symbol, provider="edgar", statement_type=statement_type,
+                        freq=freq, frame=frame, fetched_at=fetched_at,
+                    )
+                con.execute(
+                    "UPDATE edgar_tasks SET last_fetched_at = ? WHERE symbol = ?",
+                    [fetched_at, symbol],
+                )
+                if frames:
+                    outcome["enriched"].append(symbol)
+                    log.info("edgar: enriched %s (%d statement frame(s)) from CIK %010d",
+                             symbol, len(frames), int(cik))
+            except Exception as exc:  # noqa: BLE001 — outage: record, resume next cycle
+                outcome["outage"] = f"{symbol}: {exc}"
+                log.warning("edgar: outage on %s: %s — resuming next cycle", symbol, exc)
+                break
+        return outcome
+    finally:
+        con.close()
+
+
 def run_price_refresh(budget: TokenBucket, provider=None) -> dict:
     """FR-011 — daily price refresh for the priority set within the budget."""
     from crible.ingest.prices import PriceRefresher
@@ -326,10 +419,12 @@ def run_compute() -> int:
 def run_refresh(
     deadline_seconds: float = 9000.0,
     esef_limit: int = 25,
+    edgar_limit: int = 25,
     *,
     fetch_universe=None,
     provider=None,
     price_provider=None,
+    edgar_client=None,
     cycle_limit: int = 10,
 ) -> dict:
     """One bounded, resumable refresh pass — the nightly demo-data run.
@@ -337,8 +432,8 @@ def run_refresh(
     Bootstrap (falling back to the last-good universe.parquet when
     FinanceDatabase is down) → prioritized crawl on ONE shared token bucket
     until the queue drains or the deadline passes (repeated ``ingest --once``
-    calls would each get a fresh bucket and bust the hourly budget) → ESEF
-    enrichment → price refresh → prune the raw layer → compute + publish.
+    calls would each get a fresh bucket and bust the hourly budget) → ESEF +
+    EDGAR enrichment → price refresh → prune the raw layer → compute + publish.
     """
     from crible.ingest.raw import prune_raw
     from crible.universe import (
@@ -387,6 +482,11 @@ def run_refresh(
     except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
         log.warning("esef cycle failed: %s", exc)
         result["esef"] = {"outage": str(exc)}
+    try:
+        result["edgar"] = run_edgar_cycle(limit=edgar_limit, client=edgar_client)
+    except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
+        log.warning("edgar cycle failed: %s", exc)
+        result["edgar"] = {"outage": str(exc)}
     try:
         result["prices"] = run_price_refresh(crawler.budget, provider=price_provider)
     except Exception as exc:  # noqa: BLE001
@@ -451,6 +551,14 @@ def run_loop(cycle_limit: int = 40, compute_every_seconds: float = 1800.0) -> No
                 log.info("esef cycle: %s", esef)
         except Exception as exc:  # noqa: BLE001
             log.warning("esef cycle failed: %s", exc)
+
+        # FR-016: audited EDGAR enrichment (keyless; own SEC fair-access pace)
+        try:
+            edgar = run_edgar_cycle()
+            if edgar["enriched"] or edgar["outage"]:
+                log.info("edgar cycle: %s", edgar)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("edgar cycle failed: %s", exc)
 
         if outcome.fetched or now - last_compute >= compute_every_seconds:
             run_compute()

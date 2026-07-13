@@ -30,7 +30,7 @@ from tests.test_fr001_universe import fixture_frame
 
 class FakeYfProvider:
     """Statement provider double writing under provider='yfinance' so the
-    snapshot builder (which only reads yfinance/stooq/esef) picks it up."""
+    snapshot builder (which only reads yfinance/esef) picks it up."""
 
     id = "yfinance"
     kind = "keyless"
@@ -57,6 +57,16 @@ class FakePriceProvider:
 
     def fetch_prices(self, symbol: str) -> pd.DataFrame | None:
         return pd.DataFrame({"Date": ["2026-07-10"], "Close": [42.0]})
+
+
+class FakeEdgarDirectory:
+    """EDGAR client double: an empty SEC directory keeps the cycle offline."""
+
+    def company_tickers(self):
+        return {}
+
+    def companyfacts(self, cik):
+        raise AssertionError("no CIK resolves — companyfacts is never fetched")
 
 
 # ------------------------------------------------------------------- restore
@@ -146,6 +156,7 @@ def test_run_refresh_crawls_computes_and_publishes(refresh_env) -> None:
         fetch_universe=fixture_frame,
         provider=provider,
         price_provider=FakePriceProvider(),
+        edgar_client=FakeEdgarDirectory(),
     )
 
     assert result["universe_loaded"] == 8
@@ -175,6 +186,7 @@ def test_run_refresh_falls_back_to_last_good_universe(refresh_env) -> None:
         fetch_universe=failing_fetch,
         provider=FakeYfProvider(),
         price_provider=FakePriceProvider(),
+        edgar_client=FakeEdgarDirectory(),
     )
 
     assert result["universe_restored"] is True
@@ -203,6 +215,7 @@ def test_run_refresh_prunes_raw_versions(refresh_env) -> None:
         fetch_universe=fixture_frame,
         provider=provider,
         price_provider=FakePriceProvider(),
+        edgar_client=FakeEdgarDirectory(),
     )
     # a nightly Actions run starts from a fresh operational DB (only the raw
     # parquet layer is restored from the demo-data branch) → full re-crawl
@@ -212,6 +225,7 @@ def test_run_refresh_prunes_raw_versions(refresh_env) -> None:
         fetch_universe=fixture_frame,
         provider=provider,
         price_provider=FakePriceProvider(),
+        edgar_client=FakeEdgarDirectory(),
     )
     assert result["pruned"] >= 8  # older income versions for the 8 re-crawled symbols
     # after pruning: at most one file per (provider, symbol, statement, freq)

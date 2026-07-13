@@ -121,6 +121,27 @@ def test_fr010_small_differences_override_silently() -> None:
     assert result.discrepancies == []  # < 5%: override without noise
 
 
+def test_fr010_audited_year_labels_align_to_dated_scraped_periods() -> None:
+    """ESEF labels periods by fiscal year ("2024") while yfinance uses dates
+    ("2024-12-31") — align_periods must bridge them or the audited layer
+    never overrides anything (the Finding-A fix)."""
+    scraped_frames = {
+        ("income", "annual"): income_frame(
+            {"TotalRevenue": [1000.0, 1100.0]}, ["2023-12-31", "2024-12-31"]
+        ),
+    }
+    audited_frames = {
+        ("income", "annual"): income_frame({"TotalRevenue": [1200.0]}, ["2024"]),
+    }
+    snapshot = build_symbol_snapshot(
+        "MC.PA", scraped_frames, audited_frames=audited_frames, computed_at=1.0
+    )
+    by_period = snapshot.set_index("period")
+    assert by_period.loc["2024-12-31", "revenue"] == 1200.0
+    assert "revenue" in by_period.loc["2024-12-31", "audited_fields"]
+    assert "2024" not in by_period.index
+
+
 def test_fr010_snapshot_marks_audited_provenance() -> None:
     scraped_frames = {
         ("income", "annual"): income_frame(

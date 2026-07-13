@@ -118,15 +118,37 @@ def ingest(
         _fail("nothing to do — pass --bootstrap, --once or --loop")
 
 
+@app.command()
+def bootstrap(
+    repo: str = typer.Option(None, "--repo", help="GitHub repo publishing the dataset (owner/name)"),
+    force: bool = typer.Option(False, "--force", help="Overwrite an existing data/ layer"),
+) -> None:
+    """Initialize data/ from the published open dataset — screen with zero crawl."""
+    from crible import config
+    from crible.bootstrap import BootstrapError, bootstrap_data
+
+    try:
+        report = bootstrap_data(config.data_dir(), repo=repo, force=force)
+    except BootstrapError as exc:
+        _fail(str(exc))
+    typer.echo(
+        f"bootstrapped {report.files} files from the {report.source} into {config.data_dir()}"
+    )
+    typer.echo(
+        'next: crible screen "piotroski_f >= 7" — or docker compose up to keep the data fresh'
+    )
+
+
 @app.command("demo-refresh")
 def demo_refresh(
     deadline: float = typer.Option(9000.0, "--deadline", help="Wall-clock budget in seconds"),
     esef_limit: int = typer.Option(25, "--esef-limit", help="Max ESEF enrichments this run"),
+    edgar_limit: int = typer.Option(25, "--edgar-limit", help="Max EDGAR enrichments this run"),
 ) -> None:
     """One bounded keyless refresh pass (the nightly demo-data run)."""
     from crible.ingest.service import run_refresh
 
-    result = run_refresh(deadline_seconds=deadline, esef_limit=esef_limit)
+    result = run_refresh(deadline_seconds=deadline, esef_limit=esef_limit, edgar_limit=edgar_limit)
     typer.echo(json.dumps(result, indent=2, default=str))
 
 
