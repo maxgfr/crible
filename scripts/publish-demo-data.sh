@@ -27,8 +27,11 @@ tmp_index="$(mktemp)"
 trap 'rm -f "$tmp_index"' EXIT
 export GIT_INDEX_FILE="$tmp_index"
 git read-tree --empty
-# -f: these paths are gitignored on main by design
-git add -f data/raw data/universe.parquet data/snapshot data/status.json site-data
+# -f: these paths are gitignored on main by design; status.json only exists
+# once a refresh has written its heartbeat (mid-crawl publishes lack it)
+paths=(data/raw data/universe.parquet data/snapshot site-data)
+[ -f data/status.json ] && paths+=(data/status.json)
+git add -f "${paths[@]}"
 tree="$(git write-tree)"
 unset GIT_INDEX_FILE
 
