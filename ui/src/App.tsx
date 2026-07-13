@@ -32,11 +32,11 @@ import { Wordmark } from "./components/Wordmark";
 import { useHashRoute } from "./router";
 import {
   applyTheme,
+  cycled,
   effectiveTheme,
   loadThemePref,
   prefersLight,
   saveThemePref,
-  toggled,
   watchSystemTheme,
 } from "./theme";
 
@@ -182,7 +182,11 @@ export default function App() {
         <span className="spacer" />
         <SearchBox onPick={(symbol) => navigate({ view: route.view, company: symbol })} />
         <span className="status-pill">{statusLine}</span>
-        <ThemeToggle theme={theme} onToggle={() => setThemePref(toggled(theme))} />
+        <ThemeToggle
+          pref={themePref}
+          theme={theme}
+          onCycle={() => setThemePref(cycled(themePref, theme))}
+        />
       </header>
 
       {STATIC_MODE && <DemoBanner />}

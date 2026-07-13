@@ -21,6 +21,11 @@ export function toggled(theme: Theme): Theme {
   return theme === "dark" ? "light" : "dark";
 }
 
+/** The header cycle: auto → explicit flip (always a visible change) → auto. */
+export function cycled(pref: ThemePref, effective: Theme): ThemePref {
+  return pref === "auto" ? toggled(effective) : "auto";
+}
+
 export function applyTheme(theme: Theme): void {
   document.documentElement.dataset.theme = theme;
 }

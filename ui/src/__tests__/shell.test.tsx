@@ -57,13 +57,17 @@ describe("shell & navigation", () => {
     await waitFor(() => expect(rtl.getByRole("heading", { name: /status/i })).toBeInTheDocument());
   });
 
-  it("toggles and persists the theme", async () => {
+  it("toggles and persists the theme, then hands back to auto", async () => {
     mockApi();
     render(<App />);
     const button = rtl.getByRole("button", { name: /light theme/i });
     fireEvent.click(button);
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(window.localStorage.getItem("crible-theme")).toBe("light");
+    // second click: back to auto — the OS (no matchMedia in jsdom → dark)
+    fireEvent.click(rtl.getByRole("button", { name: /follow the system/i }));
+    expect(window.localStorage.getItem("crible-theme")).toBe("auto");
+    expect(document.documentElement.dataset.theme).toBe("dark");
   });
 
   it("focuses the DSL bar on `/`", async () => {

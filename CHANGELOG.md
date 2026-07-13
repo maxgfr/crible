@@ -27,6 +27,19 @@
   all composing the same plain, editable DSL into the query bar. Replaces the
   fixed six-filter bar; the grammar and the Python/TS golden parity are
   untouched.
+- **Starter filter chips** — the classic screener criteria (market cap, P/E,
+  P/B, dividend yield, ROE, debt/equity, margins, growth, scores, ranks,
+  region/sector/country) pinned as one-click editable chips on the builder.
+- **Auto theme** — the preference becomes auto|dark|light (default auto,
+  follows the OS live); the header control cycles flip → back-to-auto.
+- **Momentum fix** — the price refresh now fetches one year of daily bars
+  (same single request); `return_6m` was permanently NaN on a 5-day window,
+  so the momentum rank pillar never computed.
+- **Standalone CLI** — `uv tool install git+…` documented and verified, new
+  global `--data-dir` option, new `crible fields` command; the repo ships a
+  `crible-cli` agent skill (`.claude/skills/`).
+- **CI** — the docker job now boots the real image: CLI, `crible bootstrap`
+  against the published dataset, and API screening are smoke-tested per push.
 - **Docs** — `docs/DATA-SOURCES.md` gains the SEC EDGAR row, the explicit
   yfinance redistribution caveat and the demo-footprint decision; Google
   Finance stays rejected (no API since 2012, redistribution forbidden);

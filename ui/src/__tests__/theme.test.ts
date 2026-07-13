@@ -3,7 +3,7 @@
 // <html data-theme>.
 
 import { describe, expect, it } from "vitest";
-import { applyTheme, effectiveTheme, resolvePref, toggled } from "../theme";
+import { applyTheme, cycled, effectiveTheme, resolvePref, toggled } from "../theme";
 
 describe("resolvePref", () => {
   it("keeps an explicit stored choice", () => {
@@ -34,6 +34,15 @@ describe("toggled", () => {
   it("cycles dark ⇄ light", () => {
     expect(toggled("dark")).toBe("light");
     expect(toggled("light")).toBe("dark");
+  });
+});
+
+describe("cycled (header control)", () => {
+  it("leaves auto with a visible flip, then returns to auto", () => {
+    expect(cycled("auto", "dark")).toBe("light"); // always a visible change
+    expect(cycled("auto", "light")).toBe("dark");
+    expect(cycled("light", "light")).toBe("auto"); // second click: back to the OS
+    expect(cycled("dark", "dark")).toBe("auto");
   });
 });
 
