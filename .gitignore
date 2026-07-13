@@ -12,11 +12,12 @@ node_modules/
 ui/dist/
 
 # data (parquet/duckdb live outside git; the demo-data branch is the one
-# exception, published as an orphan commit by refresh-data.yml)
-data/
+# exception, published as an orphan commit by refresh-data.yml).
+# Root-anchored: ui/src/data is source code.
+/data/
 *.duckdb
 *.duckdb.wal
-site-data/
+/site-data/
 
 # env & os
 .env

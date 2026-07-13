@@ -1,0 +1,98 @@
+// FR-007 — the shared data contract. One DataClient interface, two
+// implementations: api-client (same-origin FastAPI, the self-hosted default)
+// and static-client (DuckDB-WASM over published Parquet, the Pages demo).
+
+export interface ScreenResponse {
+  rows: Record<string, unknown>[];
+  total: number;
+  page: number;
+  tookMs: number;
+  hint?: string;
+}
+
+export interface DslErrorDetail {
+  error: string;
+  position: number | null;
+  hint: string | null;
+}
+
+export interface Preset {
+  id: string;
+  name: string;
+  description: string;
+  dsl: string;
+}
+
+export interface CompanyDetail {
+  profile: Record<string, unknown>;
+  periods: Record<string, unknown>[];
+}
+
+export interface IngestHeartbeat {
+  universe?: number;
+  crawled?: number;
+  coverage_pct?: number;
+  freshness?: Record<string, number>;
+  requests_last_hour?: number;
+  budget_per_hour?: number;
+  last_cycle?: { fetched: number; failed: number };
+  providers?: Record<string, string>;
+  esef_resolved?: number;
+  esef_unmatched?: number;
+  ts?: number;
+}
+
+export interface StatusResponse {
+  universe?: number;
+  by_region?: Record<string, number>;
+  ingest?: IngestHeartbeat;
+  snapshot?: boolean;
+  generated_at?: number;
+}
+
+export interface ProviderInfo {
+  id: string;
+  kind: "keyless" | "free-key" | "paid";
+  key_env_var: string | null;
+  enabled: boolean;
+}
+
+export interface SearchHit {
+  symbol: string;
+  name: string | null;
+  country: string | null;
+  sector: string | null;
+}
+
+export interface DemoManifest {
+  schema: number;
+  generated_at: number;
+  universe_rows: number;
+  snapshot_rows: number;
+  snapshot_symbols: number;
+  sample: string[];
+  commit: string | null;
+}
+
+export class DslApiError extends Error {
+  detail: DslErrorDetail;
+  constructor(detail: DslErrorDetail) {
+    super(detail.error);
+    this.detail = detail;
+  }
+}
+
+/** api mode navigates to a server URL; static mode hands back a Blob. */
+export type CsvExport = { url: string } | { blob: Blob; filename: string };
+
+export interface DataClient {
+  screen(query: string, sort: string | null, page: number, pageSize: number): Promise<ScreenResponse>;
+  exportCsv(query: string, sort: string | null, columns?: string[]): Promise<CsvExport>;
+  presets(): Promise<Preset[]>;
+  company(symbol: string): Promise<CompanyDetail | null>;
+  status(): Promise<StatusResponse>;
+  providers(): Promise<ProviderInfo[]>;
+  search(q: string): Promise<SearchHit[]>;
+  /** static mode only — null while the nightly refresh has not published yet */
+  manifest(): Promise<DemoManifest | null>;
+}
