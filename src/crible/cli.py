@@ -16,12 +16,21 @@ app = typer.Typer(name="crible", help="Self-hosted fundamental stock screener.",
 
 
 @app.callback()
-def _configure_logging() -> None:
+def _configure(
+    data_dir: Path = typer.Option(
+        None,
+        "--data-dir",
+        help="Data directory for this invocation (default: $CRIBLE_DATA_DIR or ./data)",
+    ),
+) -> None:
     import logging
+    import os
 
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s"
     )
+    if data_dir is not None:
+        os.environ["CRIBLE_DATA_DIR"] = str(data_dir)
 
 
 def _fail(message: str) -> None:

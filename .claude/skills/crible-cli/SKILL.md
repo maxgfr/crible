@@ -5,8 +5,14 @@ description: Use when the user wants to screen stocks or run the crible screener
 
 # Run stock screens with the crible CLI
 
-Run every command from the repo root with `uv run crible …` (run `uv sync`
-once if the environment is missing).
+Inside the repo, run every command with `uv run crible …` (run `uv sync` once
+if the environment is missing). Outside the repo, crible is an installable
+tool: `uv tool install git+https://github.com/maxgfr/crible` gives a global
+`crible` command (or one-shot `uvx --from git+https://github.com/maxgfr/crible crible …`).
+
+The global `--data-dir` option (before the subcommand) selects the dataset
+location: `crible --data-dir ~/crible-data screen "…"`. Default:
+`$CRIBLE_DATA_DIR`, else `./data`.
 
 ## 0. Make sure data exists
 
@@ -21,7 +27,6 @@ If there is no snapshot yet, pull the published open dataset (zero crawl,
 uv run crible bootstrap     # refuses to overwrite an existing data/; --force to re-pull
 ```
 
-`CRIBLE_DATA_DIR` selects the data directory (default `./data`).
 
 ## 1. Discover what is filterable
 

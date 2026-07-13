@@ -63,6 +63,19 @@ The first run bootstraps the universe and starts a rate-budgeted, Europe-first c
 screener shows live progress until the first rows land. See the **Status** view for coverage,
 freshness and provider health.
 
+### Standalone CLI — no clone needed
+
+crible is a regular Python CLI (`[project.scripts]`); install it as a tool and run it anywhere:
+
+```bash
+uv tool install git+https://github.com/maxgfr/crible    # or one-shot: uvx --from git+https://github.com/maxgfr/crible crible …
+crible --data-dir ~/crible-data bootstrap                # pull the published dataset
+crible --data-dir ~/crible-data screen "price_to_earnings_ratio <= 15 AND region = 'europe'"
+crible --data-dir ~/crible-data fields                   # every filterable column + type
+```
+
+`--data-dir` (or `CRIBLE_DATA_DIR`) selects the dataset location; the default is `./data`.
+
 ### Start with data — zero crawl
 
 The nightly refresh publishes its open dataset twice: as assets on the rolling

@@ -62,6 +62,13 @@ def test_fr005_fields_lists_the_dsl_whitelist_with_types(data_dir) -> None:
     assert "country\tstring" in result.output
 
 
+def test_fr005_data_dir_option_selects_the_dataset(data_dir, monkeypatch) -> None:
+    monkeypatch.delenv("CRIBLE_DATA_DIR")
+    result = runner.invoke(app, ["--data-dir", str(data_dir), "fields"])
+    assert result.exit_code == 0, result.output
+    assert "piotroski_f\tnumber" in result.output
+
+
 def test_fr005_fields_without_snapshot_hints_bootstrap(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path / "empty"))
     result = runner.invoke(app, ["fields"])
