@@ -124,6 +124,41 @@ def _queue_stats(con: duckdb.DuckDBPyConnection) -> dict:
     return stats
 
 
+def restore_queue_from_raw(con: duckdb.DuckDBPyConnection, data_dir) -> int:
+    """Rebuild crawl freshness from the raw layer's filename stamps.
+
+    A nightly Actions run starts from a fresh operational DB — only the raw
+    parquet layer travels on the demo-data branch. Without this, every night
+    re-crawls the same queue head instead of advancing (the coverage
+    plateau observed at ~145 symbols). Raw filenames carry fetched_at as a
+    zero-padded ms stamp, so the queue state is recoverable exactly.
+    """
+    from pathlib import Path
+
+    from crible.ingest.queue import QUARTER_SECONDS
+
+    root = Path(data_dir) / "raw" / "provider=yfinance"
+    restored = 0
+    for directory in root.glob("symbol=*"):
+        stamps = []
+        for file in directory.glob("*.parquet"):
+            try:
+                stamps.append(int(file.stem.rsplit("-", 1)[1]) / 1000.0)
+            except (IndexError, ValueError):
+                continue
+        if not stamps:
+            continue
+        crawled_at = max(stamps)
+        con.execute(
+            "UPDATE crawl_tasks SET last_crawled_at = ?, next_due = ?"
+            " WHERE symbol = ? AND (last_crawled_at IS NULL OR last_crawled_at < ?)",
+            [crawled_at, crawled_at + QUARTER_SECONDS,
+             directory.name.split("=", 1)[1], crawled_at],
+        )
+        restored += 1
+    return restored
+
+
 def run_bootstrap() -> BootstrapReport:
     con = _connect()
     try:
@@ -446,6 +481,127 @@ def run_edgar_bulk(
         con.close()
 
 
+def _esef_due(con: duckdb.DuckDBPyConnection, symbol: str, cutoff: float) -> bool:
+    row = con.execute(
+        "SELECT last_fetched_at FROM esef_tasks WHERE symbol = ?", [symbol]
+    ).fetchone()
+    return row is None or row[0] is None or row[0] < cutoff
+
+
+def run_esef_sweep(
+    limit: int = 100, client=None, mapping: dict[str, str] | None = None,
+    page_size: int = 100, max_pages: int = 300,
+) -> dict:
+    """FR-010 at index scale: walk filings.xbrl.org's FULL index (newest
+    first) instead of querying one LEI at a time — every request lands on a
+    real filing, so the whole EU/EEA ESEF gisement (~25k filings) is
+    coverable in a few nightly runs. Filers outside the universe are counted
+    and skipped; dual listings sharing one LEI are all enriched; freshness
+    (esef_tasks, 90 days) prevents refetching. Outages resume next run."""
+    from crible.providers.esef import facts_to_frames, filing_lei
+    from crible.providers.gleif import load_isin_lei_map
+
+    data = config.data_dir()
+    outcome: dict = {"enriched": [], "skipped_unknown": 0, "outage": None, "skipped": None}
+
+    if mapping is None:
+        mapping_file = next(
+            (p for p in (data / "isin-lei.csv", data / "isin-lei.zip") if p.exists()), None
+        )
+        if mapping_file is None:
+            outcome["skipped"] = (
+                "no GLEIF mapping file — download the ISIN-LEI relationship file to data/isin-lei.csv"
+            )
+            log.info("esef sweep: %s", outcome["skipped"])
+            return outcome
+        try:
+            mapping = load_isin_lei_map(mapping_file)
+        except Exception as exc:  # noqa: BLE001 — outage (FR-010 AC-2)
+            outcome["outage"] = f"gleif mapping unreadable: {exc}"
+            log.warning("esef sweep: %s — resuming next run", outcome["outage"])
+            return outcome
+
+    con = _connect()
+    try:
+        con.execute(ESEF_SCHEMA)
+        rows = con.execute(
+            "SELECT symbol, isin FROM companies"
+            " WHERE region = 'europe' AND NOT delisted AND isin IS NOT NULL"
+        ).fetchall()
+        by_lei: dict[str, list[str]] = {}
+        for symbol, isin in rows:
+            lei = mapping.get(isin)
+            if lei:
+                by_lei.setdefault(lei, []).append(symbol)
+        update_heartbeat(
+            esef_resolved=sum(len(v) for v in by_lei.values()),
+            esef_unmatched=len(rows) - sum(len(v) for v in by_lei.values()),
+        )
+
+        if client is None:
+            from crible.providers.esef import EsefClient
+
+            client = EsefClient()
+        from crible.ingest.raw import write_raw_statement
+
+        cutoff = time.time() - ESEF_REFRESH_SECONDS
+        seen_leis: set[str] = set()
+        page = 1
+        while len(outcome["enriched"]) < limit and page <= max_pages:
+            try:
+                filings, _total = client.filings_index(page_size=page_size, page_number=page)
+            except Exception as exc:  # noqa: BLE001 — outage: record, resume next run
+                outcome["outage"] = f"index page {page}: {exc}"
+                log.warning("esef sweep: %s — resuming next run", outcome["outage"])
+                return outcome
+            if not filings:
+                break
+            page += 1
+            for filing in filings:
+                lei = filing_lei(filing)
+                if not lei or lei in seen_leis:
+                    continue  # newest-first: only the latest filing per filer
+                seen_leis.add(lei)
+                symbols = by_lei.get(lei)
+                if not symbols:
+                    outcome["skipped_unknown"] += 1
+                    continue
+                due = [s for s in symbols if _esef_due(con, s, cutoff)]
+                if not due:
+                    continue
+                try:
+                    xbrl = client.fetch_xbrl_json(filing)
+                    frames = facts_to_frames(xbrl) if xbrl else {}
+                except Exception as exc:  # noqa: BLE001
+                    outcome["outage"] = f"{lei}: {exc}"
+                    log.warning("esef sweep: outage on %s: %s — resuming next run", lei, exc)
+                    return outcome
+                fetched_at = time.time()
+                for symbol in due:
+                    for (statement_type, freq), frame in frames.items():
+                        write_raw_statement(
+                            data, symbol=symbol, provider="esef",
+                            statement_type=statement_type, freq=freq,
+                            frame=frame, fetched_at=fetched_at,
+                        )
+                    con.execute(
+                        "INSERT INTO esef_tasks (symbol, lei, last_fetched_at) VALUES (?, ?, ?)"
+                        " ON CONFLICT (symbol) DO UPDATE SET"
+                        " last_fetched_at = excluded.last_fetched_at",
+                        [symbol, lei, fetched_at],
+                    )
+                    if frames:
+                        outcome["enriched"].append(symbol)
+                if len(outcome["enriched"]) >= limit:
+                    break
+        if outcome["enriched"]:
+            log.info("esef sweep: enriched %d listings (%d filers outside the universe)",
+                     len(outcome["enriched"]), outcome["skipped_unknown"])
+        return outcome
+    finally:
+        con.close()
+
+
 def run_price_refresh(budget: TokenBucket, provider=None) -> dict:
     """FR-011 — daily price refresh for the priority set within the budget."""
     from crible.ingest.prices import PriceRefresher
@@ -550,6 +706,9 @@ def run_refresh(
             result["universe_restored"] = True
         crawler = _make_crawler(con, provider=provider)  # CrawlQueue() re-seeds
         prioritize_sample(con, bootstrap_sample())
+        # AFTER prioritizing: fresh raw wins over the sample's due-now reset,
+        # so the nightly advances into new symbols instead of re-crawling
+        result["queue_restored"] = restore_queue_from_raw(con, data)
         export_universe_parquet(con, data)
 
         fetched = failed = 0
@@ -566,9 +725,11 @@ def run_refresh(
         con.close()
 
     try:
-        result["esef"] = run_esef_cycle(limit=esef_limit)
+        # index sweep, not per-LEI polling: every request lands on a real
+        # filing, so the nightly covers actual EU filers at full speed
+        result["esef"] = run_esef_sweep(limit=esef_limit)
     except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
-        log.warning("esef cycle failed: %s", exc)
+        log.warning("esef sweep failed: %s", exc)
         result["esef"] = {"outage": str(exc)}
     try:
         if edgar_bulk:

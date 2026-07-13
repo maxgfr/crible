@@ -226,3 +226,82 @@ def test_fr010_service_cycle_idles_without_gleif_file(tmp_path, monkeypatch) -> 
 
     outcome = run_esef_cycle()
     assert outcome["skipped"] is not None and "isin-lei" in outcome["skipped"].lower()
+
+
+# ---------------------------------------------------------------- index sweep
+
+LEI_ABN = "LEIABN0000000000001X"  # fixture ISIN NL0011540547 (ABN.AS)
+
+
+def test_fr010_filing_lei_extracts_the_first_json_url_segment() -> None:
+    from crible.providers.esef import filing_lei
+
+    assert filing_lei({"attributes": {"json_url": f"/{LEI_ABN}/2025-12-31/x.json"}}) == LEI_ABN
+    assert filing_lei({"attributes": {"json_url": "/short/2025/x.json"}}) is None
+    assert filing_lei({"attributes": {}}) is None
+
+
+class FakeIndexClient:
+    """Two-entry index: one filer in the universe, one outside it."""
+
+    def __init__(self) -> None:
+        self.json_fetches = 0
+
+    def filings_index(self, page_size: int = 100, page_number: int = 1):
+        if page_number > 1:
+            return [], 2
+        return (
+            [
+                {"attributes": {"json_url": f"/{LEI_ABN}/2025-12-31/abn.json"}},
+                {"attributes": {"json_url": "/UNKNOWNLEI0000000001/2025-12-31/other.json"}},
+            ],
+            2,
+        )
+
+    def fetch_xbrl_json(self, filing):
+        self.json_fetches += 1
+        return XBRL_JSON
+
+
+def _seed_sweep_universe(tmp_path, monkeypatch) -> None:
+    import duckdb as _duckdb
+
+    from crible.universe import bootstrap_universe
+    from tests.test_fr001_universe import fixture_frame
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    con = _duckdb.connect(str(tmp_path / "crible.duckdb"))
+    bootstrap_universe(con, fixture_frame())
+    con.close()
+
+
+def test_fr010_index_sweep_enriches_known_filers_and_skips_the_rest(tmp_path, monkeypatch) -> None:
+    from crible.ingest.service import run_esef_sweep
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+    client = FakeIndexClient()
+    mapping = {"NL0011540547": LEI_ABN}
+
+    outcome = run_esef_sweep(limit=10, client=client, mapping=mapping)
+    assert outcome["enriched"] == ["ABN.AS"]
+    assert outcome["skipped_unknown"] == 1  # real filer, not in the universe
+    assert client.json_fetches == 1  # the unknown filer costs NO document fetch
+    assert list(tmp_path.glob("raw/provider=esef/symbol=ABN.AS/*.parquet"))
+
+    # steady state: everything fresh → the sweep fetches nothing again
+    again = run_esef_sweep(limit=10, client=FakeIndexClient(), mapping=mapping)
+    assert again["enriched"] == []
+
+
+def test_fr010_index_sweep_outage_records_and_resumes(tmp_path, monkeypatch) -> None:
+    from crible.ingest.service import run_esef_sweep
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+
+    class DownIndex:
+        def filings_index(self, page_size: int = 100, page_number: int = 1):
+            raise ConnectionError("filings.xbrl.org unreachable")
+
+    outcome = run_esef_sweep(limit=10, client=DownIndex(), mapping={"NL0011540547": LEI_ABN})
+    assert outcome["outage"] is not None
+    assert list(tmp_path.glob("raw/provider=esef/**/*.parquet")) == []

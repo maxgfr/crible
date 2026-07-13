@@ -103,6 +103,14 @@ def _fiscal_year(period: str) -> str | None:
     return year
 
 
+def filing_lei(filing: dict) -> str | None:
+    """The filer's LEI — the first path segment of json_url (stable filings
+    repository convention: /<LEI>/<period_end>/…)."""
+    url = str(filing.get("attributes", {}).get("json_url") or "")
+    segment = url.lstrip("/").split("/", 1)[0]
+    return segment if len(segment) == 20 and segment.isalnum() else None
+
+
 class EsefClient:
     """Thin network client — kept separate so tests inject fixtures."""
 
@@ -110,6 +118,22 @@ class EsefClient:
         import httpx
 
         self._http = http or httpx.Client(timeout=30, follow_redirects=True)
+
+    def filings_index(self, page_size: int = 100, page_number: int = 1) -> tuple[list[dict], int]:
+        """One page of the FULL filings index, newest first.
+
+        The whole EU/EEA gisement is enumerable (~25k filings) — walking it
+        beats guessing per-LEI: every entry is a real filing."""
+        params = {
+            "page[size]": page_size,
+            "page[number]": page_number,
+            "sort": "-date_added",
+        }
+        response = self._http.get(FILINGS_API, params=params)
+        response.raise_for_status()
+        payload = response.json()
+        count = int(payload.get("meta", {}).get("count", 0) or 0)
+        return payload.get("data", []), count
 
     def filings_for_lei(self, lei: str) -> list[dict]:
         import json
