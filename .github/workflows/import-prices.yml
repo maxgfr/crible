@@ -1,0 +1,56 @@
+# On-demand price refresh: pull the HuggingFace dump distillate, recompute
+# the snapshot with it, republish. The weekly pull already runs inside
+# refresh-data; this dispatch exists to force one anytime.
+# (Stooq bulk zips are CAPTCHA-gated by design — they cannot run in CI:
+#  download manually, `crible import-prices <zip>`, `scripts/publish-prices.sh`.)
+
+name: import-prices
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-data # shares the publish lock with the nightly
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      CRIBLE_DATA_DIR: data
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore last-good data from the demo-data branch
+        run: |
+          git fetch origin demo-data
+          git checkout FETCH_HEAD -- data
+
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - run: uv sync
+
+      - name: Import the price dump distillate (derived values only)
+        run: uv run crible import-prices huggingface
+
+      - name: Recompute the snapshot with the fresh quotes
+        run: uv run crible compute
+
+      - name: Export the static site artifacts (min-symbols gate)
+        run: uv run crible export-site --out site-data --min-symbols 50
+
+      - name: Publish the demo-data branch (single orphan commit)
+        run: bash scripts/publish-demo-data.sh
+
+      - name: Publish the rolling data-latest release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/publish-data-release.sh
+
+      - name: Redeploy the Pages demo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml

@@ -69,7 +69,11 @@ the crawl has no bars (staleness stays visible via `price_asof`).
 | Dump | Coverage | Access | Freshness | Terms |
 |---|---|---|---|---|
 | [paperswithbacktest/Stocks-Daily-Price](https://huggingface.co/datasets/paperswithbacktest/Stocks-Daily-Price) | ~7k US listings, daily, full history | 4 parquet shards, plain HTTPS, **no key/API** — pulled weekly by the nightly | Refreshed ~monthly (2026-07-09 at audit time) | License "other" (unspecified) — hence derived-values-only |
-| [Stooq bulk archives](https://stooq.com/db/h/) | Worldwide (US, DE, UK, JP, PL…), daily, decades | **Manual download** (CAPTCHA-gated; automation blocked, verified 2026-07-13) then `crible import-prices <zip>` | Daily | No published license — same derived-values-only policy |
+| [Stooq bulk archives](https://stooq.com/db/h/) | Worldwide (US, DE, UK, JP, PL…), daily, decades | **Manual download** (CAPTCHA-gated; automation blocked, verified 2026-07-13) then `crible import-prices <zip>` and `scripts/publish-prices.sh` | Daily | No published license — same derived-values-only policy |
+
+The `import-prices` workflow (manual dispatch) forces a HuggingFace refresh +
+snapshot recompute + republish anytime; the nightly refresh pulls it weekly
+on its own.
 
 ## Removed sources (open-data cleanup, 2026-07-13)
 
