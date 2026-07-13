@@ -1,18 +1,13 @@
 # crible — TODO
 
-État : v1 zéro clé **construite, testée (87 pytest + 4 vitest), E2E réel validé**.
+État : v1 zéro clé **construite, testée (140 pytest + 55 vitest), E2E réel validé** ;
+open-data hardening 2026-07-13 : provider EDGAR (US audité), fix réconciliation,
+`crible bootstrap` + release `data-latest`, query builder complet, catalogue 100 % keyless.
 Ce fichier liste ce qui reste. Rien ici n'est bloquant pour utiliser le screener aujourd'hui.
 
 ---
 
 ## P1 — Complète des fonctionnalités déjà à moitié faites
-
-- [ ] **Brancher les plugins à clé dans la boucle d'ingestion.**
-  SimFin / FMP-free / EODHD-stub existent et sont testés unitairement (gating, self-disable,
-  détection de tier), mais `run_loop` n'appelle que `yfinance` : même avec `SIMFIN_KEY` dans
-  `.env`, aucun fetch n'est déclenché. Ajouter une passe multi-provider dans le service
-  (`ProviderRegistry.activate` → itérer les providers actifs par symbole, écrire chaque
-  `provider=<id>` dans le raw layer, la réconciliation existe déjà). ~1 fonction + tests.
 
 - [ ] **Automatiser le fichier GLEIF ISIN→LEI** (enrichissement ESEF).
   Le cycle ESEF est câblé mais reste idle tant que `data/isin-lei.csv` n'existe pas
@@ -48,8 +43,22 @@ Ce fichier liste ce qui reste. Rien ici n'est bloquant pour utiliser le screener
   Chaque cycle reconstruit tout le snapshot. OK à ~500 sociétés, à revisiter vers 20k+ :
   ne recomputer que les symboles dont le raw a changé depuis le dernier snapshot.
 
+- [ ] **EDGAR bulk (`companyfacts.zip`, ~1,4 Go nightly)** pour couvrir TOUT le marché US
+  audité en un téléchargement au lieu du per-CIK — le chemin de scale documenté
+  dans l'ADR-0005 ; le `CONCEPT_MAP` et `facts_to_frames` sont déjà réutilisables tels quels.
+
+- [ ] **Normalisation FX (Frankfurter/ECB, keyless).**
+  Les ratios sont currency-neutral donc la valeur immédiate est modeste, mais les
+  comparaisons cross-devises de valeurs absolues (market cap, revenue) mériteraient des
+  colonnes normalisées (`market_cap_eur`…) : stockage des taux (api.frankfurter.dev ou
+  CSV BCE, citer la source), colonnes companion au snapshot, exposition whitelist/UI.
+
+- [ ] **Query builder : round-trip texte → builder** (aujourd'hui volontairement one-way,
+  le texte DSL reste le langage unique) et **knob de slimming de l'univers** dans
+  `export_site` (filtre régional) si le payload de la démo grossit un jour.
+
 - [ ] **Sortir le sweep Europe complet** (5-7 semaines au débit keyless — c'est le design,
-  visible dans `crible status`). Rien à coder ; juste laisser tourner, ou brancher EODHD.
+  visible dans `crible status`). Rien à coder ; juste laisser tourner.
 
 ## P4 — Dette de test (documentée, assumée)
 
@@ -60,14 +69,14 @@ Ce fichier liste ce qui reste. Rien ici n'est bloquant pour utiliser le screener
 
 ## P5 — Reporté volontairement (décision explicite requise)
 
-- [ ] **Plugin FinancialReports.eu** (MCP OAuth) — spike à faire avant de s'engager
-  (risque M3 du build plan : l'OAuth peut mal convenir à une ingestion headless).
 - [ ] **E2E live en nightly CI** — manuel pour l'instant (dépense du vrai budget Yahoo).
       NFR-009 a été aligné là-dessus.
 - [ ] **Publication GitHub** (privé → public) + semantic-release façon `feelc`/`andro`.
       *Ne pas faire sans demande explicite de Maxime.*
-- [ ] **Achat EODHD Fundamentals €59,99/mois** — tout est prêt (PRD `docs/prds/eodhd.md`
-      + stub validé sur le token demo) ; seul switch payant prévu.
+
+_Décision 2026-07-13 (open data) : les plugins à clé SimFin/FMP/EODHD et la piste
+FinancialReports.eu sont **supprimés** — le catalogue livré est 100 % keyless ;
+le seam plugin (`providers/base.py`) reste pour d'éventuels plugins tiers._
 
 ## Hors scope v1 (nonGoals du SRD — ne pas faire sans re-spec)
 

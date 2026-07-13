@@ -63,6 +63,19 @@ The first run bootstraps the universe and starts a rate-budgeted, Europe-first c
 screener shows live progress until the first rows land. See the **Status** view for coverage,
 freshness and provider health.
 
+### Start with data — zero crawl
+
+The nightly refresh publishes its open dataset twice: as assets on the rolling
+[`data-latest` release](https://github.com/maxgfr/crible/releases/tag/data-latest) and on the
+`demo-data` branch. A fresh install can pull it and screen immediately:
+
+```bash
+uv run crible bootstrap                      # data/ restored from the published dataset
+uv run crible screen "piotroski_f >= 7"     # rows, right now — no crawl needed
+```
+
+The normal ingest loop then extends the dataset from wherever the bootstrap left it.
+
 ### Running on a NAS (Synology / Docker)
 
 crible is a two-container Compose stack (`ingest` + `api`) sharing one named volume — it drops
@@ -81,21 +94,21 @@ straight onto a Synology NAS, Unraid, or any Docker host:
 
 - **CLI** — `crible screen`, `export`, `presets`, `status`, `ingest`, `compute`.
 - **HTTP API** — FastAPI; the SPA is served from the same origin in production.
-- **SPA** — React/Vite dense grid, company drawer with score breakdowns + provenance, theme toggle.
+- **SPA** — React/Vite dense grid, a query builder over every snapshot column (typed
+  operators, AND/OR groups) that composes the same DSL, company drawer with score
+  breakdowns + provenance, theme toggle.
 
 ## Data & scores (all keyless)
 
 - **Universe**: [FinanceDatabase](https://github.com/JerBouma/FinanceDatabase) (151,170 equities at the July 2026 refresh, 117 countries).
 - **Data**: Yahoo via [yfinance](https://github.com/ranaroussi/yfinance) (rolling, rate-budgeted) ·
-  audited EU figures from [filings.xbrl.org](https://filings.xbrl.org) (ESEF xBRL-JSON) ·
-  [Stooq](https://stooq.com) price fallback.
+  **audited** figures that outrank scraped values at reconciliation — US from
+  [SEC EDGAR](https://www.sec.gov/search-filings/edgar-application-programming-interfaces)
+  companyfacts (public domain) and EU from [filings.xbrl.org](https://filings.xbrl.org)
+  (ESEF xBRL-JSON).
 - **Ratios & scores**: [financetoolkit](https://github.com/JerBouma/FinanceToolkit) (150+ ratios,
   Piotroski F, Altman Z) + in-house Beneish M-Score (tested against published examples).
 - **Engine**: DuckDB over Parquet — full-universe screens in milliseconds.
-
-Phase-2 providers (SimFin / FMP / EODHD) are **optional** and off by default: add a key to `.env`
-to enable one, and it shows up as enabled in the **Providers** view. crible stays fully keyless
-without them.
 
 The full public-data audit — every source, its access mode and license terms, plus the
 evaluated-and-rejected candidates (e.g. Google Finance, whose official API shut down in 2012) —
@@ -128,8 +141,9 @@ there is no backend at all.
 
 - **Open data, nightly**: a GitHub Action refreshes the demo dataset every night from the same
   keyless sources the self-hosted crawl uses — FinanceDatabase (the full ~150k-listing universe,
-  searchable), Yahoo via yfinance, filings.xbrl.org (audited ESEF statements) matched through
-  the GLEIF ISIN→LEI file. No key, no account, anywhere.
+  searchable), Yahoo via yfinance, SEC EDGAR (audited US statements, public domain) and
+  filings.xbrl.org (audited ESEF statements) matched through the GLEIF ISIN→LEI file. No key,
+  no account, anywhere. The same dataset is downloadable (`crible bootstrap`).
 - **Sample scope**: fundamentals and scores cover the ~100-company bootstrap sample
   (CAC 40 + DAX 40 + 20 US mega-caps); the full rolling crawl of the whole universe is what
   self-hosting gives you.
