@@ -50,24 +50,28 @@ def _float(value) -> float | None:
         return None
 
 
-def frames_from_fsds(
-    sub_text: str, num_text: str, ciks: set[int]
-) -> dict[int, dict[tuple[str, str], pd.DataFrame]]:
-    """Parse one FSDS quarter (sub.txt + num.txt as text) into canonical frames
-    per wanted CIK. Only annual (form 10-K/20-F/40-F, fp=FY) submissions, only
-    full-year durations (qtrs=4) and instants (qtrs=0), USD/shares units."""
-    wanted: dict[str, int] = {}  # adsh -> cik
-    for row in csv.DictReader(io.StringIO(sub_text), delimiter="\t"):
+def _wanted_adsh(sub_reader, ciks: set[int]) -> dict[str, int]:
+    """{adsh: cik} for annual (10-K/20-F/40-F, fp=FY) submissions of wanted CIKs."""
+    wanted: dict[str, int] = {}
+    for row in sub_reader:
         cik = _int(row.get("cik"))
         if cik in ciks and row.get("form") in ANNUAL_FORMS and row.get("fp") == "FY":
             wanted[row.get("adsh")] = cik
+    return wanted
 
-    # cik -> (period, column) -> (value, winning-concept rank)
+
+def _accumulate(wanted: dict[str, int], num_reader) -> dict[int, dict[tuple[str, str], tuple[float, int]]]:
+    """Stream num rows → cik → (period, column) → (value, winning-concept rank).
+    Only full-year durations (qtrs=4) / instants (qtrs=0), USD/shares, WHOLE
+    entity (coreg empty — a co-registrant value must never be booked as the
+    consolidated figure, F10)."""
     acc: dict[int, dict[tuple[str, str], tuple[float, int]]] = defaultdict(dict)
-    for row in csv.DictReader(io.StringIO(num_text), delimiter="\t"):
+    for row in num_reader:
         cik = wanted.get(row.get("adsh"))
         if cik is None:
             continue
+        if row.get("coreg"):
+            continue  # co-registrant, not the consolidated entity (F10)
         tag = row.get("tag")
         mapped = CONCEPT_MAP.get(tag)
         if mapped is None:
@@ -97,7 +101,10 @@ def frames_from_fsds(
         if prev is not None and prev[1] <= rank:
             continue  # an equal-or-earlier-precedence concept already set this cell
         acc[cik][key] = (value, rank)
+    return acc
 
+
+def _build_frames(acc) -> dict[int, dict[tuple[str, str], pd.DataFrame]]:
     result: dict[int, dict[tuple[str, str], pd.DataFrame]] = {}
     for cik, cells in acc.items():
         by_period: dict[str, dict[str, float]] = defaultdict(dict)
@@ -119,18 +126,39 @@ def frames_from_fsds(
     return result
 
 
+def frames_from_fsds(
+    sub_text: str, num_text: str, ciks: set[int]
+) -> dict[int, dict[tuple[str, str], pd.DataFrame]]:
+    """Parse one FSDS quarter (sub.txt + num.txt as text) into canonical frames
+    per wanted CIK — the in-memory API (tests). ``iter_fsds`` streams instead."""
+    wanted = _wanted_adsh(csv.DictReader(io.StringIO(sub_text), delimiter="\t"), ciks)
+    acc = _accumulate(wanted, csv.DictReader(io.StringIO(num_text), delimiter="\t"))
+    return _build_frames(acc)
+
+
 def iter_fsds(
     zip_path: Path | str, ciks: set[int]
 ) -> Iterator[tuple[int, dict[tuple[str, str], pd.DataFrame]]]:
-    """Yield (cik, frames) for the wanted CIKs from a quarterly FSDS ZIP."""
+    """Yield (cik, frames) for the wanted CIKs from a quarterly FSDS ZIP.
+
+    num.txt (100s of MB) is streamed row by row, never read whole into memory
+    (F11) — sub.txt is small and read first to learn the wanted submissions."""
     with zipfile.ZipFile(zip_path) as archive:
         names = {n.rsplit("/", 1)[-1]: n for n in archive.namelist()}
         if "sub.txt" not in names or "num.txt" not in names:
             log.warning("fsds: %s missing sub.txt/num.txt — skipped", zip_path)
             return
-        sub_text = archive.read(names["sub.txt"]).decode("utf-8", errors="replace")
-        num_text = archive.read(names["num.txt"]).decode("utf-8", errors="replace")
-    for cik, frames in frames_from_fsds(sub_text, num_text, ciks).items():
+        with archive.open(names["sub.txt"]) as sub_raw:
+            wanted = _wanted_adsh(
+                csv.DictReader(io.TextIOWrapper(sub_raw, encoding="utf-8", errors="replace"), delimiter="\t"),
+                ciks,
+            )
+        with archive.open(names["num.txt"]) as num_raw:
+            acc = _accumulate(
+                wanted,
+                csv.DictReader(io.TextIOWrapper(num_raw, encoding="utf-8", errors="replace"), delimiter="\t"),
+            )
+    for cik, frames in _build_frames(acc).items():
         yield cik, frames
 
 

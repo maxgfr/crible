@@ -37,21 +37,33 @@ def fetch_gleif(data_dir: Path | str, http=None, max_age_seconds: float = 7 * 24
     return result.path
 
 
-def load_isin_lei_map(path: Path | str) -> dict[str, str]:
-    """Parse a GLEIF relationship file (CSV or zipped CSV) into {ISIN: LEI}."""
-    path = Path(path)
-    raw: bytes = path.read_bytes()
-    if path.suffix == ".zip" or raw[:2] == b"PK":
-        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-            inner = next(n for n in archive.namelist() if n.lower().endswith(".csv"))
-            raw = archive.read(inner)
+def _parse_isin_lei(text_stream) -> dict[str, str]:
     mapping: dict[str, str] = {}
-    reader = csv.DictReader(io.StringIO(raw.decode("utf-8", errors="replace")))
-    for row in reader:
+    for row in csv.DictReader(text_stream):
         lower = {k.lower(): v for k, v in row.items() if k}
         isin, lei = lower.get("isin"), lower.get("lei")
         if isin and lei:
             mapping[isin.strip()] = lei.strip()
+    return mapping
+
+
+def load_isin_lei_map(path: Path | str) -> dict[str, str]:
+    """Parse a GLEIF relationship file (CSV or zipped CSV) into {ISIN: LEI}.
+
+    Streams the CSV row by row — the file is ~1 GB decompressed, so reading it
+    whole into memory OOMs a small self-hosted host (F11). Decoded utf-8-sig so a
+    UTF-8 BOM never zeroes the whole mapping by mangling the header (F16)."""
+    path = Path(path)
+    with open(path, "rb") as probe:
+        is_zip = path.suffix == ".zip" or probe.read(2) == b"PK"
+    if is_zip:
+        with zipfile.ZipFile(path) as archive:
+            inner = next(n for n in archive.namelist() if n.lower().endswith(".csv"))
+            with archive.open(inner) as raw:
+                mapping = _parse_isin_lei(io.TextIOWrapper(raw, encoding="utf-8-sig", errors="replace"))
+    else:
+        with open(path, encoding="utf-8-sig", errors="replace") as handle:
+            mapping = _parse_isin_lei(handle)
     log.info("gleif: loaded %d ISIN→LEI relationships", len(mapping))
     return mapping
 

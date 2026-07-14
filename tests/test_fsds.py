@@ -51,6 +51,22 @@ def test_frames_from_fsds_maps_full_year_facts_and_drops_interims() -> None:
     assert 999999 not in frames
 
 
+def test_frames_from_fsds_drops_co_registrant_rows() -> None:
+    """F10 — a co-registrant (coreg non-empty) value must never be booked as the
+    consolidated figure; the coreg row is listed first to defeat first-writer-wins."""
+    sub = _tsv([
+        ["adsh", "cik", "name", "form", "period", "fy", "fp"],
+        ["A1", "320193", "APPLE", "10-K", "20240930", "2024", "FY"],
+    ])
+    num = _tsv([
+        ["adsh", "tag", "version", "coreg", "ddate", "qtrs", "uom", "value", "footnote"],
+        ["A1", "Revenues", "us-gaap/2024", "SUB", "20240930", "4", "USD", "5000000000", ""],
+        ["A1", "Revenues", "us-gaap/2024", "", "20240930", "4", "USD", "391000000000", ""],
+    ])
+    income = frames_from_fsds(sub, num, {320193})[320193][("income", "annual")].set_index("period")
+    assert income.loc["2024-09-30", "TotalRevenue"] == 391000000000.0  # consolidated, not the 5e9 coreg
+
+
 def test_iter_fsds_reads_the_zip(tmp_path) -> None:
     zip_path = tmp_path / "2024q1.zip"
     with zipfile.ZipFile(zip_path, "w") as archive:
