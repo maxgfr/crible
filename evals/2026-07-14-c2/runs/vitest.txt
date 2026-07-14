@@ -1,0 +1,26 @@
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at App (/Users/maxime/Downloads/crible/ui/src/App.tsx:106:52)
+
+ ✓ src/__tests__/shell.test.tsx (6 tests) 170ms
+ ✓ src/__tests__/router.test.ts (5 tests) 1ms
+stderr | src/__tests__/search.test.tsx > universe search > shows nothing for a blank or unmatched query
+Warning: An update to SearchBox inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at SearchBox (/Users/maxime/Downloads/crible/ui/src/components/SearchBox.tsx:8:22)
+
+ ✓ src/__tests__/search.test.tsx (2 tests) 435ms
+
+ Test Files  10 passed (10)
+      Tests  62 passed (62)
+   Start at  23:46:53
+   Duration  1.37s (transform 319ms, setup 716ms, collect 1.12s, tests 1.04s, environment 4.93s, prepare 535ms)
+
+VITEST EXIT: 

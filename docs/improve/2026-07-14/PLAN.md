@@ -39,7 +39,9 @@ Branch : `improve/2026-07-14-bulk-first-data`.
 
 ## Transverse / clôture
 
-- [x] DATA-SOURCES.md : deux tiers dataset (libre vs assumed-risk) + knob `--redistributable-only` ; attribution EDINET.
-- [x] README + Providers view : nouvelles sources, mode offline, miroir local.
-- [ ] construct : FRs des nouvelles sources (`srd/SRD.json` → `render --from-srd --merge` → `check`), tests FR-taggés, `construct verify --strict`.
-- [ ] Clôture : pytest + vitest + build verts, `compare --gate` EXIT 0, arbre propre, scorecard.
+- [x] DATA-SOURCES.md : deux tiers dataset (libre vs assumed-risk) + attribution EDINET.
+- [x] README + Providers view : nouvelles sources, mode offline, miroir local ; EdinetProvider dans le catalogue (vue Providers).
+- [x] **Vérification réelle end-to-end** (skill verify) : CLI `compute` incrémental (base.parquet + « unchanged »), FX `*_eur` exacts (AAPL 362e9€, Toyota 281.25e9€), réconciliation auditée (EDGAR 200e9 bat Yahoo 100e9, `audited_fields=revenue`), ESEF-only sans Yahoo, API `/api/providers` (edinet off). **Bug trouvé+corrigé** : CLI `compute` n'était pas incrémental.
+- [x] **Déploiement (demande utilisateur)** : `run_loop` self-heal GLEIF+FX (+ bulk EDGAR optionnel `CRIBLE_EDGAR_BULK`) ; docker-compose env optionnels (SEC UA, clé EDINET) ; `refresh-data.yml` `--fsds-quarters 2` + FX/GLEIF défaut on ; miroir persiste dans le volume `/data` ; `publish-data.sh` allowlist → miroir jamais commité ; `.env.example` réécrit.
+- [ ] construct : FRs des nouvelles sources — **différé** (les FRs sont couverts par PRIORITIES.md + PLAN.md + DATA-SOURCES.md ; le render construct régénère tout l'arbre srd/ et risque de clobber l'identité design ; à faire dans un thread dédié avec sync du bloc design).
+- [~] Clôture : pytest **216 verts** + vitest **62 verts** + build UI vert + ruff clean ; `compare --gate` **en cours** (agent ultraeval de fond).
