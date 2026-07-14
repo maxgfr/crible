@@ -65,13 +65,33 @@ HOSTILE_TAR = _tarball(
 
 
 class FakeResponse:
-    def __init__(self, status_code: int, content: bytes = b"") -> None:
+    """A streamed HTTP response. Accessing ``.content`` is a hard error — F13:
+    bootstrap must stream the (multi-hundred-MB) archive to disk, never buffer
+    the whole thing in memory (OOM on a small self-hosted host)."""
+
+    def __init__(self, status_code: int, body: bytes = b"", chunk: int = 1 << 16) -> None:
         self.status_code = status_code
-        self.content = content
+        self._body = body
+        self._chunk = chunk
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
+
+    @property
+    def content(self) -> bytes:
+        raise AssertionError("bootstrap must stream, not buffer response.content")
+
+    def iter_bytes(self, chunk_size: int = 0):
+        size = chunk_size or self._chunk
+        for i in range(0, len(self._body), size):
+            yield self._body[i : i + size]
+
+    def __enter__(self) -> "FakeResponse":
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        return False
 
 
 class FakeHttp:
@@ -79,7 +99,7 @@ class FakeHttp:
         self.responses = responses
         self.calls: list[str] = []
 
-    def get(self, url: str, **_) -> FakeResponse:
+    def stream(self, method: str, url: str, **_) -> FakeResponse:
         self.calls.append(url)
         return self.responses.get(url, FakeResponse(404))
 
@@ -92,6 +112,16 @@ def test_bootstrap_prefers_the_release_asset(tmp_path) -> None:
     assert (tmp_path / "data" / "snapshot" / "snapshot.parquet").exists()
     assert (tmp_path / "data" / "raw" / "provider=yfinance" / "symbol=AAPL").is_dir()
     assert http.calls == [release_asset_url(REPO)]  # the branch is never hit
+
+
+def test_bootstrap_streams_the_archive_without_buffering(tmp_path) -> None:
+    """F13 — the published archive is streamed to a temp file, never buffered
+    whole in memory. FakeResponse.content raises, so any success proves the
+    streaming path; tiny chunks exercise the iter_bytes loop."""
+    http = FakeHttp({release_asset_url(REPO): FakeResponse(200, RELEASE_TAR, chunk=8)})
+    report = bootstrap_data(tmp_path / "data", repo=REPO, http=http)
+    assert report.source == "release" and report.files == 3
+    assert (tmp_path / "data" / "universe.parquet").exists()
 
 
 def test_bootstrap_falls_back_to_the_data_branch(tmp_path) -> None:
