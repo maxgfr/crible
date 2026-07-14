@@ -53,19 +53,38 @@ _POW_C_RE = re.compile(r'c="([^"]+)"')
 _POW_D_RE = re.compile(r"d=(\d+)")
 _CAPTCHA_LEN = 4
 
+# the difficulty and the nonce budget are BOTH server-supplied inputs — bound
+# them so a hostile/broken challenge can never spin the CPU forever (F12).
+# Legit Stooq difficulty solves in tens of thousands of hashes; these ceilings
+# leave orders of magnitude of headroom while capping abuse at a few seconds.
+MAX_POW_DIFFICULTY = 7
+MAX_POW_ITERATIONS = 50_000_000
+
 
 class StooqError(RuntimeError):
     """The Stooq download could not be completed (challenge, captcha or refusal)."""
 
 
-def solve_pow(challenge: str, difficulty: int) -> int:
+def solve_pow(challenge: str, difficulty: int, max_iterations: int = MAX_POW_ITERATIONS) -> int:
     """Return the smallest ``n`` where ``SHA256(challenge + n)`` starts with
-    ``difficulty`` hex zeros (Stooq's Layer-1 hashcash)."""
+    ``difficulty`` hex zeros (Stooq's Layer-1 hashcash).
+
+    Both the difficulty and the iteration budget are bounded: an infeasible
+    server-supplied difficulty is refused up front, and the search gives up
+    (``StooqError``) rather than looping forever — the challenge is untrusted."""
+    if difficulty > MAX_POW_DIFFICULTY:
+        raise StooqError(
+            f"stooq proof-of-work difficulty {difficulty} exceeds the safe "
+            f"ceiling {MAX_POW_DIFFICULTY} — refusing to burn CPU on it"
+        )
     target = "0" * difficulty
-    n = 0
-    while not hashlib.sha256(f"{challenge}{n}".encode()).hexdigest().startswith(target):
-        n += 1
-    return n
+    for n in range(max_iterations):
+        if hashlib.sha256(f"{challenge}{n}".encode()).hexdigest().startswith(target):
+            return n
+    raise StooqError(
+        f"stooq proof-of-work unsolved after {max_iterations} iterations "
+        f"(difficulty {difficulty})"
+    )
 
 
 class StooqDownloader:

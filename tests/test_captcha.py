@@ -32,6 +32,18 @@ def test_solve_pow_hits_the_target(difficulty: int) -> None:
     )
 
 
+def test_solve_pow_rejects_an_infeasible_server_difficulty() -> None:
+    """F12 — the difficulty is served by Stooq; an absurd value must abort, not
+    spin the CPU forever (a trivial DoS, made worse by the missing watchdog)."""
+    with pytest.raises(StooqError):
+        solve_pow("challenge", 16, max_iterations=10_000)
+
+
+def test_solve_pow_aborts_when_the_iteration_bound_is_exhausted() -> None:
+    with pytest.raises(StooqError):
+        solve_pow("challenge", 4, max_iterations=1)
+
+
 # --- Layer 2 + download: orchestration against a fake session ------------
 class _Resp:
     def __init__(self, *, text: str = "", content: bytes = b"", chunks=None) -> None:
