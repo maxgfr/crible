@@ -8,8 +8,11 @@ imputed); the composite blends the available pillars and records omissions.
 
 from __future__ import annotations
 
+import warnings
+
 import duckdb
 import pandas as pd
+from pandas.errors import PerformanceWarning
 
 from crible.compute.ranks import MIN_PEERS, attach_ranks, price_return
 from crible.store import screen, whitelist_from_relation
@@ -33,6 +36,23 @@ def latest_frame() -> pd.DataFrame:
             "return_6m": [-0.2, -0.1, 0.0, 0.1, 0.2, 0.3],
         }
     )
+
+
+# --------------------------------------------------- F3: no frame fragmentation
+
+
+def test_fr015_attach_ranks_adds_columns_without_fragmenting() -> None:
+    """F3 — the real snapshot is ~150 columns wide; adding the rank columns
+    one-by-one fragments the frame (pandas PerformanceWarning) on every build.
+    attach_ranks must add them in one shot on a wide, already-fragmented frame."""
+    frame = latest_frame()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for i in range(150):  # fragment the frame like a real wide snapshot
+            frame[f"pad_{i}"] = 0.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", PerformanceWarning)
+        attach_ranks(frame)  # must not raise a fragmentation warning
 
 
 # ------------------------------------------------------------------ AC-1

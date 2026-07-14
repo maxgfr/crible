@@ -93,10 +93,17 @@ def attach_ranks(snapshot: pd.DataFrame) -> pd.DataFrame:
     if snapshot.empty or "symbol" not in snapshot.columns:
         return snapshot
     snapshot = snapshot.reset_index(drop=True)
-    for col in RANK_COLUMNS:
-        snapshot[col] = float("nan")
-    snapshot["rank_peer_group"] = None
-    snapshot["rank_missing_pillars"] = None
+    # add all rank columns in ONE concat, then defragment — inserting them
+    # one-by-one fragments the ~150-column snapshot on every build (F3)
+    new_cols = pd.DataFrame(
+        {
+            **{col: float("nan") for col in RANK_COLUMNS},
+            "rank_peer_group": None,
+            "rank_missing_pillars": None,
+        },
+        index=snapshot.index,
+    )
+    snapshot = pd.concat([snapshot, new_cols], axis=1).copy()
 
     period = snapshot["period"] if "period" in snapshot.columns else pd.Series("", index=snapshot.index)
     latest_idx = (
