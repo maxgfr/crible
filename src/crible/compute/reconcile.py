@@ -54,6 +54,13 @@ class Reconciliation:
 
 def reconcile(scraped: pd.DataFrame, audited: pd.DataFrame, symbol: str = "?") -> Reconciliation:
     merged = scraped.copy()
+    # audited history deeper than the scraped window (SEC FSDS / EDGAR backfill)
+    # must be ADDED, not dropped — otherwise the flagship deep-history feature is
+    # silently inert for every scraped symbol (F6). New periods start all-NaN and
+    # take the audited values below.
+    extra_periods = [p for p in audited.index if p not in merged.index]
+    if extra_periods:
+        merged = merged.reindex(list(merged.index) + extra_periods)
     audited_fields: dict[str, list[str]] = {}
     discrepancies: list[dict] = []
 
@@ -61,8 +68,6 @@ def reconcile(scraped: pd.DataFrame, audited: pd.DataFrame, symbol: str = "?") -
         for column in audited.columns:
             audited_value = audited.loc[period, column]
             if pd.isna(audited_value):
-                continue
-            if period not in merged.index:
                 continue
             scraped_value = merged.loc[period, column] if column in merged.columns else float("nan")
             if pd.notna(scraped_value) and audited_value != 0:

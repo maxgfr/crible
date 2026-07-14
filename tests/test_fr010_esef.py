@@ -177,6 +177,21 @@ def test_fr010_audited_value_wins_and_discrepancy_over_5pct_is_logged(caplog) ->
     assert any("MC.PA" in r.message and "audited wins" in r.message for r in caplog.records)
 
 
+def test_fr010_reconcile_adds_audited_only_periods_deeper_than_scraped() -> None:
+    """F6 — audited history deeper than the scraped window (SEC FSDS / EDGAR
+    backfill) must be ADDED to the merged frame, not dropped: a scraped symbol
+    must keep its full audited history, otherwise the flagship deep-history
+    feature is silently inert for every scraped US large-cap."""
+    scraped = pd.DataFrame({"revenue": [100.0]}, index=["2024"])
+    audited = pd.DataFrame({"revenue": [80.0, 90.0, 110.0]}, index=["2022", "2023", "2024"])
+    result = reconcile(scraped, audited, symbol="X")
+    merged = result.merged
+    assert merged.loc["2024", "revenue"] == 110.0  # audited overrides the overlap
+    assert merged.loc["2023", "revenue"] == 90.0   # deeper history is added…
+    assert merged.loc["2022", "revenue"] == 80.0   # …not truncated to the scraped window
+    assert "2022" in result.audited_fields and "2023" in result.audited_fields
+
+
 def test_fr010_small_differences_override_silently() -> None:
     scraped = pd.DataFrame({"revenue": [108.0]}, index=["2024"])
     audited = pd.DataFrame({"revenue": [110.0]}, index=["2024"])

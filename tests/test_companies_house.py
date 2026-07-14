@@ -67,6 +67,20 @@ def test_iter_accounts_reads_wanted_company_numbers(tmp_path) -> None:
     assert "09999999" not in got
 
 
+def test_iter_accounts_extracts_company_number_not_the_filing_date(tmp_path) -> None:
+    """F7 — the REAL Accounts Data Product names files
+    Prod<batch>_<seq>_<companynumber>_<YYYYMMDD>.html. The company number must be
+    extracted, not the trailing filing date — otherwise the UK layer resolves
+    nothing on real files (the single-token fixture masked this)."""
+    zip_path = tmp_path / "accounts.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr("Prod223_0081_08094273_20230331.html", IXBRL)
+        archive.writestr("Prod224_0002_SC123456_20240229.html", IXBRL)
+    got = dict(iter_accounts(zip_path, {"08094273", "SC123456"}))
+    assert "08094273" in got  # the company number, NOT the date 20230331
+    assert "SC123456" in got  # Scottish alpha-prefixed number preserved
+
+
 class _ZipResp:
     def __init__(self, body: bytes) -> None:
         self.status_code = 200

@@ -1,0 +1,251 @@
+{
+  "ok": true,
+  "adjudicated": 39,
+  "supported": 36,
+  "partial": 3,
+  "refuted": 0,
+  "unsupported": 0,
+  "failures": [],
+  "unadjudicated": [],
+  "verdicts": [
+    {
+      "claimId": "F6",
+      "evidenceRef": "src/crible/compute/reconcile.py:56",
+      "verdict": "supported",
+      "note": "merged = scraped.copy() — result seeded from scraped, confirmed."
+    },
+    {
+      "claimId": "F6",
+      "evidenceRef": "src/crible/compute/reconcile.py:65",
+      "verdict": "supported",
+      "note": "`if period not in merged.index: continue` — audited-only periods skipped, never appended. Confirmed by reading the whole reconcile loop (only .loc assignments to existing periods)."
+    },
+    {
+      "claimId": "F6",
+      "evidenceRef": "src/crible/providers/audited.py:44",
+      "verdict": "supported",
+      "note": "Docstring states the deep-backfill contract that reconcile then violates."
+    },
+    {
+      "claimId": "F6",
+      "evidenceRef": "src/crible/ingest/enrichment.py:307",
+      "verdict": "supported",
+      "note": "Comment claims FSDS backfills deep history — not delivered for scraped symbols."
+    },
+    {
+      "claimId": "F7",
+      "evidenceRef": "src/crible/providers/companies_house.py:197",
+      "verdict": "supported",
+      "note": "re.findall(r'\\d{6,8}') over the real filename yields [number, date]; verified empirically."
+    },
+    {
+      "claimId": "F7",
+      "evidenceRef": "src/crible/providers/companies_house.py:198",
+      "verdict": "supported",
+      "note": "return digits[-1].zfill(8) picks the trailing date; empirically returns 20230331 not 08094273."
+    },
+    {
+      "claimId": "F7",
+      "evidenceRef": "src/crible/providers/companies_house.py:211",
+      "verdict": "supported",
+      "note": "number not in wanted -> every real filing skipped -> zero rows."
+    },
+    {
+      "claimId": "F1",
+      "evidenceRef": "analysis:src/crible/ingest/enrichment.py",
+      "verdict": "supported",
+      "note": "617 LOC / nesting 14 in analysis.json; module docstring confirms all cycles extracted here."
+    },
+    {
+      "claimId": "F1",
+      "evidenceRef": "src/crible/ingest/enrichment.py:43",
+      "verdict": "supported",
+      "note": "run_esef_cycle is one of 9 run_* cycles in the same module."
+    },
+    {
+      "claimId": "F2",
+      "evidenceRef": "src/crible/ingest/mirror.py:98",
+      "verdict": "supported",
+      "note": "meta_path.write_text is a plain, non-atomic write (data file uses temp-then-rename)."
+    },
+    {
+      "claimId": "F2",
+      "evidenceRef": "src/crible/ingest/mirror.py:47",
+      "verdict": "supported",
+      "note": "corrupt meta -> {} -> stored ETag lost -> unconditional re-download."
+    },
+    {
+      "claimId": "F3",
+      "evidenceRef": "src/crible/compute/snapshot.py:200",
+      "verdict": "partial",
+      "note": "The exact line for audited_frames=None is :199; :200 is price_quote. The supporting statement (`audited_frames=audited if scraped else None`) is in the cited digest window (198-202)."
+    },
+    {
+      "claimId": "F3",
+      "evidenceRef": "src/crible/compute/snapshot.py:101",
+      "verdict": "supported",
+      "note": "audited_fields column is built from the reconcile result; empty when reconcile didn't run."
+    },
+    {
+      "claimId": "F4",
+      "evidenceRef": "src/crible/providers/edinet.py:155",
+      "verdict": "supported",
+      "note": "`not base.isdigit()` returns None for alphanumeric TSE codes like 130A."
+    },
+    {
+      "claimId": "F5",
+      "evidenceRef": "src/crible/ingest/mirror.py:93",
+      "verdict": "supported",
+      "note": "streams iter_bytes to disk with no byte ceiling."
+    },
+    {
+      "claimId": "F5",
+      "evidenceRef": "src/crible/ingest/mirror.py:80",
+      "verdict": "supported",
+      "note": "httpx timeout=120 is per-operation, not a total-transfer deadline."
+    },
+    {
+      "claimId": "F8",
+      "evidenceRef": "src/crible/compute/snapshot.py:262",
+      "verdict": "supported",
+      "note": "dirty set is purely _newest_raw_stamp > base_mtime."
+    },
+    {
+      "claimId": "F8",
+      "evidenceRef": "src/crible/compute/snapshot.py:236",
+      "verdict": "supported",
+      "note": "_newest_raw_stamp globs only data/raw/provider=*/symbol=*."
+    },
+    {
+      "claimId": "F8",
+      "evidenceRef": "src/crible/compute/snapshot.py:194",
+      "verdict": "supported",
+      "note": "quote from _price_quotes (prices-latest) is baked into the cached per-symbol row."
+    },
+    {
+      "claimId": "F8",
+      "evidenceRef": "src/crible/ingest/price_import.py:37",
+      "verdict": "supported",
+      "note": "dump is written to prices-latest.parquet, outside data/raw — confirmed no write_raw_statement in price_import."
+    },
+    {
+      "claimId": "F9",
+      "evidenceRef": "src/crible/ingest/service.py:322",
+      "verdict": "supported",
+      "note": "run_refresh fetches GLEIF only when load_mapping()[0] is None."
+    },
+    {
+      "claimId": "F9",
+      "evidenceRef": "src/crible/ingest/service.py:477",
+      "verdict": "supported",
+      "note": "weekly run_loop timer has the same is-None gate — never refreshes an existing file."
+    },
+    {
+      "claimId": "F9",
+      "evidenceRef": "src/crible/providers/gleif.py:26",
+      "verdict": "supported",
+      "note": "docstring promises 'refreshed at most weekly'; fetch_if_stale max_age is dead under the is-None gate."
+    },
+    {
+      "claimId": "F10",
+      "evidenceRef": "src/crible/providers/edgar_fsds.py:67",
+      "verdict": "supported",
+      "note": "num.txt row loop applies no coreg filter (coreg present in test header)."
+    },
+    {
+      "claimId": "F10",
+      "evidenceRef": "src/crible/providers/edgar_fsds.py:80",
+      "verdict": "supported",
+      "note": "only qtrs/uom/ddate guards; coreg never checked."
+    },
+    {
+      "claimId": "F10",
+      "evidenceRef": "src/crible/providers/edgar_fsds.py:97",
+      "verdict": "supported",
+      "note": "equal-rank first-writer-wins per (period,column) — order-dependent when coreg rows collide."
+    },
+    {
+      "claimId": "F11",
+      "evidenceRef": "src/crible/providers/gleif.py:43",
+      "verdict": "supported",
+      "note": "path.read_bytes() loads the whole zip in RAM."
+    },
+    {
+      "claimId": "F11",
+      "evidenceRef": "src/crible/providers/gleif.py:47",
+      "verdict": "supported",
+      "note": "archive.read(inner) decompresses the whole CSV in RAM."
+    },
+    {
+      "claimId": "F11",
+      "evidenceRef": "src/crible/providers/edgar_fsds.py:131",
+      "verdict": "supported",
+      "note": "archive.read(...).decode(...) on sub.txt/num.txt materializes whole members."
+    },
+    {
+      "claimId": "F12",
+      "evidenceRef": "src/crible/providers/fx.py:26",
+      "verdict": "supported",
+      "note": "FRANKFURTER_URL uses /latest — a single spot rate."
+    },
+    {
+      "claimId": "F12",
+      "evidenceRef": "src/crible/providers/fx.py:94",
+      "verdict": "supported",
+      "note": "one rate map applied across every row/period via zip(field, currency)."
+    },
+    {
+      "claimId": "F13",
+      "evidenceRef": "src/crible/ingest/enrichment.py:480",
+      "verdict": "supported",
+      "note": "run_edinet processes every swept doc by secCode with no docTypeCode filter."
+    },
+    {
+      "claimId": "F13",
+      "evidenceRef": "src/crible/providers/edinet.py:60",
+      "verdict": "supported",
+      "note": "balance branch accepts any present instant; no fiscal-year-end month-day check."
+    },
+    {
+      "claimId": "F14",
+      "evidenceRef": "src/crible/providers/edinet.py:80",
+      "verdict": "supported",
+      "note": "context parse collects start/end/instant only; scenario/dimension members ignored."
+    },
+    {
+      "claimId": "F14",
+      "evidenceRef": "src/crible/providers/edinet.py:107",
+      "verdict": "supported",
+      "note": "fact loop keys by (period,column) with first-seen precedence; consolidation basis undetermined."
+    },
+    {
+      "claimId": "F15",
+      "evidenceRef": "src/crible/compute/snapshot.py:239",
+      "verdict": "supported",
+      "note": "newest = max(...); a deletion can only lower it."
+    },
+    {
+      "claimId": "F15",
+      "evidenceRef": "src/crible/compute/snapshot.py:262",
+      "verdict": "supported",
+      "note": "dirty requires stamp > base_mtime, so a lowered newest stamp is never dirty."
+    },
+    {
+      "claimId": "F16",
+      "evidenceRef": "src/crible/providers/gleif.py:49",
+      "verdict": "partial",
+      "note": "Code fact confirmed: decode('utf-8'), not utf-8-sig. The harmful outcome is conditional on the live GLEIF file carrying a BOM (unverified)."
+    },
+    {
+      "claimId": "F16",
+      "evidenceRef": "src/crible/providers/gleif.py:52",
+      "verdict": "partial",
+      "note": "lower.get('lei') would miss a '\\ufeffLEI' key; conditional on a BOM being present."
+    }
+  ],
+  "honeypots": {
+    "planted": 3,
+    "caught": 3,
+    "failed": []
+  }
+}

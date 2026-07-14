@@ -193,9 +193,22 @@ def parse_ixbrl(html) -> dict[tuple[str, str], pd.DataFrame]:
 
 
 def _company_number(filename: str) -> str | None:
-    """The 8-digit company number embedded in an accounts filename, or None."""
-    digits = re.findall(r"\d{6,8}", filename.rsplit("/", 1)[-1])
-    return digits[-1].zfill(8) if digits else None
+    """The 8-char company number embedded in an accounts filename, or None.
+
+    Real Accounts Data Product names look like
+    ``Prod<batch>_<seq>_<companynumber>_<YYYYMMDD>.html`` — the trailing YYYYMMDD
+    is the FILING DATE, not the number (F7). Company numbers are 8 chars: 8
+    digits, or a 2-letter jurisdiction prefix (SC/NI/OC/GB/GE/FC…) + 6 digits."""
+    stem = filename.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    tokens = stem.split("_")
+    if tokens and re.fullmatch(r"(19|20)\d{6}", tokens[-1]):
+        tokens = tokens[:-1]  # drop the trailing filing-date token
+    for token in reversed(tokens):
+        match = re.search(r"([A-Z]{2}\d{6}|\d{6,8})", token)
+        if match:
+            number = match.group(1)
+            return number.zfill(8) if number.isdigit() else number
+    return None
 
 
 def iter_accounts(

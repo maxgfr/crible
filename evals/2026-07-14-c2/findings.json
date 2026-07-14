@@ -1,0 +1,256 @@
+{
+  "findings": [
+    {
+      "id": "F1",
+      "kind": "opportunity",
+      "dimension": "maintainability",
+      "severity": "P2",
+      "impact": "med",
+      "effort": "M",
+      "title": "Split ingest/enrichment.py (617 LOC, nesting 14) into per-provider cycle modules",
+      "statement": "The F4 refactor correctly halved service.py (820->523 LOC) by extracting the audited enrichment cycles, but they all landed in ONE module: enrichment.py is now the #2 hotspot at 617 LOC with nesting depth 14, holding 9 parallel run_* cycles (ESEF, EDGAR, EDGAR-bulk, FSDS, Companies House, EDINET, ESEF-sweep). The seam (AuditedBulkProvider) exists; the cycles could each move beside their provider so a new source stops growing one file.",
+      "evidence": [
+        {"ref": "analysis:src/crible/ingest/enrichment.py", "note": "#2 hotspot, 617 LOC, nesting 14"},
+        {"ref": "src/crible/ingest/enrichment.py:43", "note": "9 run_* cycles share one module"}
+      ],
+      "recommendation": "Move each run_<source>_cycle next to its provider (or an ingest/cycles/ package), keeping the shared GLEIF/heartbeat helpers in one place; the per-cycle contracts are already clean.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F2",
+      "kind": "opportunity",
+      "dimension": "maintainability",
+      "severity": "P2",
+      "impact": "low",
+      "effort": "S",
+      "title": "Mirror sidecar meta write is non-atomic — a crash mid-write forces a full unconditional re-download",
+      "statement": "fetch_if_stale writes the data file atomically (temp-then-rename, mirror.py:92-96) but the .meta.json sidecar is a plain write_text (mirror.py:89, 98-100). A crash mid-write corrupts the sidecar; _read_meta then returns {} (mirror.py:47), losing the stored ETag and forcing a full unconditional re-download of the ~200MB GLEIF file next time. Fails safe (never serves stale data) but wastes bandwidth.",
+      "evidence": [
+        {"ref": "src/crible/ingest/mirror.py:98", "note": "meta_path.write_text — non-atomic"},
+        {"ref": "src/crible/ingest/mirror.py:47", "note": "corrupt meta -> {} -> ETag lost"}
+      ],
+      "recommendation": "Write the meta sidecar through the same temp-then-rename path as the data file.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F3",
+      "kind": "opportunity",
+      "dimension": "correctness",
+      "severity": "P2",
+      "impact": "low",
+      "effort": "S",
+      "title": "Audited-only symbols carry no field-level provenance (audited_fields empty)",
+      "statement": "In build_symbol_snapshot, when a symbol has no yfinance scrape, audited_frames is passed as None (snapshot.py:200) so the reconcile path that populates the audited_fields provenance column never runs — every field is audited yet audited_fields is empty (snapshot.py:101-103). Row-level provider still records the source, so this is a provenance-completeness gap, not a data error.",
+      "evidence": [
+        {"ref": "src/crible/compute/snapshot.py:200", "note": "audited_frames=None when scraped exists is passed; audited-only path loses provenance"},
+        {"ref": "src/crible/compute/snapshot.py:101", "note": "audited_fields column built from reconcile result"}
+      ],
+      "recommendation": "When canonical is seeded directly from audited (snapshot.py:60), mark all present fields as audited in audited_fields (already done there for the empty-canonical branch — verify it reaches the output column).",
+      "status": "confirmed"
+    },
+    {
+      "id": "F4",
+      "kind": "opportunity",
+      "dimension": "correctness",
+      "severity": "P2",
+      "impact": "low",
+      "effort": "S",
+      "title": "EDINET sec_code rejects the new 4-char alphanumeric Tokyo codes (e.g. 130A.T)",
+      "statement": "sec_code returns None when the ticker base is not all digits (edinet.py:155), silently skipping the alphanumeric TSE codes the Tokyo exchange began issuing in 2024 (e.g. 130A.T). Those JP listings never resolve to an EDINET securities code. EDINET is opt-in (off without a key) so the blast radius is small.",
+      "evidence": [
+        {"ref": "src/crible/providers/edinet.py:155", "note": "not base.isdigit() -> None for 130A.T"}
+      ],
+      "recommendation": "Accept a 4-char alphanumeric base and pad to the 5-char EDINET securities code.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F5",
+      "kind": "opportunity",
+      "dimension": "security",
+      "severity": "P2",
+      "impact": "low",
+      "effort": "M",
+      "title": "Mirror bulk fetch has no max-size or total-time cap",
+      "statement": "fetch_if_stale streams response.iter_bytes to disk with no size ceiling (mirror.py:93-95) and an httpx timeout that is per-operation, not total (mirror.py:80). URLs are hardcoded and trusted (GLEIF, Frankfurter) so there is no SSRF, but a misbehaving/hostile server could fill the disk or keep a slow download alive indefinitely — the ~200MB GLEIF fetch on the auto-heal path is the exposure.",
+      "evidence": [
+        {"ref": "src/crible/ingest/mirror.py:93", "note": "unbounded stream to disk"},
+        {"ref": "src/crible/ingest/mirror.py:80", "note": "timeout is per-op, not total"}
+      ],
+      "recommendation": "Add a byte ceiling while streaming (raise past N bytes) and a wall-clock deadline for the whole transfer.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F6",
+      "kind": "defect",
+      "dimension": "correctness",
+      "severity": "P1",
+      "title": "reconcile discards every audited period the scrape lacks — FSDS/EDGAR deep-history backfill is silently truncated to the yfinance window for scraped symbols",
+      "statement": "merge_audited correctly assembles deep audited history (companyfacts primary + FSDS backfill) into the audited frames (audited.py:48-58), but for any symbol that ALSO has a yfinance scrape, build_symbol_snapshot reconciles the audited frame INTO the scraped canonical (snapshot.py:63) and reconcile only OVERRIDES periods already present: merged is seeded from scraped (reconcile.py:56) and audited-only periods are skipped, never appended (reconcile.py:65-66). align_periods (reconcile.py:20-45) only relabels an audited period onto a same-year scraped label. So every audited period older than yfinance's ~4-year window is dropped for scraped symbols — i.e. essentially all US large/mid caps. This directly contradicts the stated purpose of the Phase-2 FSDS source.",
+      "evidence": [
+        {"ref": "src/crible/compute/reconcile.py:56", "note": "merged = scraped.copy() — result seeded from scraped, never extended"},
+        {"ref": "src/crible/compute/reconcile.py:65", "note": "if period not in merged.index: continue — audited-only periods skipped"},
+        {"ref": "src/crible/providers/audited.py:44", "note": "contract: 'SEC FSDS adding pre-8-year history under companyfacts'"},
+        {"ref": "src/crible/ingest/enrichment.py:307", "note": "comment: 'FSDS backfills the deep history companyfacts drops' — not delivered for scraped symbols"}
+      ],
+      "failureScenario": "A self-hoster ingests SEC FSDS to get 15+ years of as-filed history for AAPL; because AAPL is yfinance-scraped, reconcile truncates the audited history back to ~4 years and the deep backfill never reaches the snapshot — the headline feature is silently inert for its target universe.",
+      "recommendation": "In reconcile, union periods: append audited-only periods to merged (marking every field audited) instead of skipping them; add a fixture with an audited period outside the scraped index asserting it survives.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F7",
+      "kind": "defect",
+      "dimension": "correctness",
+      "severity": "P1",
+      "title": "Companies House _company_number parses the filing DATE, not the company number — the whole UK audited layer silently ingests zero rows on real filenames",
+      "statement": "The real Accounts Data Product names files Prod<nnn>_<batch>_<companynumber>_<yyyymmdd>.<ext> (e.g. Prod223_2138_08094273_20230331.html). _company_number does re.findall(r'\\d{6,8}', ...) then takes digits[-1] (companies_house.py:197-198), which picks the trailing 8-digit DATE (20230331), not the company number (08094273). Verified empirically: findall -> ['08094273','20230331'], digits[-1]='20230331'. That never matches a wanted company number, so iter_accounts yields nothing and the UK layer ingests zero rows. The unit test masks it: its fixture Prod223_1234567.html has a single digit-run so digits[-1]==digits[0] (tests/test_companies_house.py:62).",
+      "evidence": [
+        {"ref": "src/crible/providers/companies_house.py:197", "note": "re.findall(r'\\d{6,8}', ...) over the real filename yields [number, date]"},
+        {"ref": "src/crible/providers/companies_house.py:198", "note": "return digits[-1].zfill(8) — the trailing date, not the number"},
+        {"ref": "src/crible/providers/companies_house.py:211", "note": "number not in wanted -> every real filing skipped -> zero rows"}
+      ],
+      "failureScenario": "An operator enables the UK Companies House tier and points it at a real Accounts Data Product ZIP; every filename resolves to a date, no company matches, and the sweep completes 'successfully' with zero UK companies enriched and no error.",
+      "recommendation": "Take the company-number token by position/pattern (digits[0], or the token before the yyyymmdd), and handle SC/NI/OC alphanumeric prefixes; add a fixture in the real Prod<nnn>_<batch>_<number>_<date> format.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F8",
+      "kind": "defect",
+      "dimension": "correctness",
+      "severity": "P2",
+      "title": "Incremental compute is blind to price-dump refreshes — published prices, return_6m and value/momentum ranks go stale on the persisted-base path",
+      "statement": "build_snapshot_incremental derives its dirty set solely from raw-layer fetch stamps under data/raw (snapshot.py:262 via _newest_raw_stamp snapshot.py:230-242), but the imported price dump lives in data/prices-latest.parquet (price_import.py) OUTSIDE data/raw and is baked into each symbol's cached per-symbol row (snapshot.py:194-202, 161-170). After `crible import-prices` refreshes the dump, `crible compute` recomputes nothing for symbols whose fundamentals did not change, so their close, return_6m and the value/momentum ranks derived from them stay stale — diverging from a full build_snapshot. Production uses the incremental path (service.py:269, cli.py compute); build_snapshot is test-only and no periodic full rebuild self-heals. (Crawled yfinance price bars DO write to raw and self-heal; the gap is specific to the import-dump price path.)",
+      "evidence": [
+        {"ref": "src/crible/compute/snapshot.py:262", "note": "dirty set is raw-stamp only"},
+        {"ref": "src/crible/compute/snapshot.py:236", "note": "_newest_raw_stamp globs only data/raw/provider=*/symbol=*"},
+        {"ref": "src/crible/compute/snapshot.py:194", "note": "price quote/return_6m from prices-latest baked into the cached row"},
+        {"ref": "src/crible/ingest/price_import.py:37", "note": "dump written to prices-latest.parquet, never to data/raw"}
+      ],
+      "failureScenario": "The hosted nightly runs import-prices (fresh Stooq closes) then incremental compute on a persisted base.parquet; no fundamentals changed that day, so the published snapshot keeps yesterday's (or last filing's) prices and momentum until the symbol is next dirtied by a filing.",
+      "recommendation": "Treat prices-latest.parquet's mtime as a global change signal (mark all symbols dirty, or recompute the price/return_6m columns in finalize), or force a periodic full rebuild.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F9",
+      "kind": "defect",
+      "dimension": "correctness",
+      "severity": "P2",
+      "title": "GLEIF ISIN->LEI mapping is fetched once and never refreshed — the weekly self-heal is gated on file ABSENCE, so EU audited coverage freezes",
+      "statement": "fetch_gleif is correctly staleness-aware (fetch_if_stale with a 7-day max_age, gleif.py:24-35), but both auto-heal callers only invoke it when there is NO mapping at all: run_refresh guards `if load_mapping(data)[0] is None` (service.py:322) and the weekly run_loop timer guards the same (service.py:477). Once isin-lei.zip exists it is never re-fetched, so the 7-day max_age is dead code and new EU ISINs (IPOs, relistings) never resolve to an LEI — those companies get no ESEF audited data, a slow silent coverage regression. Only the manual `ingest --fetch-gleif` bypasses the gate.",
+      "evidence": [
+        {"ref": "src/crible/ingest/service.py:322", "note": "run_refresh: fetch only when mapping is None"},
+        {"ref": "src/crible/ingest/service.py:477", "note": "weekly run_loop timer: same is-None gate defeats the refresh"},
+        {"ref": "src/crible/providers/gleif.py:26", "note": "docstring promises 'refreshed at most weekly' — not delivered once a file exists"}
+      ],
+      "failureScenario": "A self-hoster's first refresh downloads the GLEIF file; a year later, dozens of newly-listed EU companies still have no audited figures because the mapping was never refreshed despite the weekly timer firing.",
+      "recommendation": "Call fetch_gleif unconditionally on the weekly timer (let fetch_if_stale decide), dropping the is-None gate; keep the manual command as-is.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F10",
+      "kind": "defect",
+      "dimension": "correctness",
+      "severity": "P2",
+      "title": "FSDS parser ignores the coreg column — a co-registrant/guarantor value can be booked as the consolidated audited figure",
+      "statement": "SEC FSDS num.txt carries a coreg column (present in the test header, tests/test_fsds.py) where empty = the consolidated registrant and non-empty = a co-registrant/parent/guarantor (common on bond-issuer 10-Ks). parse_fsds_quarter filters rows on tag, uom, qtrs and ddate but never on coreg (edgar_fsds.py:71-92), and cells are first-writer-wins at equal concept rank (edgar_fsds.py:96-99), so whichever num.txt row appears first wins with no guarantee it is the consolidated one. companyfacts (edgar.py) is immune because its units arrays hold only default-member values — this is an FSDS-format-specific risk. (Blast radius is reduced by F6, which drops FSDS-only periods for scraped symbols.)",
+      "evidence": [
+        {"ref": "src/crible/providers/edgar_fsds.py:67", "note": "num.txt row loop — no coreg guard"},
+        {"ref": "src/crible/providers/edgar_fsds.py:80", "note": "only qtrs/uom/ddate guards applied"},
+        {"ref": "src/crible/providers/edgar_fsds.py:97", "note": "equal-rank first-writer-wins per (period,column)"}
+      ],
+      "failureScenario": "A guarantor-subsidiary 10-K's co-registrant revenue appears before the consolidated row in num.txt; it is booked as the audited annual Revenue for that CIK.",
+      "recommendation": "Skip rows where coreg is non-empty (consolidated registrant only); add a fixture with a co-registrant row asserting it is dropped.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F11",
+      "kind": "defect",
+      "dimension": "performance",
+      "severity": "P2",
+      "title": "Bulk archives are read whole into memory (GLEIF ~1GB decompressed, FSDS num.txt hundreds of MB) — OOM risk on the self-hosted target, defeating the mirror's streaming design",
+      "statement": "Two bulk parsers materialize an entire archive member in RAM. load_isin_lei_map reads the whole zip to bytes (gleif.py:43), decompresses the whole CSV to bytes (gleif.py:47), then decodes it to a str for StringIO (gleif.py:49) — triple-buffered for a file the docstring calls ~200MB (decompressed ~1GB). parse_fsds_quarter does the same archive.read(...).decode(...) on num.txt (edgar_fsds.py:131-132), hundreds of MB uncompressed per quarter. Both run on auto-heal / opt-in ingest paths that the memory-safe mirror streaming was meant to protect — the same OOM class as the prior-cycle F13 bootstrap fix.",
+      "evidence": [
+        {"ref": "src/crible/providers/gleif.py:43", "note": "path.read_bytes() — whole zip in RAM"},
+        {"ref": "src/crible/providers/gleif.py:47", "note": "archive.read(inner) — whole decompressed CSV in RAM"},
+        {"ref": "src/crible/providers/edgar_fsds.py:131", "note": "archive.read(names['num.txt']).decode(...) — whole member in RAM"}
+      ],
+      "failureScenario": "A 1GB-RAM VPS runs the GLEIF auto-fetch on first refresh; loading the ISIN-LEI file peaks several GB of RSS and the process is OOM-killed, leaving the audited-EU layer idle.",
+      "recommendation": "Stream both: zipfile.open(inner)+io.TextIOWrapper -> csv.reader for GLEIF, and archive.open('num.txt')+TextIOWrapper for FSDS, capping peak memory to the resulting structures.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F12",
+      "kind": "defect",
+      "dimension": "correctness",
+      "severity": "P2",
+      "title": "FX applies the single latest spot rate to every fiscal period — historical *_eur values are silently wrong",
+      "statement": "fetch_rates pulls Frankfurter's /latest endpoint (fx.py:26) and attach_fx converts every row (all fiscal periods) with that one rate map (fx.py:94-95), so 2015 revenue and 2024 revenue are both normalized at today's EUR rate. The docstring documents the listing-vs-reporting currency approximation but not this temporal one; historical revenue_eur / total_assets_eur look precise but are wrong for cross-period comparison.",
+      "evidence": [
+        {"ref": "src/crible/providers/fx.py:26", "note": "FRANKFURTER_URL = .../latest?base=EUR — one spot rate"},
+        {"ref": "src/crible/providers/fx.py:94", "note": "one rate map applied across all periods via zip(field, currency)"}
+      ],
+      "failureScenario": "A user screens revenue_eur across years for a USD filer; the older years are converted at today's USD/EUR rate, distorting a multi-year EUR trend.",
+      "recommendation": "Fetch dated ECB rates (Frankfurter supports /<date>) and convert each period at its period-end rate; or scope *_eur to the latest period only and document it.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F13",
+      "kind": "defect",
+      "dimension": "correctness",
+      "severity": "P2",
+      "title": "EDINET sweep applies no document-type filter and books interim balance-sheet instants as annual figures",
+      "statement": "run_edinet processes any swept document whose secCode matches, with no docTypeCode/ordinanceCode filter despite the 'annual securities reports' contract (enrichment.py:480-483). A quarterly/semi-annual report thus reaches the parser; the income branch's full-year duration guard drops interim durations, but the balance branch of _period accepts ANY instant and returns its calendar year (edinet.py:60-63), so an interim balance instant (e.g. 2023-09-30) is booked as the '2023' annual balance — the same interim-as-annual class as the prior-cycle ESEF F9. EDINET is opt-in (off without a key).",
+      "evidence": [
+        {"ref": "src/crible/ingest/enrichment.py:480", "note": "no docTypeCode filter on swept documents"},
+        {"ref": "src/crible/providers/edinet.py:60", "note": "balance branch returns the instant's year with no fiscal-year-end check"}
+      ],
+      "failureScenario": "A semi-annual EDINET report for a JP filer is swept; its Sep-30 interim balance-sheet instant is stored as the annual audited TotalAssets for that year.",
+      "recommendation": "Filter to annual securities-report docTypeCodes in run_edinet, and require the balance instant's month-day to match the entity's fiscal-year-end before tagging it annual.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F14",
+      "kind": "defect",
+      "dimension": "correctness",
+      "severity": "P2",
+      "title": "EDINET does not distinguish consolidated (連結) from non-consolidated (単体) contexts — parent-only figures can be booked for a group",
+      "statement": "EDINET reports the same jppfs_cor concept twice — consolidated and parent-only — differentiated only by the context's scenario/dimension members. parse_xbrl_instance reads contexts for start/end/instant only and never inspects dimensions (edinet.py:80-93), and the fact loop keeps the first-seen concept per (period,column) (edinet.py:107-119), so document order decides the basis. For a company with subsidiaries this can silently book parent-only revenue/assets instead of the consolidated figure. EDINET is opt-in (off without a key).",
+      "evidence": [
+        {"ref": "src/crible/providers/edinet.py:80", "note": "context parse ignores scenario/dimension members"},
+        {"ref": "src/crible/providers/edinet.py:107", "note": "first-in-document-order wins per (period,column) — no consolidation-basis filter"}
+      ],
+      "failureScenario": "A JP holding company's parent-only revenue appears first in the XBRL instance and is booked as the audited consolidated revenue, understating the group.",
+      "recommendation": "Prefer the consolidated context (ConsolidatedMember / no non-consolidated dimension) explicitly; drop parent-only facts when a consolidated one exists.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F15",
+      "kind": "defect",
+      "dimension": "correctness",
+      "severity": "P2",
+      "title": "Incremental compute never marks a symbol dirty when its newest raw file is removed",
+      "statement": "_newest_raw_stamp returns the max fetched-at stamp for a symbol (snapshot.py:239); a deletion can only lower the newest stamp, never raise it above base_mtime, so the dirty test `> base_mtime` (snapshot.py:262) misses a symbol whose latest raw statement was removed — it keeps its stale cached row while a full rebuild would reflect the removal. prune_raw is safe (it only deletes older versions), so this bites only on an out-of-band removal of the newest file; a full-drop of the symbol IS handled (snapshot.py:265-270).",
+      "evidence": [
+        {"ref": "src/crible/compute/snapshot.py:239", "note": "newest = max(...) — a deletion cannot raise it"},
+        {"ref": "src/crible/compute/snapshot.py:262", "note": "dirty requires stamp > base_mtime"}
+      ],
+      "failureScenario": "An operator manually deletes a corrupt newest raw parquet for one symbol; incremental compute keeps serving the row built from it until an unrelated change dirties the symbol.",
+      "recommendation": "Also treat a drop in a symbol's newest-stamp (or a change in its raw file set) versus a recorded baseline as dirty; or compare a per-symbol raw fingerprint rather than a max stamp.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F16",
+      "kind": "defect",
+      "dimension": "correctness",
+      "severity": "P2",
+      "title": "GLEIF CSV is decoded as plain utf-8 (not utf-8-sig) — a BOM in the source file would silently zero the entire mapping",
+      "statement": "load_isin_lei_map decodes the CSV with utf-8, not utf-8-sig (gleif.py:49). If the GLEIF relationship CSV ships with a UTF-8 BOM, the first header key becomes '\\ufeffLEI', so lower.get('lei') returns None for every row (gleif.py:52), the `if isin and lei` guard is always false, and the mapping loads 0 relationships — logged as a benign 'loaded 0', silently disabling all audited-EU coverage. Whether it triggers depends on the live file carrying a BOM (not verified here); the unit fixture has none so the test cannot see it.",
+      "evidence": [
+        {"ref": "src/crible/providers/gleif.py:49", "note": "raw.decode('utf-8', ...) — BOM not stripped"},
+        {"ref": "src/crible/providers/gleif.py:52", "note": "lower.get('lei') misses a '\\ufeffLEI' header key -> 0 rows"}
+      ],
+      "failureScenario": "GLEIF publishes the file with a BOM; the auto-fetched mapping parses to zero relationships and every EU listing lands in 'unmatched', with only an info-level 'loaded 0' to signal it.",
+      "recommendation": "Decode with utf-8-sig (or strip a leading BOM); add a BOM'd fixture asserting the mapping still loads.",
+      "status": "confirmed"
+    }
+  ]
+}
