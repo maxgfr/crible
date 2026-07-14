@@ -190,6 +190,9 @@ def test_fr010_reconcile_adds_audited_only_periods_deeper_than_scraped() -> None
     assert merged.loc["2023", "revenue"] == 90.0   # deeper history is added…
     assert merged.loc["2022", "revenue"] == 80.0   # …not truncated to the scraped window
     assert "2022" in result.audited_fields and "2023" in result.audited_fields
+    # the merged frame MUST stay chronologically sorted (latest period last):
+    # build_symbol_snapshot assigns the current price/return_6m to .iloc[-1]
+    assert list(merged.index) == ["2022", "2023", "2024"]
 
 
 def test_fr010_small_differences_override_silently() -> None:

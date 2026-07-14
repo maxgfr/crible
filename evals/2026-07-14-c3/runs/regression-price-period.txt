@@ -1,0 +1,4 @@
+merged period order: ['2023', '2024', '2019', '2020', '2021', '2022']
+return_6m landed on period: ['2022'] (expected ['2024'])
+latest period 2024 return_6m: nan
+REGRESSION

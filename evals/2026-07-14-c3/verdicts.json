@@ -1,0 +1,125 @@
+{
+ "run": "evals/2026-07-14-c3",
+ "pairs": [
+  {
+   "claimId": "F1",
+   "evidenceRef": "src/crible/compute/reconcile.py:63",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  },
+  {
+   "claimId": "F1",
+   "evidenceRef": "src/crible/compute/snapshot.py:79",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  },
+  {
+   "claimId": "F1",
+   "evidenceRef": "src/crible/compute/snapshot.py:96",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  },
+  {
+   "claimId": "F7",
+   "evidenceRef": "src/crible/providers/edinet.py:107",
+   "verdict": "unsupported",
+   "note": "evidence line does not pertain to this claim \u2014 mismatched pair"
+  },
+  {
+   "claimId": "F1",
+   "evidenceRef": "src/crible/compute/canonical.py:104",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  },
+  {
+   "claimId": "F1",
+   "evidenceRef": "run:runs/regression-price-period.txt#L1",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  },
+  {
+   "claimId": "F2",
+   "evidenceRef": "src/crible/compute/snapshot.py:199",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  },
+  {
+   "claimId": "F2",
+   "evidenceRef": "src/crible/compute/snapshot.py:54",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  },
+  {
+   "claimId": "F2",
+   "evidenceRef": "src/crible/compute/snapshot.py:101",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  },
+  {
+   "claimId": "F8",
+   "evidenceRef": "src/crible/ingest/enrichment.py:513",
+   "verdict": "unsupported",
+   "note": "evidence line does not pertain to this claim \u2014 mismatched pair"
+  },
+  {
+   "claimId": "F3",
+   "evidenceRef": "src/crible/providers/edinet.py:198",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  },
+  {
+   "claimId": "F9",
+   "evidenceRef": "src/crible/ingest/enrichment.py:43",
+   "verdict": "unsupported",
+   "note": "evidence line does not pertain to this claim \u2014 mismatched pair"
+  },
+  {
+   "claimId": "F3",
+   "evidenceRef": "src/crible/providers/edinet.py:61",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  },
+  {
+   "claimId": "F3",
+   "evidenceRef": "src/crible/providers/edinet.py:107",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  },
+  {
+   "claimId": "F4",
+   "evidenceRef": "src/crible/providers/edinet.py:88",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  },
+  {
+   "claimId": "F4",
+   "evidenceRef": "src/crible/providers/edinet.py:116",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  },
+  {
+   "claimId": "F5",
+   "evidenceRef": "src/crible/ingest/enrichment.py:43",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  },
+  {
+   "claimId": "F5",
+   "evidenceRef": "src/crible/ingest/enrichment.py:513",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  },
+  {
+   "claimId": "F6",
+   "evidenceRef": "src/crible/ingest/mirror.py:102",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  },
+  {
+   "claimId": "F6",
+   "evidenceRef": "src/crible/ingest/mirror.py:88",
+   "verdict": "supported",
+   "note": "cited line confirms the claim (re-checked in source/repro)"
+  }
+ ]
+}

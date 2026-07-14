@@ -60,7 +60,12 @@ def reconcile(scraped: pd.DataFrame, audited: pd.DataFrame, symbol: str = "?") -
     # take the audited values below.
     extra_periods = [p for p in audited.index if p not in merged.index]
     if extra_periods:
-        merged = merged.reindex(list(merged.index) + extra_periods)
+        # re-sort after the union — period labels sort chronologically, and
+        # build_symbol_snapshot assigns the CURRENT price / return_6m to the last
+        # row (.iloc[-1]), so appending deep-history periods unsorted would land
+        # the current price on an old period for exactly the deep-history symbols
+        # F6 targets (regression caught by the confirmation eval).
+        merged = merged.reindex(list(merged.index) + extra_periods).sort_index()
     audited_fields: dict[str, list[str]] = {}
     discrepancies: list[dict] = []
 
