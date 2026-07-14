@@ -32,8 +32,8 @@ Branch : `improve/2026-07-14-bulk-first-data`.
 - [x] **FIX-002 · GLEIF auto-fetch.** `crible ingest --fetch-gleif` : implémenter `ISIN_LEI_LATEST_URL` (mort, gleif.py:21), stream → `data/mirror/gleif/isin-lei.csv` (timeout + size guard), auto-fetch hebdo dans `run_refresh` si absent/stale. RED `tests/test_gleif.py`. **Allume l'EU audité.**
 - [x] **FIX-007 · FX Frankfurter/BCE.** `providers/fx.py` keyless : taux BCE par date (miroir `data/mirror/fx/`), colonnes companion `market_cap_eur`/`revenue_eur`… (whitelist DSL/UI). RED : ratios currency-neutral inchangés, `market_cap_eur = market_cap × rate`. Nouveau FR via construct.
 - [x] **SEC FSDS** `providers/edgar_fsds.py` + cycle. ZIP trimestriels (SUB/NUM/TAG/PRE), map tags→canonical (discipline CONCEPT_MAP + garde pleine-année), miroir `data/mirror/edgar-fsds/`. Précédence : companyfacts (récent) > FSDS (backfill profondeur). Nouveau FR construct. RED : fixture ZIP subset.
-- [ ] **Companies House UK** `providers/companies_house.py` + cycle. Accounts Data Product (ZIP iXBRL), résolution par company number, miroir. Couche **assumed-risk** (DATA-SOURCES.md). Nouveau FR construct. RED : fixture iXBRL.
-- [ ] **EDINET JP** `providers/edinet.py` (free-key `CRIBLE_EDINET_KEY`, off défaut, API-only). Attribution PDL1.0. Nouveau FR construct. RED : provider désactivé sans clé ; fixture doc.
+- [x] **Companies House UK** `providers/companies_house.py` + cycle. Accounts Data Product (ZIP iXBRL), résolution par company number, miroir. Couche **assumed-risk** (DATA-SOURCES.md). Nouveau FR construct. RED : fixture iXBRL.
+- [x] **EDINET JP** `providers/edinet.py` (free-key `CRIBLE_EDINET_KEY`, off défaut, API-only). Attribution PDL1.0. Nouveau FR construct. RED : provider désactivé sans clé ; fixture doc.
 - [x] **FIX-001 · refresh univers dans `run_loop`** (+ marquage delisted). RED `tests/test_service.py`.
 - [ ] **FIX-006 · compute incrémental** via seam `build_snapshot(symbols=)` (dirty-set raw). RED `tests/test_fr003_compute.py`.
 

@@ -10,6 +10,7 @@ EDINET) plugs in here beside the existing two rather than growing one file.
 from __future__ import annotations
 
 import logging
+import os
 import time
 
 import duckdb
@@ -364,6 +365,139 @@ def run_fsds(
             if limit is not None and outcome["enriched"] >= limit:
                 break
         log.info("fsds: enriched %d issuer-quarters across %s", outcome["enriched"], outcome["quarters"])
+        return outcome
+    finally:
+        con.close()
+
+
+CH_MAX_AGE = 30 * 24 * 3600
+
+
+def load_uk_company_numbers(data_dir) -> dict[str, str]:
+    """{symbol: company_number} from an operator-provided
+    data/uk-company-numbers.csv (columns symbol,number). No clean keyless
+    ISIN→company-number map exists, so UK resolution is operator-supplied."""
+    import csv
+    from pathlib import Path
+
+    path = Path(data_dir) / "uk-company-numbers.csv"
+    if not path.exists():
+        return {}
+    mapping: dict[str, str] = {}
+    with open(path, newline="") as handle:
+        for row in csv.DictReader(handle):
+            lower = {k.lower(): v for k, v in row.items() if k}
+            symbol, number = lower.get("symbol"), lower.get("number")
+            if symbol and number:
+                mapping[symbol.strip()] = number.strip()
+    return mapping
+
+
+def run_companies_house(
+    mapping: dict[str, str] | None = None, url: str = "", http=None, name: str = "accounts.zip",
+) -> dict:
+    """UK audited layer: mirror an Accounts Data Product ZIP and write
+    provider='companies-house' raw for the mapped listings. ``mapping`` is
+    {symbol: company_number}; when omitted it is read from
+    data/uk-company-numbers.csv. Assumed-risk redistribution (no licence
+    stated) — kept out of the fully-free dataset tier."""
+    from crible.ingest.mirror import fetch_if_stale
+    from crible.providers.audited import write_audited_frames
+    from crible.providers.companies_house import iter_accounts
+
+    data = config.data_dir()
+    outcome: dict = {"enriched": 0, "outage": None, "skipped": None}
+    if mapping is None:
+        mapping = load_uk_company_numbers(data)
+    if not mapping:
+        outcome["skipped"] = "no UK company-number map (data/uk-company-numbers.csv)"
+        return outcome
+    if not url:
+        outcome["skipped"] = "no Accounts Data Product URL provided"
+        return outcome
+
+    by_number = {str(n).zfill(8): sym for sym, n in mapping.items()}
+    try:
+        result = fetch_if_stale(data, "companies-house", name, url, http=http, max_age_seconds=CH_MAX_AGE)
+    except Exception as exc:  # noqa: BLE001 — outage: record, resume next run
+        outcome["outage"] = str(exc)
+        log.warning("companies-house: %s", exc)
+        return outcome
+    fetched_at = time.time()
+    for number, frames in iter_accounts(result.path, set(by_number)):
+        write_audited_frames(
+            data, symbol=by_number[number], provider_id="companies-house",
+            frames=frames, fetched_at=fetched_at,
+        )
+        outcome["enriched"] += 1
+    log.info("companies-house: enriched %d UK listings", outcome["enriched"])
+    return outcome
+
+
+def run_edinet(days, key: str | None = None, client=None, http=None, limit: int | None = None) -> dict:
+    """EDINET (Japan) audited layer — free-key opt-in, OFF without a key. For
+    each date, list annual securities reports, keep those whose securities code
+    matches a JP listing in the universe, fetch the XBRL and write
+    provider='edinet' raw. PDL1.0 → redistributable with attribution."""
+    from crible.providers.audited import write_audited_frames
+    from crible.providers.edinet import (
+        KEY_ENV_VAR,
+        EdinetClient,
+        frames_from_document_zip,
+        sec_code,
+    )
+
+    data = config.data_dir()
+    outcome: dict = {"enriched": 0, "outage": None, "skipped": None}
+    key = key or os.environ.get(KEY_ENV_VAR)
+    if client is None and not key:
+        outcome["skipped"] = f"EDINET disabled (set {KEY_ENV_VAR} to enable, free-key opt-in)"
+        return outcome
+
+    con = _connect()
+    try:
+        by_seccode: dict[str, str] = {}
+        for (symbol,) in con.execute(
+            "SELECT symbol FROM companies WHERE country = 'JP' AND NOT delisted"
+        ).fetchall():
+            code = sec_code(symbol)
+            if code:
+                by_seccode[code] = symbol
+        if not by_seccode:
+            outcome["skipped"] = "no JP listings in the universe"
+            return outcome
+
+        if client is None:
+            client = EdinetClient(key, http=http)
+        fetched_at = time.time()
+        for day in days:
+            try:
+                documents = client.list_documents(day)
+            except Exception as exc:  # noqa: BLE001 — outage: record, resume next run
+                outcome["outage"] = f"{day}: {exc}"
+                log.warning("edinet: %s — resuming next run", exc)
+                continue
+            for doc in documents:
+                symbol = by_seccode.get(str(doc.get("secCode") or ""))
+                if not symbol:
+                    continue
+                try:
+                    frames = frames_from_document_zip(client.fetch_document(doc["docID"]))
+                except Exception as exc:  # noqa: BLE001
+                    outcome["outage"] = f"{doc.get('docID')}: {exc}"
+                    log.warning("edinet: outage on %s: %s", doc.get("docID"), exc)
+                    continue
+                if not frames:
+                    continue
+                write_audited_frames(
+                    data, symbol=symbol, provider_id="edinet", frames=frames, fetched_at=fetched_at,
+                )
+                outcome["enriched"] += 1
+                if limit is not None and outcome["enriched"] >= limit:
+                    break
+            if limit is not None and outcome["enriched"] >= limit:
+                break
+        log.info("edinet: enriched %d JP listings", outcome["enriched"])
         return outcome
     finally:
         con.close()

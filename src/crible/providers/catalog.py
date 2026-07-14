@@ -9,13 +9,16 @@ so the Providers view can never drift from the actual activation logic.
 from __future__ import annotations
 
 from crible.providers.base import Provider
+from crible.providers.edinet import EdinetProvider
 from crible.providers.yfinance_provider import YFinanceProvider
 
 
 def default_catalog() -> list[Provider]:
-    """The providers crible ships with — keyless only since the open-data
-    cleanup (2026-07-13); the registry seam still accepts keyed plugins."""
-    return [YFinanceProvider()]
+    """The providers crible ships with — keyless core (Yahoo) plus the one
+    free-key opt-in source (EDINET, OFF until CRIBLE_EDINET_KEY is set). The
+    audited bulk sources (EDGAR, ESEF, FSDS, Companies House) run as their own
+    cycles, not per-symbol crawl providers."""
+    return [YFinanceProvider(), EdinetProvider()]
 
 
 def is_configured(prov: Provider, env: dict[str, str]) -> bool:

@@ -45,13 +45,22 @@ def test_fr013_key_present_activates_keyed_plugin() -> None:
     assert [p.id for p in active] == ["stub"]
 
 
-def test_fr013_shipped_catalog_is_keyless_only() -> None:
+def test_fr013_shipped_catalog_is_keyless_core_with_edinet_opt_in() -> None:
     catalog = default_catalog()
-    assert [p.id for p in catalog] == ["yfinance"]
-    assert all(p.kind == "keyless" for p in catalog)
-    assert inventory(catalog, env={}) == [
-        {"id": "yfinance", "kind": "keyless", "key_env_var": None, "enabled": True},
-    ]
+    assert [p.id for p in catalog] == ["yfinance", "edinet"]
+    inv = inventory(catalog, env={})
+    by_id = {p["id"]: p for p in inv}
+    # keyless core is always on
+    assert by_id["yfinance"] == {
+        "id": "yfinance", "kind": "keyless", "key_env_var": None, "enabled": True,
+    }
+    # EDINET is the one free-key opt-in — OFF with an empty env, so the published
+    # dataset and the CI contract stay keyless (NFR-009)
+    assert by_id["edinet"]["kind"] == "free-key"
+    assert by_id["edinet"]["key_env_var"] == "CRIBLE_EDINET_KEY"
+    assert by_id["edinet"]["enabled"] is False
+    # invariant: nothing keyed is enabled without its key
+    assert not any(p["enabled"] for p in inv if p["key_env_var"] is not None)
 
 
 def test_fr013_inventory_reports_keyed_stub_enabled_iff_key_present() -> None:
