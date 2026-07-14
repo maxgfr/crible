@@ -16,7 +16,7 @@ import time
 import duckdb
 
 from crible import config
-from crible.compute.snapshot import build_snapshot, publish_snapshot
+from crible.compute.snapshot import build_snapshot_incremental, publish_snapshot
 from crible.ingest.backoff import BackoffPolicy
 from crible.ingest.budget import TokenBucket
 from crible.ingest.crawler import Crawler, CrawlOutcome
@@ -266,7 +266,10 @@ def run_compute() -> int:
                 log.info("compute: exported missing universe.parquet")
         finally:
             con.close()
-    snapshot = build_snapshot(data)
+    snapshot = build_snapshot_incremental(data)
+    if snapshot is None:
+        log.info("compute: no raw changes since last build — snapshot unchanged")
+        return 0
     if snapshot.empty:
         log.info("compute: no raw data yet — skipping publish")
         return 0

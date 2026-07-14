@@ -170,11 +170,14 @@ def _price_quotes(data_dir: Path | str) -> dict[str, tuple[float, str, float]]:
     }
 
 
-def build_snapshot(data_dir: Path | str, symbols: list[str] | None = None) -> pd.DataFrame:
-    todo = symbols if symbols is not None else crawled_symbols(data_dir)
+def build_symbol_rows(data_dir: Path | str, symbols: list[str]) -> pd.DataFrame:
+    """The per-symbol stage: canonical fields + ratios + scores + price for each
+    symbol, BEFORE the cross-sectional finalize (universe/FX/ranks). This is the
+    expensive part — the seam incremental compute recomputes for changed symbols
+    only."""
     quotes = _price_quotes(data_dir)
     parts = []
-    for symbol in todo:
+    for symbol in symbols:
         scraped = latest_raw_frames(data_dir, symbol, provider="yfinance")
         # the audited layer, per region (a listing realistically has one): US
         # companyfacts wins recent periods and FSDS backfills the deep history;
@@ -199,15 +202,84 @@ def build_snapshot(data_dir: Path | str, symbols: list[str] | None = None) -> pd
         )
         if not part.empty:
             parts.append(part)
-    if not parts:
-        return pd.DataFrame()
-    # FR-015: ranks are cross-sectional — computed once the whole universe
-    # snapshot is assembled (peer groups need region/sector from the universe).
-    # FX companions (*_eur) are attached after the universe (needs currency);
-    # a no-op when no ECB rates are mirrored, so offline builds are unchanged.
+    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+
+
+def finalize_snapshot(rows: pd.DataFrame, data_dir: Path | str) -> pd.DataFrame:
+    """The cross-sectional stage over ALL symbols' rows: embed the universe,
+    add the FX companions, then the peer-group ranks (FR-015 percentiles need
+    the whole set). Cheap relative to the per-symbol stage, so incremental
+    compute re-runs it over the merged rows every time."""
+    if rows.empty:
+        return rows
+    # FX companions (*_eur) attach after the universe (needs currency); a no-op
+    # when no ECB rates are mirrored, so offline builds are unchanged.
     from crible.providers.fx import attach_fx
 
-    return attach_ranks(attach_fx(attach_universe(pd.concat(parts, ignore_index=True), data_dir), data_dir))
+    return attach_ranks(attach_fx(attach_universe(rows, data_dir), data_dir))
+
+
+def build_snapshot(data_dir: Path | str, symbols: list[str] | None = None) -> pd.DataFrame:
+    todo = symbols if symbols is not None else crawled_symbols(data_dir)
+    return finalize_snapshot(build_symbol_rows(data_dir, todo), data_dir)
+
+
+BASE_NAME = "base.parquet"
+
+
+def _newest_raw_stamp(data_dir: Path | str, symbol: str) -> float:
+    """The newest raw fetched-at stamp (ms → s) across all providers for a
+    symbol — the change signal for incremental compute."""
+    root = Path(data_dir) / "raw"
+    safe = symbol.replace("/", "_")
+    newest = 0.0
+    for directory in root.glob(f"provider=*/symbol={safe}"):
+        for file in iter_raw_files(directory):
+            try:
+                newest = max(newest, int(file.stem.rsplit("-", 1)[1]) / 1000.0)
+            except (IndexError, ValueError):
+                continue
+    return newest
+
+
+def build_snapshot_incremental(data_dir: Path | str) -> pd.DataFrame | None:
+    """Recompute only the symbols whose raw changed since the last build, reuse
+    the cached per-symbol rows for the rest, then re-finalize over everything.
+    Returns the new snapshot, or None when nothing changed (no republish).
+
+    The per-symbol stage is O(dirty); the cross-sectional finalize is O(all) but
+    cheap. A ``base.parquet`` caches the pre-finalize rows so unchanged symbols
+    are never rebuilt — the fix for full rebuilds at 20k+ issuers (F7)."""
+    data_dir = Path(data_dir)
+    base_path = data_dir / "snapshot" / BASE_NAME
+    symbols = crawled_symbols(data_dir)
+    if not base_path.exists():
+        rows = build_symbol_rows(data_dir, symbols)
+        _publish_base(rows, data_dir)
+        return finalize_snapshot(rows, data_dir)
+
+    base_mtime = base_path.stat().st_mtime
+    dirty = [s for s in symbols if _newest_raw_stamp(data_dir, s) > base_mtime]
+    prev = pd.read_parquet(base_path)
+    known = set(prev["symbol"]) if "symbol" in prev.columns else set()
+    # a symbol vanishing from the raw layer is also a change (drop its rows)
+    dropped = known - set(symbols)
+    if not dirty and not dropped:
+        return None
+
+    kept = prev[prev["symbol"].isin(set(symbols) - set(dirty))] if "symbol" in prev.columns else prev
+    fresh = build_symbol_rows(data_dir, dirty) if dirty else pd.DataFrame()
+    rows = pd.concat([kept, fresh], ignore_index=True) if not fresh.empty else kept.reset_index(drop=True)
+    _publish_base(rows, data_dir)
+    return finalize_snapshot(rows, data_dir)
+
+
+def _publish_base(rows: pd.DataFrame, data_dir: Path | str) -> None:
+    directory = Path(data_dir) / "snapshot"
+    directory.mkdir(parents=True, exist_ok=True)
+    tmp = directory / f".tmp-{BASE_NAME}"
+    rows.to_parquet(tmp, index=False)
+    tmp.rename(directory / BASE_NAME)
 
 
 def publish_snapshot(snapshot: pd.DataFrame, data_dir: Path | str) -> Path:

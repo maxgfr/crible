@@ -239,3 +239,58 @@ def test_fr003_null_cells_carry_a_note_naming_the_missing_inputs() -> None:
     assert "operating_cashflow" in note
     assert "total_assets" in note
     assert "revenue" not in note.split(",")  # supplied fields are not listed
+
+
+# ----------------------------------------------- F7: incremental compute
+
+
+def test_incremental_compute_recomputes_only_dirty_symbols(tmp_path, monkeypatch) -> None:
+    """F7 — build_snapshot_incremental must rebuild the per-symbol rows only for
+    symbols whose raw changed, reusing the cached base for the rest, then
+    re-finalize (ranks are cross-sectional) over the whole set."""
+    import time
+
+    import crible.compute.snapshot as snap
+    from crible.ingest.raw import write_raw_statement
+
+    frame = pd.DataFrame({"period": ["2024"], "TotalRevenue": [100.0]})
+    for sym in ("AAA", "BBB"):
+        write_raw_statement(
+            tmp_path, symbol=sym, provider="yfinance",
+            statement_type="income", freq="annual", frame=frame, fetched_at=1000.0,
+        )
+
+    first = snap.build_snapshot_incremental(tmp_path)  # no base → full build
+    assert set(first["symbol"]) == {"AAA", "BBB"}
+    assert (tmp_path / "snapshot" / "base.parquet").exists()
+
+    # spy on the per-symbol stage to prove only the dirty symbol is rebuilt
+    calls: list[list[str]] = []
+    original = snap.build_symbol_rows
+
+    def spy(data_dir, symbols):
+        calls.append(list(symbols))
+        return original(data_dir, symbols)
+
+    monkeypatch.setattr(snap, "build_symbol_rows", spy)
+
+    # change BBB only, with a fetched-at newer than the base build but still in
+    # the past (raw is always fetched before the compute that follows it)
+    time.sleep(0.02)
+    write_raw_statement(
+        tmp_path, symbol="BBB", provider="yfinance",
+        statement_type="income", freq="annual",
+        frame=pd.DataFrame({"period": ["2024"], "TotalRevenue": [250.0]}),
+        fetched_at=time.time(),
+    )
+    second = snap.build_snapshot_incremental(tmp_path)
+
+    assert calls == [["BBB"]]  # only the dirty symbol was recomputed
+    assert set(second["symbol"]) == {"AAA", "BBB"}  # AAA reused from the base cache
+    by_symbol = second.set_index("symbol")
+    assert by_symbol.loc["BBB", "revenue"] == 250.0  # BBB reflects the change
+
+    # a subsequent build with nothing changed → None (no republish)
+    calls.clear()
+    assert snap.build_snapshot_incremental(tmp_path) is None
+    assert calls == []

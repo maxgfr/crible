@@ -35,7 +35,7 @@ Branch : `improve/2026-07-14-bulk-first-data`.
 - [x] **Companies House UK** `providers/companies_house.py` + cycle. Accounts Data Product (ZIP iXBRL), résolution par company number, miroir. Couche **assumed-risk** (DATA-SOURCES.md). Nouveau FR construct. RED : fixture iXBRL.
 - [x] **EDINET JP** `providers/edinet.py` (free-key `CRIBLE_EDINET_KEY`, off défaut, API-only). Attribution PDL1.0. Nouveau FR construct. RED : provider désactivé sans clé ; fixture doc.
 - [x] **FIX-001 · refresh univers dans `run_loop`** (+ marquage delisted). RED `tests/test_service.py`.
-- [ ] **FIX-006 · compute incrémental** via seam `build_snapshot(symbols=)` (dirty-set raw). RED `tests/test_fr003_compute.py`.
+- [x] **FIX-006 · compute incrémental** via seam `build_snapshot(symbols=)` (dirty-set raw). RED `tests/test_fr003_compute.py`.
 
 ## Transverse / clôture
 
