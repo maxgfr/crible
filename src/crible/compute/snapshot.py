@@ -17,6 +17,7 @@ from crible.compute.canonical import CANONICAL_FIELDS, build_canonical
 from crible.compute.ranks import attach_ranks, price_return
 from crible.compute.ratios import compute_ratios
 from crible.compute.scores import all_scores
+from crible.ingest.raw import iter_raw_files
 
 SNAPSHOT_NAME = "snapshot.parquet"
 
@@ -118,7 +119,7 @@ def latest_raw_frames(
     frames: dict[tuple[str, str], pd.DataFrame] = {}
     root = Path(data_dir) / "raw"
     for directory in root.glob(f"provider={provider}/symbol={safe_symbol}"):
-        for file in sorted(directory.glob("*.parquet")):
+        for file in iter_raw_files(directory):
             statement_type, freq, _ = file.stem.split("-", 2)
             frames[(statement_type, freq)] = pd.read_parquet(file)
     return frames

@@ -9,11 +9,12 @@ import duckdb
 import pandas as pd
 import pytest
 
+from crible.compute.snapshot import latest_raw_frames
 from crible.ingest.backoff import BackoffPolicy
 from crible.ingest.budget import TokenBucket
 from crible.ingest.crawler import Crawler
 from crible.ingest.queue import CrawlQueue
-from crible.ingest.raw import write_raw_statement
+from crible.ingest.raw import prune_raw, write_raw_statement
 from crible.providers.base import (
     FetchResult,
     ProviderRegistry,
@@ -23,6 +24,31 @@ from crible.providers.base import (
 from crible.universe import bootstrap_universe
 
 from tests.test_fr001_universe import fixture_frame
+
+
+# ----------------------------------------------- F11: crashed-write partials
+
+
+def test_leftover_tmp_partial_is_ignored_by_readers_and_prune(tmp_path) -> None:
+    """F11 — a crash mid-write leaves a `.tmp-*.parquet` partial. It must never
+    be globbed as a committed raw file: the snapshot reader would otherwise try
+    to parse a corrupt partial and crash the whole compute, and prune would
+    misparse its stem into a bogus (statement, freq) key."""
+    frame = pd.DataFrame({"period": ["2024"], "TotalRevenue": [100.0]})
+    write_raw_statement(
+        tmp_path, symbol="AIR.PA", provider="yfinance",
+        statement_type="income", freq="annual", frame=frame, fetched_at=1000.0,
+    )
+    sym_dir = tmp_path / "raw" / "provider=yfinance" / "symbol=AIR.PA"
+    (sym_dir / ".tmp-income-annual-000000002000000.parquet").write_bytes(b"not a parquet")
+
+    # the reader ignores the partial and returns only the committed frame
+    frames = latest_raw_frames(tmp_path, "AIR.PA")
+    assert set(frames) == {("income", "annual")}
+
+    # prune ignores the partial (one committed file, nothing to delete)
+    assert prune_raw(tmp_path) == 0
+    assert (sym_dir / "income-annual-000000001000000.parquet").exists()
 
 
 # --------------------------------------------------------------------- fakes

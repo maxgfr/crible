@@ -12,6 +12,14 @@ from pathlib import Path
 import pandas as pd
 
 
+def iter_raw_files(directory: Path) -> list[Path]:
+    """Committed raw parquet files in a symbol dir, chronological (zero-padded
+    ms stamps sort lexically), skipping the ``.tmp-*`` partials a crashed write
+    leaves behind — pathlib's ``glob('*.parquet')`` matches dotfiles, so those
+    would otherwise be misparsed by prune and crash the snapshot reader (F11)."""
+    return sorted(f for f in directory.glob("*.parquet") if not f.name.startswith("."))
+
+
 def prune_raw(data_dir: Path | str) -> int:
     """Delete all but the newest raw file per (provider, symbol, statement, freq).
 
@@ -23,7 +31,7 @@ def prune_raw(data_dir: Path | str) -> int:
     for directory in (Path(data_dir) / "raw").glob("provider=*/symbol=*"):
         newest: dict[tuple[str, str], Path] = {}
         # zero-padded ms stamps make lexical order chronological
-        for file in sorted(directory.glob("*.parquet")):
+        for file in iter_raw_files(directory):
             statement_type, freq, _ = file.stem.split("-", 2)
             key = (statement_type, freq)
             if key in newest:
