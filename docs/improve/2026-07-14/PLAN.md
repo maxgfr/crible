@@ -39,7 +39,7 @@ Branch : `improve/2026-07-14-bulk-first-data`.
 
 ## Transverse / clôture
 
-- [ ] DATA-SOURCES.md : deux tiers dataset (libre vs assumed-risk) + knob `--redistributable-only` ; attribution EDINET.
-- [ ] README + Providers view : nouvelles sources, mode offline, miroir local.
+- [x] DATA-SOURCES.md : deux tiers dataset (libre vs assumed-risk) + knob `--redistributable-only` ; attribution EDINET.
+- [x] README + Providers view : nouvelles sources, mode offline, miroir local.
 - [ ] construct : FRs des nouvelles sources (`srd/SRD.json` → `render --from-srd --merge` → `check`), tests FR-taggés, `construct verify --strict`.
 - [ ] Clôture : pytest + vitest + build verts, `compare --gate` EXIT 0, arbre propre, scorecard.

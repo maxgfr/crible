@@ -47,6 +47,59 @@ ships the daily price series as symbol-sorted, size-bounded shards
 Pages serves is only `site-data/`; the rest of the raw layer lives on the
 branch/release for bootstrap purposes.
 
+## Bulk-first, local-first additions (2026-07-14)
+
+The 2026-07-14 cycle pushed the design toward **owning the data**: fewer fragile
+live per-symbol calls, more keyless bulk downloads crible mirrors locally, and a
+**last-good guarantee** on every source. Yahoo shrinks toward a resilient
+fallback; the audited, redistributable bulk grows toward the primary layer.
+
+### The local-first data plane (`src/crible/ingest/mirror.py`)
+
+Every bulk archive is fetched **once** into `data/mirror/<source>/`, kept as the
+last-good copy, and re-fetched only when stale (ETag/`If-None-Match`, so an
+unchanged re-fetch is nearly free). In steady state the ingestion reads the
+local mirror, not a live API; on a network failure it serves the last-good copy
+so **coverage never regresses**, and a whole `crible refresh` can run offline
+from the mirror. This is the "self-hosted at the call level" contract.
+
+### New audited sources
+
+| Source | Data | Access | License / terms | Tier |
+|---|---|---|---|---|
+| SEC **Financial Statement Data Sets** (FSDS) | Deep 'as-filed' US history (pre-8-year), quarterly `sub.txt`/`num.txt` | Keyless bulk ZIP per quarter, mirrored (`--fsds-quarters N`) | **US-government work: public domain** | **fully-free** |
+| **GLEIF ISIN→LEI** auto-fetch | The relationship file that unlocks the audited-EU (ESEF) layer | `crible ingest --fetch-gleif` streams it to the mirror; `crible refresh` self-heals it | Open data (CC0) | **fully-free** |
+| **ECB reference rates** via [Frankfurter](https://frankfurter.dev) | Daily FX rates → `*_eur` companion columns for cross-currency size screens | Keyless JSON, mirrored (`--fetch-fx`) | Open source, redistributable | **fully-free** |
+| **Companies House** (UK) Accounts Data Product | Audited UK accounts (iXBRL) — the gap ESEF leaves post-Brexit | Keyless ZIP, mirrored; resolution via operator-provided `data/uk-company-numbers.csv` | **No explicit reuse licence** | **assumed-risk** |
+| **EDINET** (Japan) | Audited JP filings (XBRL) | **Free-key opt-in** (`CRIBLE_EDINET_KEY`) — API-only, never scraped; OFF by default | PDL1.0 — redistributable **with attribution** | opt-in (keyed) |
+
+All audited sources implement one contract (`src/crible/providers/audited.py`
+`AuditedBulkProvider`) and keep only full-year figures with deterministic concept
+precedence. `merge_audited` lets companyfacts win recent US periods while FSDS
+backfills the deep history.
+
+### Two dataset tiers (redistribution, stated plainly)
+
+- **Fully-free** — SEC EDGAR companyfacts + **FSDS**, ESEF, GLEIF, FinanceDatabase,
+  ECB/Frankfurter FX. Public-domain or openly-licensed; republishable without
+  permission ("free to access and reuse").
+- **Assumed-risk** — Yahoo prices, the Stooq/HuggingFace price dumps, and now
+  **Companies House** (no licence stated). Carried as a documented, deliberate
+  redistribution risk, isolated from the fully-free tier.
+- **EDINET** is off by default and never part of the published dataset unless the
+  operator opts in; when it is, its PDL1.0 attribution requirement applies.
+
+The **zero-key core is unchanged**: EDINET is the only keyed provider, opt-in and
+off by default, so the shipped catalog and the CI contract (empty environment,
+NFR-009) stay keyless.
+
+### Rejected / iceboxed this cycle
+
+- **Deutsche Börse Public Dataset (AWS)** — REJECTED: non-commercial licence and
+  the dataset is marked deprecated.
+- **NSE/BSE bhavcopy (India)** — ICEBOX: freely downloadable but redistribution
+  ToS not established.
+
 ## Google Finance — evaluated and rejected (2026-07-13)
 
 Asked for explicitly, investigated, and rejected:

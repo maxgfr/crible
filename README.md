@@ -125,11 +125,17 @@ straight onto a Synology NAS, Unraid, or any Docker host:
 ## Data & scores (all keyless)
 
 - **Universe**: [FinanceDatabase](https://github.com/JerBouma/FinanceDatabase) (151,170 equities at the July 2026 refresh, 117 countries).
-- **Data**: Yahoo via [yfinance](https://github.com/ranaroussi/yfinance) (rolling, rate-budgeted) ·
-  **audited** figures that outrank scraped values at reconciliation — US from
-  [SEC EDGAR](https://www.sec.gov/search-filings/edgar-application-programming-interfaces)
-  companyfacts (public domain) and EU from [filings.xbrl.org](https://filings.xbrl.org)
-  (ESEF xBRL-JSON).
+- **Data**: Yahoo via [yfinance](https://github.com/ranaroussi/yfinance) (rolling, rate-budgeted, a
+  resilient *fallback*) · **audited** figures that outrank scraped values at reconciliation —
+  US from [SEC EDGAR](https://www.sec.gov/search-filings/edgar-application-programming-interfaces)
+  companyfacts **+ Financial Statement Data Sets** (deep history, public domain), EU from
+  [filings.xbrl.org](https://filings.xbrl.org) (ESEF), UK from **Companies House** (iXBRL) and
+  JP from **EDINET** (free-key opt-in, off by default). ECB rates via
+  [Frankfurter](https://frankfurter.dev) add `*_eur` columns for cross-currency screens.
+- **Local-first**: bulk archives are mirrored to `data/mirror/` with a *last-good* guarantee —
+  ingestion reads the local mirror, degrades gracefully when a source is down, and a refresh can
+  run fully offline. See [`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md) for the two dataset tiers
+  (fully-free vs assumed-risk).
 - **Ratios & scores**: [financetoolkit](https://github.com/JerBouma/FinanceToolkit) (150+ ratios,
   Piotroski F, Altman Z) + in-house Beneish M-Score (tested against published examples).
 - **Engine**: DuckDB over Parquet — full-universe screens in milliseconds.
