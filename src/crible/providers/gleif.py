@@ -21,6 +21,22 @@ log = logging.getLogger("crible.providers.gleif")
 ISIN_LEI_LATEST_URL = "https://mapping.gleif.org/api/v2/isin-lei/latest/download"
 
 
+def fetch_gleif(data_dir: Path | str, http=None, max_age_seconds: float = 7 * 24 * 3600) -> Path:
+    """Download the latest GLEIF ISIN→LEI relationship file into the local
+    mirror (``data/mirror/gleif/isin-lei.zip``, ~200 MB, refreshed at most
+    weekly) and return its path. ``load_mapping`` then finds it there, so a
+    fresh install gets audited-EU coverage with no manual step. Keyless open
+    data (CC0); on a network hiccup the mirror serves the last-good copy."""
+    from crible.ingest.mirror import fetch_if_stale
+
+    result = fetch_if_stale(
+        data_dir, "gleif", "isin-lei.zip", ISIN_LEI_LATEST_URL,
+        http=http, max_age_seconds=max_age_seconds,
+    )
+    log.info("gleif: mirror %s (%s)", result.path, result.source)
+    return result.path
+
+
 def load_isin_lei_map(path: Path | str) -> dict[str, str]:
     """Parse a GLEIF relationship file (CSV or zipped CSV) into {ISIN: LEI}."""
     path = Path(path)
@@ -51,10 +67,14 @@ def load_mapping(
     Single source of truth for the two enrichment cycles that used to inline
     this block (F4 de-dup)."""
     data_dir = Path(data_dir)
-    mapping_file = next(
-        (p for p in (data_dir / "isin-lei.csv", data_dir / "isin-lei.zip") if p.exists()),
-        None,
+    # legacy operator-provided locations first, then the auto-fetched mirror
+    candidates = (
+        data_dir / "isin-lei.csv",
+        data_dir / "isin-lei.zip",
+        data_dir / "mirror" / "gleif" / "isin-lei.zip",
+        data_dir / "mirror" / "gleif" / "isin-lei.csv",
     )
+    mapping_file = next((p for p in candidates if p.exists()), None)
     if mapping_file is None:
         return (
             None,

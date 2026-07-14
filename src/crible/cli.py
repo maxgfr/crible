@@ -124,10 +124,19 @@ def ingest(
     once: bool = typer.Option(False, "--once", help="Run a single crawl cycle"),
     loop: bool = typer.Option(False, "--loop", help="Run the continuous crawl loop"),
     limit: int = typer.Option(50, "--limit", help="Symbols per cycle for --once"),
+    fetch_gleif: bool = typer.Option(
+        False, "--fetch-gleif", help="Download the GLEIF ISIN→LEI file (unlocks audited EU)"
+    ),
 ) -> None:
     """Run the universe bootstrap and/or the rate-budgeted crawler."""
+    from crible import config
     from crible.ingest.service import run_bootstrap, run_loop, run_once
 
+    if fetch_gleif:
+        from crible.providers.gleif import fetch_gleif as _fetch_gleif
+
+        path = _fetch_gleif(config.data_dir())
+        typer.echo(f"gleif: ISIN→LEI file ready at {path} — audited EU enrichment enabled")
     if bootstrap:
         report = run_bootstrap()
         typer.echo(f"universe: {report.loaded} rows loaded ({report.by_region})")
@@ -136,8 +145,8 @@ def ingest(
         typer.echo(f"crawled: {len(outcome.fetched)} ok, {len(outcome.failed)} failed")
     if loop:
         run_loop()
-    if not (bootstrap or once or loop):
-        _fail("nothing to do — pass --bootstrap, --once or --loop")
+    if not (bootstrap or once or loop or fetch_gleif):
+        _fail("nothing to do — pass --bootstrap, --once, --loop or --fetch-gleif")
 
 
 @app.command()
@@ -264,13 +273,17 @@ def refresh(
         False, "--edgar-bulk",
         help="Download companyfacts.zip (~1.4 GB) and ingest ALL resolved US issuers (ADR-0005)",
     ),
+    fetch_gleif: bool = typer.Option(
+        True, "--fetch-gleif/--no-fetch-gleif",
+        help="Self-heal the GLEIF ISIN→LEI mirror so audited EU (ESEF) is enabled",
+    ),
 ) -> None:
     """One bounded keyless refresh pass (the nightly dataset run)."""
     from crible.ingest.service import run_refresh
 
     result = run_refresh(
         deadline_seconds=deadline, esef_limit=esef_limit, edgar_limit=edgar_limit,
-        edgar_bulk=edgar_bulk,
+        edgar_bulk=edgar_bulk, fetch_gleif=fetch_gleif,
     )
     typer.echo(json.dumps(result, indent=2, default=str))
 

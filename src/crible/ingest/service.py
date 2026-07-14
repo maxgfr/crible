@@ -258,6 +258,7 @@ def run_refresh(
     edgar_limit: int = 25,
     *,
     edgar_bulk: bool = False,
+    fetch_gleif: bool = False,
     fetch_universe=None,
     provider=None,
     price_provider=None,
@@ -283,6 +284,18 @@ def run_refresh(
     deadline = started + deadline_seconds
     data = config.data_dir()
     result: dict = {"universe_restored": False}
+
+    if fetch_gleif:
+        # self-heal the audited-EU layer: pull the GLEIF ISIN→LEI file into the
+        # mirror if we have none, best-effort — a failure just leaves ESEF idle
+        from crible.providers.gleif import fetch_gleif as _fetch_gleif
+        from crible.providers.gleif import load_mapping
+
+        if load_mapping(data)[0] is None:
+            try:
+                _fetch_gleif(data)
+            except Exception as exc:  # noqa: BLE001 — never kills the refresh
+                log.warning("gleif auto-fetch failed: %s — ESEF stays idle this run", exc)
 
     con = _connect()
     try:
