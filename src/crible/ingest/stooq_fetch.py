@@ -40,11 +40,13 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 )
 
-# Common ASCII bulk codes (prefix d_/h_/5_ = daily/hourly/5-min): d_world_txt is
-# the worldwide set crible's universe draws from; regions cover the rest.
+# Common ASCII bulk codes (prefix d_/h_/5_ = daily/hourly/5-min). NOTE:
+# d_world_txt is instruments only (bonds/crypto/FX/indices) — NO individual
+# stocks. Company stocks live in the per-country archives (d_us/uk/jp/hk/pl/hu_txt);
+# those are what import-prices distils against the universe.
 KNOWN_DATASETS = (
-    "d_world_txt", "d_us_txt", "d_uk_txt", "d_jp_txt",
-    "d_hk_txt", "d_pl_txt", "d_hu_txt", "d_macro_txt",
+    "d_us_txt", "d_uk_txt", "d_jp_txt", "d_hk_txt",
+    "d_pl_txt", "d_hu_txt", "d_world_txt", "d_macro_txt",
 )
 _DATASET_RE = re.compile(r"^[dh5]_[a-z]+_(txt|ms)$")
 _POW_C_RE = re.compile(r'c="([^"]+)"')

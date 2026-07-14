@@ -275,6 +275,27 @@ def test_fr016_client_sends_declared_user_agent() -> None:
     assert http.headers_seen[0]["User-Agent"] == "crible-test (test@example.com)"
 
 
+def test_fr016_sec_user_agent_never_contains_a_url() -> None:
+    """The SEC Akamai WAF 403s any User-Agent carrying an http(s) URL — the
+    silent-EDGAR-outage root cause. The shipped default must be URL-free, and
+    an env value with a URL is stripped defensively."""
+    from crible import config
+
+    assert "://" not in config.DEFAULT_SEC_USER_AGENT
+    assert "://" not in config.sec_user_agent()
+
+
+def test_fr016_sec_user_agent_strips_a_url_from_the_env(monkeypatch) -> None:
+    from crible import config
+
+    monkeypatch.setenv(
+        "CRIBLE_SEC_USER_AGENT", "crible (me@example.com; +https://github.com/x/y)"
+    )
+    ua = config.sec_user_agent()
+    assert "://" not in ua and "github.com" not in ua
+    assert ua.startswith("crible") and "me@example.com" in ua
+
+
 # ---------------------------------------------------------- period alignment
 
 

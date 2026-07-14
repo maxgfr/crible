@@ -25,9 +25,10 @@ jobs:
     timeout-minutes: 300
     env:
       CRIBLE_DATA_DIR: data
-      # SEC fair-access: a declared User-Agent naming the operator WITH a
-      # contact email — www.sec.gov 403s UAs without one (seen 2026-07-13)
-      CRIBLE_SEC_USER_AGENT: "crible (maxgolfier@gmail.com; +https://github.com/${{ github.repository }})"
+      # SEC fair-access: a declared operator + contact email. The UA must NOT
+      # contain a URL — the SEC Akamai WAF 403s any User-Agent with an http(s)
+      # link, which silently killed the whole EDGAR layer (diagnosed 2026-07-14).
+      CRIBLE_SEC_USER_AGENT: "crible maxgolfier@gmail.com"
     steps:
       - uses: actions/checkout@v4
 

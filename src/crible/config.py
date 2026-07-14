@@ -3,8 +3,12 @@ Docker), nothing is hardcoded beyond safe defaults (NFR-009: zero-key first)."""
 
 from __future__ import annotations
 
+import logging
 import os
+import re
 from pathlib import Path
+
+log = logging.getLogger("crible.config")
 
 DEFAULT_BUDGET_PER_HOUR = 330
 BOOTSTRAP_SAMPLE_SIZE = 100
@@ -22,10 +26,22 @@ def budget_per_hour() -> int:
     return int(os.environ.get("CRIBLE_BUDGET_PER_HOUR", DEFAULT_BUDGET_PER_HOUR))
 
 
-DEFAULT_SEC_USER_AGENT = "crible (https://github.com/maxgfr/crible)"
+# SEC fair-access wants a declared operator + contact. CRITICAL: the UA must
+# NOT contain a URL — the SEC's Akamai WAF 403s any User-Agent with an http(s)
+# link ("Undeclared Automated Tool" / "Request Rate Threshold Exceeded"),
+# which silently killed the whole EDGAR layer. A bare name (+ email) is fine.
+DEFAULT_SEC_USER_AGENT = "crible-screener"
+_URL_IN_UA = re.compile(r"\s*\+?https?://\S+")
 
 
 def sec_user_agent() -> str:
     """SEC fair-access requires a declared User-Agent naming the operator —
-    set CRIBLE_SEC_USER_AGENT to include a contact email for your instance."""
-    return os.environ.get("CRIBLE_SEC_USER_AGENT", DEFAULT_SEC_USER_AGENT)
+    set CRIBLE_SEC_USER_AGENT to include a contact email for your instance.
+    Any URL is stripped defensively: the SEC WAF 403s UAs that contain one."""
+    ua = os.environ.get("CRIBLE_SEC_USER_AGENT", DEFAULT_SEC_USER_AGENT)
+    stripped = _URL_IN_UA.sub("", ua).strip()
+    if stripped != ua:
+        log.warning(
+            "CRIBLE_SEC_USER_AGENT contained a URL (SEC 403s those) — using %r", stripped
+        )
+    return stripped or DEFAULT_SEC_USER_AGENT

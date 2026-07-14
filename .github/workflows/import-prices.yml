@@ -1,8 +1,10 @@
-# On-demand price refresh: pull the HuggingFace (US) dump AND the Stooq
-# worldwide dump — windowed OHLCV series + per-symbol distillate (ADR-0007) —
-# recompute the snapshot with them, republish. The weekly HF pull already runs
-# inside refresh-data; this dispatch exists to force one anytime and to add
-# Stooq's worldwide coverage.
+# On-demand price refresh: pull the HuggingFace (US) dump AND a Stooq
+# per-country stock dump — windowed OHLCV series + per-symbol distillate
+# (ADR-0007) — recompute the snapshot with them, republish. The weekly HF pull
+# already runs inside refresh-data; this dispatch exists to force one anytime
+# and to add Stooq coverage.
+# NOTE: use a per-country STOCK code (d_us/uk/jp/hk/pl/hu_txt) — d_world_txt is
+# instruments only (no individual stocks) and imports nothing for the universe.
 # Stooq is CAPTCHA-gated — `crible stooq-download` clears the proof-of-work +
 # image captcha headlessly (SHA-256 hashcash + ddddocr OCR), so it runs here in
 # CI. It stays best-effort (continue-on-error): prices are an enrichment, never
@@ -14,8 +16,8 @@ on:
   workflow_dispatch:
     inputs:
       stooq_dataset:
-        description: "Stooq worldwide bulk code to fetch (empty = skip Stooq, HuggingFace only)"
-        default: d_world_txt
+        description: "Stooq per-country STOCK code (d_hk_txt, d_jp_txt, d_uk_txt…; empty = skip Stooq)"
+        default: d_hk_txt
         required: false
 
 permissions:

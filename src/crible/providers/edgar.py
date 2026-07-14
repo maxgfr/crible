@@ -6,9 +6,10 @@ set of us-gaap concepts onto crible's canonical vocabulary and store them as
 provider='edgar' raw statements — the audited US layer that outranks scraped
 values at reconciliation time, symmetric with ESEF for the EU.
 
-SEC fair-access policy: a declared User-Agent with contact info and at most
-10 requests/second. The client self-limits to 5 req/s on its own bucket —
-never the Yahoo budget.
+SEC fair-access policy: a declared User-Agent naming the operator with a
+contact email — but WITHOUT a URL (the SEC Akamai WAF 403s any UA containing
+an http(s) link). config.sec_user_agent() strips URLs defensively. The client
+self-limits to 5 req/s on its own bucket — never the Yahoo budget.
 """
 
 from __future__ import annotations

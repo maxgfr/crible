@@ -43,11 +43,18 @@ HF_SHARDS = [
     for i in range(4)
 ]
 
-# Stooq exchange suffix → the universe's Yahoo-style suffix
+# Stooq exchange suffix → the universe's Yahoo-style suffix. Each entry only
+# helps if Stooq ships a bulk STOCK archive for that market AND its tickers
+# align with the universe. Stooq's per-country stock archives are limited
+# (d_us/uk/jp/hk/pl/hu_txt); d_world_txt is instruments only (no stocks).
 STOOQ_SUFFIXES = {
     "us": "", "de": ".DE", "uk": ".L", "fr": ".PA", "jp": ".T",
-    "pl": ".WA", "hu": ".BD", "it": ".MI",
+    "pl": ".WA", "hu": ".BD", "it": ".MI", "hk": ".HK",
 }
+
+# Markets whose universe tickers are zero-padded numeric codes but whose Stooq
+# filenames drop the leading zeros: Stooq '700.hk' → universe '0700.HK'.
+STOOQ_TICKER_PAD = {"hk": 4}
 
 
 @dataclass(frozen=True)
@@ -196,17 +203,22 @@ def import_huggingface(
 
 
 def map_stooq_symbol(name: str) -> str | None:
-    """'aapl.us' → 'AAPL', 'bmw.de' → 'BMW.DE' — None when the exchange
-    suffix has no universe mapping."""
+    """'aapl.us' → 'AAPL', 'bmw.de' → 'BMW.DE', '700.hk' → '0700.HK' — None
+    when the exchange suffix has no universe mapping. Numeric-code markets are
+    zero-padded to the universe's width (STOOQ_TICKER_PAD)."""
     stem = name.rsplit("/", 1)[-1]
     if stem.endswith(".txt"):
         stem = stem[:-4]
     if "." not in stem:
         return None
     ticker, suffix = stem.rsplit(".", 1)
-    mapped = STOOQ_SUFFIXES.get(suffix.lower())
+    suffix = suffix.lower()
+    mapped = STOOQ_SUFFIXES.get(suffix)
     if mapped is None or not ticker:
         return None
+    pad = STOOQ_TICKER_PAD.get(suffix)
+    if pad and ticker.isdigit():
+        ticker = ticker.zfill(pad)
     return ticker.upper() + mapped
 
 

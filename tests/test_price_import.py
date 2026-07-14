@@ -72,6 +72,13 @@ def test_huggingface_import_persists_the_series_store(tmp_path) -> None:
     assert series["close"].notna().all()
 
 
+def test_stooq_maps_hong_kong_with_zero_padding() -> None:
+    # Stooq drops leading zeros ('700.hk'); the universe keeps them ('0700.HK')
+    assert map_stooq_symbol("data/daily/hk/hkex stocks/7/700.hk.txt") == "0700.HK"
+    assert map_stooq_symbol("1.hk.txt") == "0001.HK"
+    assert map_stooq_symbol("9988.hk.txt") == "9988.HK"  # already 4 digits
+
+
 def test_stooq_import_maps_exchange_suffixes(tmp_path) -> None:
     assert map_stooq_symbol("data/us/aapl.us.txt") == "AAPL"
     assert map_stooq_symbol("bmw.de.txt") == "BMW.DE"
