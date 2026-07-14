@@ -1,0 +1,408 @@
+"""Audited enrichment cycles — the layers that outrank scraped Yahoo values.
+
+ESEF (EU, filings.xbrl.org) and EDGAR (US, SEC companyfacts) run as separate,
+resumable cycles that write provider-tagged raw statements; reconciliation
+prefers them over the scraped base. Extracted from service.py (F4) so the
+service loop stays small and each new audited source (FSDS, Companies House,
+EDINET) plugs in here beside the existing two rather than growing one file.
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+
+import duckdb
+
+from crible import config
+from crible.ingest.state import connect as _connect
+from crible.ingest.state import update_heartbeat
+
+log = logging.getLogger("crible.ingest.enrichment")
+
+ESEF_REFRESH_SECONDS = 90 * 24 * 3600
+ESEF_SCHEMA = """
+CREATE TABLE IF NOT EXISTS esef_tasks (
+    symbol          VARCHAR PRIMARY KEY,
+    lei             VARCHAR NOT NULL,
+    last_fetched_at DOUBLE
+)
+"""
+
+EDGAR_REFRESH_SECONDS = 90 * 24 * 3600
+EDGAR_SCHEMA = """
+CREATE TABLE IF NOT EXISTS edgar_tasks (
+    symbol          VARCHAR PRIMARY KEY,
+    cik             BIGINT NOT NULL,
+    last_fetched_at DOUBLE
+)
+"""
+
+
+def run_esef_cycle(limit: int = 5, client=None, mapping: dict[str, str] | None = None) -> dict:
+    """FR-010 — the ESEF enrichment cycle: EU companies whose ISIN resolves to
+    an LEI (GLEIF file at data/isin-lei.csv, operator-provided) get audited
+    figures pulled from filings.xbrl.org into provider='esef' raw statements.
+    Outages are recorded and the cycle resumes next time; unmatched listings
+    are counted, never errored."""
+    from crible.providers.gleif import load_mapping, resolve_leis
+
+    data = config.data_dir()
+    outcome: dict = {"enriched": [], "unmatched": 0, "outage": None, "skipped": None}
+
+    if mapping is None:
+        mapping, skipped, outage = load_mapping(data)
+        if mapping is None:
+            outcome["skipped"], outcome["outage"] = skipped, outage
+            if skipped:
+                log.info("esef: %s", skipped)
+            else:
+                log.warning("esef: %s — resuming next cycle", outage)
+            return outcome
+
+    con = _connect()
+    try:
+        con.execute(ESEF_SCHEMA)
+        companies = [
+            {"symbol": s, "isin": i}
+            for s, i in con.execute(
+                "SELECT symbol, isin FROM companies WHERE region = 'europe' AND NOT delisted"
+            ).fetchall()
+        ]
+        resolved, unmatched = resolve_leis(companies, mapping)
+        outcome["unmatched"] = len(unmatched)
+        # FR-010 AC-4: the unmatched-EU-listings metric is visible in status
+        update_heartbeat(esef_unmatched=len(unmatched), esef_resolved=len(resolved))
+        for symbol, lei in resolved.items():
+            con.execute(
+                "INSERT INTO esef_tasks (symbol, lei) VALUES (?, ?) ON CONFLICT (symbol) DO NOTHING",
+                [symbol, lei],
+            )
+        due = con.execute(
+            "SELECT symbol, lei FROM esef_tasks WHERE last_fetched_at IS NULL"
+            " OR last_fetched_at < ? ORDER BY last_fetched_at NULLS FIRST LIMIT ?",
+            [time.time() - ESEF_REFRESH_SECONDS, limit],
+        ).fetchall()
+        if not due:
+            return outcome
+
+        if client is None:
+            from crible.providers.esef import EsefClient
+
+            client = EsefClient()
+        from crible.ingest.raw import write_raw_statement
+        from crible.providers.esef import facts_to_frames
+
+        for symbol, lei in due:
+            try:
+                filings = client.filings_for_lei(lei)
+                if not filings:
+                    con.execute(
+                        "UPDATE esef_tasks SET last_fetched_at = ? WHERE symbol = ?",
+                        [time.time(), symbol],
+                    )
+                    continue
+                xbrl = client.fetch_xbrl_json(filings[0])
+                frames = facts_to_frames(xbrl) if xbrl else {}
+                fetched_at = time.time()
+                for (statement_type, freq), frame in frames.items():
+                    write_raw_statement(
+                        data, symbol=symbol, provider="esef", statement_type=statement_type,
+                        freq=freq, frame=frame, fetched_at=fetched_at,
+                    )
+                con.execute(
+                    "UPDATE esef_tasks SET last_fetched_at = ? WHERE symbol = ?",
+                    [fetched_at, symbol],
+                )
+                if frames:
+                    outcome["enriched"].append(symbol)
+                    log.info("esef: enriched %s (%d statement frame(s)) from filing of LEI %s",
+                             symbol, len(frames), lei)
+            except Exception as exc:  # noqa: BLE001 — outage: record, resume next cycle
+                outcome["outage"] = f"{symbol}: {exc}"
+                log.warning("esef: outage on %s: %s — resuming next cycle", symbol, exc)
+                break
+        return outcome
+    finally:
+        con.close()
+
+
+def run_edgar_cycle(limit: int = 5, client=None, ticker_map: dict[str, int] | None = None) -> dict:
+    """FR-016 — the EDGAR enrichment cycle: US companies whose ticker resolves
+    in the SEC directory (company_tickers.json) get audited figures pulled
+    from companyfacts into provider='edgar' raw statements. Outages are
+    recorded and the cycle resumes next time; unmatched listings are counted,
+    never errored — symmetric with the ESEF cycle."""
+    from crible.providers.edgar import facts_to_frames, resolve_ciks
+
+    data = config.data_dir()
+    outcome: dict = {"enriched": [], "unmatched": 0, "outage": None, "skipped": None}
+
+    con = _connect()
+    try:
+        con.execute(EDGAR_SCHEMA)
+        companies = [
+            {"symbol": s}
+            for (s,) in con.execute(
+                "SELECT symbol FROM companies WHERE region = 'us' AND NOT delisted"
+            ).fetchall()
+        ]
+        if not companies:
+            outcome["skipped"] = "no US companies in the universe yet"
+            return outcome
+        if ticker_map is None:
+            if client is None:
+                from crible.providers.edgar import EdgarClient
+
+                client = EdgarClient()
+            try:
+                ticker_map = client.company_tickers()
+            except Exception as exc:  # noqa: BLE001 — outage: record, resume next cycle
+                outcome["outage"] = f"company_tickers.json: {exc}"
+                log.warning("edgar: %s — resuming next cycle", outcome["outage"])
+                return outcome
+        resolved, unmatched = resolve_ciks(companies, ticker_map)
+        outcome["unmatched"] = len(unmatched)
+        # FR-016: the unmatched-US-listings metric is visible in status
+        update_heartbeat(edgar_unmatched=len(unmatched), edgar_resolved=len(resolved))
+        for symbol, cik in resolved.items():
+            con.execute(
+                "INSERT INTO edgar_tasks (symbol, cik) VALUES (?, ?) ON CONFLICT (symbol) DO NOTHING",
+                [symbol, cik],
+            )
+        due = con.execute(
+            "SELECT symbol, cik FROM edgar_tasks WHERE last_fetched_at IS NULL"
+            " OR last_fetched_at < ? ORDER BY last_fetched_at NULLS FIRST LIMIT ?",
+            [time.time() - EDGAR_REFRESH_SECONDS, limit],
+        ).fetchall()
+        if not due:
+            return outcome
+
+        if client is None:
+            from crible.providers.edgar import EdgarClient
+
+            client = EdgarClient()
+        from crible.ingest.raw import write_raw_statement
+
+        for symbol, cik in due:
+            try:
+                frames = facts_to_frames(client.companyfacts(int(cik)))
+                fetched_at = time.time()
+                for (statement_type, freq), frame in frames.items():
+                    write_raw_statement(
+                        data, symbol=symbol, provider="edgar", statement_type=statement_type,
+                        freq=freq, frame=frame, fetched_at=fetched_at,
+                    )
+                con.execute(
+                    "UPDATE edgar_tasks SET last_fetched_at = ? WHERE symbol = ?",
+                    [fetched_at, symbol],
+                )
+                if frames:
+                    outcome["enriched"].append(symbol)
+                    log.info("edgar: enriched %s (%d statement frame(s)) from CIK %010d",
+                             symbol, len(frames), int(cik))
+            except Exception as exc:  # noqa: BLE001 — outage: record, resume next cycle
+                outcome["outage"] = f"{symbol}: {exc}"
+                log.warning("edgar: outage on %s: %s — resuming next cycle", symbol, exc)
+                break
+        return outcome
+    finally:
+        con.close()
+
+
+def run_edgar_bulk(
+    zip_path=None, client=None, ticker_map: dict[str, int] | None = None,
+    download: bool = True, limit: int | None = None,
+) -> dict:
+    """FR-016 / ADR-0005 scale-up — the bulk variant: ONE companyfacts.zip
+    gives the audited layer for EVERY resolved US listing (~10k issuers),
+    instead of the per-CIK trickle. The archive is processed member-by-member
+    (memory-safe) and never committed; a broken filing is skipped, a missing
+    archive is an outage — recorded, resumed next run."""
+    from pathlib import Path
+
+    from crible.ingest.raw import write_raw_statement
+    from crible.providers.edgar import facts_to_frames, iter_bulk_companyfacts, resolve_ciks
+
+    data = config.data_dir()
+    outcome: dict = {"enriched": 0, "unmatched": 0, "outage": None, "skipped": None}
+
+    con = _connect()
+    try:
+        con.execute(EDGAR_SCHEMA)
+        companies = [
+            {"symbol": s}
+            for (s,) in con.execute(
+                "SELECT symbol FROM companies WHERE region = 'us' AND NOT delisted"
+            ).fetchall()
+        ]
+        if not companies:
+            outcome["skipped"] = "no US companies in the universe yet"
+            return outcome
+        if ticker_map is None or (download and zip_path is None):
+            if client is None:
+                from crible.providers.edgar import EdgarClient
+
+                client = EdgarClient()
+        if ticker_map is None:
+            try:
+                ticker_map = client.company_tickers()
+            except Exception as exc:  # noqa: BLE001 — outage: record, resume next run
+                outcome["outage"] = f"company_tickers.json: {exc}"
+                log.warning("edgar bulk: %s", outcome["outage"])
+                return outcome
+        resolved, unmatched = resolve_ciks(companies, ticker_map)
+        outcome["unmatched"] = len(unmatched)
+        update_heartbeat(edgar_unmatched=len(unmatched), edgar_resolved=len(resolved))
+
+        archive = Path(zip_path) if zip_path is not None else data / "companyfacts.zip"
+        if not archive.exists():
+            if not download:
+                outcome["skipped"] = f"no bulk archive at {archive}"
+                return outcome
+            try:
+                log.info("edgar bulk: downloading companyfacts.zip (~1.4 GB)")
+                client.download_bulk(archive)
+            except Exception as exc:  # noqa: BLE001
+                outcome["outage"] = f"companyfacts.zip download: {exc}"
+                log.warning("edgar bulk: %s", outcome["outage"])
+                return outcome
+
+        by_cik = {cik: symbol for symbol, cik in resolved.items()}
+        fetched_at = time.time()
+        for cik, facts in iter_bulk_companyfacts(archive, set(by_cik)):
+            frames = facts_to_frames(facts)
+            if not frames:
+                continue
+            symbol = by_cik[cik]
+            for (statement_type, freq), frame in frames.items():
+                write_raw_statement(
+                    data, symbol=symbol, provider="edgar", statement_type=statement_type,
+                    freq=freq, frame=frame, fetched_at=fetched_at,
+                )
+            con.execute(
+                "INSERT INTO edgar_tasks (symbol, cik, last_fetched_at) VALUES (?, ?, ?)"
+                " ON CONFLICT (symbol) DO UPDATE SET last_fetched_at = excluded.last_fetched_at",
+                [symbol, int(cik), fetched_at],
+            )
+            outcome["enriched"] += 1
+            if limit is not None and outcome["enriched"] >= limit:
+                break
+        log.info("edgar bulk: enriched %d US issuers from %s", outcome["enriched"], archive)
+        return outcome
+    finally:
+        con.close()
+
+
+def _esef_due(con: duckdb.DuckDBPyConnection, symbol: str, cutoff: float) -> bool:
+    row = con.execute(
+        "SELECT last_fetched_at FROM esef_tasks WHERE symbol = ?", [symbol]
+    ).fetchone()
+    return row is None or row[0] is None or row[0] < cutoff
+
+
+def run_esef_sweep(
+    limit: int = 100, client=None, mapping: dict[str, str] | None = None,
+    page_size: int = 100, max_pages: int = 300,
+) -> dict:
+    """FR-010 at index scale: walk filings.xbrl.org's FULL index (newest
+    first) instead of querying one LEI at a time — every request lands on a
+    real filing, so the whole EU/EEA ESEF gisement (~25k filings) is
+    coverable in a few nightly runs. Filers outside the universe are counted
+    and skipped; dual listings sharing one LEI are all enriched; freshness
+    (esef_tasks, 90 days) prevents refetching. Outages resume next run."""
+    from crible.providers.esef import facts_to_frames, filing_lei
+    from crible.providers.gleif import load_mapping
+
+    data = config.data_dir()
+    outcome: dict = {"enriched": [], "skipped_unknown": 0, "outage": None, "skipped": None}
+
+    if mapping is None:
+        mapping, skipped, outage = load_mapping(data)
+        if mapping is None:
+            outcome["skipped"], outcome["outage"] = skipped, outage
+            if skipped:
+                log.info("esef sweep: %s", skipped)
+            else:
+                log.warning("esef sweep: %s — resuming next run", outage)
+            return outcome
+
+    con = _connect()
+    try:
+        con.execute(ESEF_SCHEMA)
+        rows = con.execute(
+            "SELECT symbol, isin FROM companies"
+            " WHERE region = 'europe' AND NOT delisted AND isin IS NOT NULL"
+        ).fetchall()
+        by_lei: dict[str, list[str]] = {}
+        for symbol, isin in rows:
+            lei = mapping.get(isin)
+            if lei:
+                by_lei.setdefault(lei, []).append(symbol)
+        update_heartbeat(
+            esef_resolved=sum(len(v) for v in by_lei.values()),
+            esef_unmatched=len(rows) - sum(len(v) for v in by_lei.values()),
+        )
+
+        if client is None:
+            from crible.providers.esef import EsefClient
+
+            client = EsefClient()
+        from crible.ingest.raw import write_raw_statement
+
+        cutoff = time.time() - ESEF_REFRESH_SECONDS
+        seen_leis: set[str] = set()
+        page = 1
+        while len(outcome["enriched"]) < limit and page <= max_pages:
+            try:
+                filings, _total = client.filings_index(page_size=page_size, page_number=page)
+            except Exception as exc:  # noqa: BLE001 — outage: record, resume next run
+                outcome["outage"] = f"index page {page}: {exc}"
+                log.warning("esef sweep: %s — resuming next run", outcome["outage"])
+                return outcome
+            if not filings:
+                break
+            page += 1
+            for filing in filings:
+                lei = filing_lei(filing)
+                if not lei or lei in seen_leis:
+                    continue  # newest-first: only the latest filing per filer
+                seen_leis.add(lei)
+                symbols = by_lei.get(lei)
+                if not symbols:
+                    outcome["skipped_unknown"] += 1
+                    continue
+                due = [s for s in symbols if _esef_due(con, s, cutoff)]
+                if not due:
+                    continue
+                try:
+                    xbrl = client.fetch_xbrl_json(filing)
+                    frames = facts_to_frames(xbrl) if xbrl else {}
+                except Exception as exc:  # noqa: BLE001
+                    outcome["outage"] = f"{lei}: {exc}"
+                    log.warning("esef sweep: outage on %s: %s — resuming next run", lei, exc)
+                    return outcome
+                fetched_at = time.time()
+                for symbol in due:
+                    for (statement_type, freq), frame in frames.items():
+                        write_raw_statement(
+                            data, symbol=symbol, provider="esef",
+                            statement_type=statement_type, freq=freq,
+                            frame=frame, fetched_at=fetched_at,
+                        )
+                    con.execute(
+                        "INSERT INTO esef_tasks (symbol, lei, last_fetched_at) VALUES (?, ?, ?)"
+                        " ON CONFLICT (symbol) DO UPDATE SET"
+                        " last_fetched_at = excluded.last_fetched_at",
+                        [symbol, lei, fetched_at],
+                    )
+                    if frames:
+                        outcome["enriched"].append(symbol)
+                if len(outcome["enriched"]) >= limit:
+                    break
+        if outcome["enriched"]:
+            log.info("esef sweep: enriched %d listings (%d filers outside the universe)",
+                     len(outcome["enriched"]), outcome["skipped_unknown"])
+        return outcome
+    finally:
+        con.close()

@@ -40,6 +40,33 @@ def load_isin_lei_map(path: Path | str) -> dict[str, str]:
     return mapping
 
 
+def load_mapping(
+    data_dir: Path | str,
+) -> tuple[dict[str, str] | None, str | None, str | None]:
+    """Locate and parse the local GLEIF ISIN→LEI file under ``data_dir``.
+
+    Returns ``(mapping, skipped_reason, outage)`` with exactly one set: a
+    mapping on success, a skip reason when no file exists yet (the cycle idles
+    politely), or an outage when a present file is unreadable (resume next run).
+    Single source of truth for the two enrichment cycles that used to inline
+    this block (F4 de-dup)."""
+    data_dir = Path(data_dir)
+    mapping_file = next(
+        (p for p in (data_dir / "isin-lei.csv", data_dir / "isin-lei.zip") if p.exists()),
+        None,
+    )
+    if mapping_file is None:
+        return (
+            None,
+            "no GLEIF mapping file — download the ISIN-LEI relationship file to data/isin-lei.csv",
+            None,
+        )
+    try:
+        return load_isin_lei_map(mapping_file), None, None
+    except Exception as exc:  # noqa: BLE001 — a present-but-unreadable file is an outage
+        return None, None, f"gleif mapping unreadable: {exc}"
+
+
 def resolve_leis(
     companies: list[dict], mapping: dict[str, str]
 ) -> tuple[dict[str, str], list[str]]:
