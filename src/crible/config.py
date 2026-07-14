@@ -26,6 +26,17 @@ def budget_per_hour() -> int:
     return int(os.environ.get("CRIBLE_BUDGET_PER_HOUR", DEFAULT_BUDGET_PER_HOUR))
 
 
+DEFAULT_FETCH_TIMEOUT = 60.0
+
+
+def fetch_timeout() -> float:
+    """Hard wall-clock ceiling for one provider fetch (ADR-0004 watchdog).
+
+    yfinance pulls are known to hang; without a hard timeout a single stuck
+    fetch freezes the whole rolling crawl. Set CRIBLE_FETCH_TIMEOUT to tune."""
+    return float(os.environ.get("CRIBLE_FETCH_TIMEOUT", DEFAULT_FETCH_TIMEOUT))
+
+
 # SEC fair-access wants a declared operator + contact. CRITICAL: the UA must
 # NOT contain a URL — the SEC's Akamai WAF 403s any User-Agent with an http(s)
 # link ("Undeclared Automated Tool" / "Request Rate Threshold Exceeded"),

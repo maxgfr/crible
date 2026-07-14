@@ -20,6 +20,7 @@ import pandas as pd
 
 from crible.ingest.budget import TokenBucket
 from crible.ingest.raw import write_raw_statement
+from crible.ingest.watchdog import call_with_timeout
 from crible.providers.base import RateLimitedError
 
 log = logging.getLogger("crible.ingest.prices")
@@ -46,6 +47,7 @@ class PriceRefresher:
     budget: TokenBucket
     data_dir: Path
     now: Callable[[], float] = time.time
+    fetch_timeout: float = 60.0
 
     def refresh(self, symbols: list[str]) -> PriceRefreshOutcome:
         outcome = PriceRefreshOutcome()
@@ -64,12 +66,16 @@ class PriceRefresher:
                 outcome.skipped.append(symbol)
                 continue
             try:
-                bars = self.provider.fetch_prices(symbol)
+                bars = call_with_timeout(
+                    lambda: self.provider.fetch_prices(symbol),
+                    self.fetch_timeout,
+                    label=f"fetch_prices({symbol})",
+                )
             except RateLimitedError:
                 consecutive_failures += 1
                 outcome.skipped.append(symbol)
                 continue
-            except Exception as exc:  # noqa: BLE001 — one symbol never kills the cycle
+            except Exception as exc:  # noqa: BLE001 — hang (watchdog) or error: skip, never freeze
                 log.info("price fetch failed for %s: %s — skipped", symbol, exc)
                 outcome.skipped.append(symbol)
                 continue

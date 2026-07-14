@@ -18,6 +18,7 @@ from crible.ingest.backoff import BackoffPolicy
 from crible.ingest.budget import TokenBucket
 from crible.ingest.queue import CrawlQueue
 from crible.ingest.raw import write_raw_statement
+from crible.ingest.watchdog import call_with_timeout
 from crible.providers.base import Provider, RateLimitedError
 
 log = logging.getLogger("crible.ingest")
@@ -42,6 +43,7 @@ class Crawler:
         data_dir: Path | str,
         now: Callable[[], float] = time.time,
         sleep: Callable[[float], None] = time.sleep,
+        fetch_timeout: float = 60.0,
     ) -> None:
         self.queue = queue
         self.provider = provider
@@ -50,12 +52,22 @@ class Crawler:
         self.data_dir = Path(data_dir)
         self.now = now
         self.sleep = sleep
+        self.fetch_timeout = fetch_timeout
 
     def _acquire_budget(self, n: int = 1) -> None:
         while not self.budget.try_acquire(n):
             wait = max(self.budget.seconds_until_available(), 1.0)
             log.info("rate budget exhausted — sleeping %.0fs", wait)
             self.sleep(wait)
+
+    def _fetch_with_timeout(self, symbol: str):
+        """Run one provider fetch under the shared wall-clock watchdog so a hung
+        upstream can never freeze the rolling loop (ADR-0004)."""
+        return call_with_timeout(
+            lambda: self.provider.fetch_statements(symbol),
+            self.fetch_timeout,
+            label=f"fetch_statements({symbol})",
+        )
 
     def crawl_symbol(self, symbol: str) -> bool:
         """Fetch one symbol with in-place backoff on 429. True on success.
@@ -67,7 +79,7 @@ class Crawler:
         for attempt in range(1, MAX_RATE_LIMIT_RETRIES + 1):
             self._acquire_budget(cost)
             try:
-                result = self.provider.fetch_statements(symbol)
+                result = self._fetch_with_timeout(symbol)
             except RateLimitedError as exc:
                 delay = self.backoff.delay(attempt)
                 log.warning(

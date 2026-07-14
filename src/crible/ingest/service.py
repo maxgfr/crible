@@ -182,6 +182,7 @@ def _make_crawler(con: duckdb.DuckDBPyConnection, provider=None, budget=None) ->
         else TokenBucket(capacity=config.budget_per_hour(), window_seconds=3600),
         backoff=BackoffPolicy(),
         data_dir=config.data_dir(),
+        fetch_timeout=config.fetch_timeout(),
     )
 
 
@@ -612,7 +613,12 @@ def run_price_refresh(budget: TokenBucket, provider=None) -> dict:
 
     if provider is None:
         provider = _YfPriceAdapter()
-    refresher = PriceRefresher(provider=provider, budget=budget, data_dir=config.data_dir())
+    refresher = PriceRefresher(
+        provider=provider,
+        budget=budget,
+        data_dir=config.data_dir(),
+        fetch_timeout=config.fetch_timeout(),
+    )
     outcome = refresher.refresh(bootstrap_sample())
     return {"refreshed": len(outcome.refreshed), "skipped": len(outcome.skipped), "aborted": outcome.aborted}
 
