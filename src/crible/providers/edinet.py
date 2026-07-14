@@ -147,14 +147,20 @@ def frames_from_document_zip(zip_bytes: bytes) -> dict[tuple[str, str], pd.DataF
 
 
 def sec_code(symbol: str) -> str | None:
-    """Yahoo JP ticker → 5-digit EDINET securities code (7203.T → 72030), or
-    None for a non-JP listing."""
+    """Yahoo JP ticker → 5-char EDINET securities code (7203.T → 72030), or None
+    for a non-JP listing. Since 2024 the TSE also issues 4-char ALPHANUMERIC
+    codes (130A.T → 130A0), so the base is not required to be all digits (F6)."""
     if not symbol:
         return None
     base, _, suffix = symbol.partition(".")
-    if suffix.upper() not in ("T", "JP") or not base.isdigit():
+    if suffix.upper() not in ("T", "JP"):
         return None
-    return f"{base}0" if len(base) == 4 else base.ljust(5, "0")[:5]
+    base = base.upper()
+    if len(base) == 4 and base.isalnum():
+        return f"{base}0"
+    if base.isdigit() and 1 <= len(base) <= 5:
+        return base.ljust(5, "0")[:5]
+    return None
 
 
 class EdinetProvider:

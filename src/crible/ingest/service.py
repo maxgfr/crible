@@ -315,15 +315,18 @@ def run_refresh(
 
     if fetch_gleif:
         # self-heal the audited-EU layer: pull the GLEIF ISIN→LEI file into the
-        # mirror if we have none, best-effort — a failure just leaves ESEF idle
+        # mirror. Skip only if the operator supplied their own file; otherwise
+        # fetch every run — fetch_if_stale re-downloads only when the mirror copy
+        # is stale (weekly), so GLEIF stays FRESH instead of freezing after the
+        # first fetch (F9). Best-effort — a failure just leaves ESEF idle.
         from crible.providers.gleif import fetch_gleif as _fetch_gleif
-        from crible.providers.gleif import load_mapping
 
-        if load_mapping(data)[0] is None:
+        legacy = (data / "isin-lei.csv").exists() or (data / "isin-lei.zip").exists()
+        if not legacy:
             try:
                 _fetch_gleif(data)
             except Exception as exc:  # noqa: BLE001 — never kills the refresh
-                log.warning("gleif auto-fetch failed: %s — ESEF stays idle this run", exc)
+                log.warning("gleif fetch failed: %s — ESEF may stay idle this run", exc)
 
     if fetch_fx:
         # mirror the ECB daily rates so the snapshot gets *_eur companions
@@ -472,10 +475,12 @@ def run_loop(cycle_limit: int = 40, compute_every_seconds: float = 1800.0) -> No
         # so ESEF is not idle out-of-the-box exactly as `crible refresh` does
         if now - last_gleif >= 7 * 24 * 3600:
             try:
-                from crible.providers.gleif import fetch_gleif, load_mapping
+                from crible.providers.gleif import fetch_gleif
 
-                if load_mapping(config.data_dir())[0] is None:
-                    fetch_gleif(config.data_dir())
+                data = config.data_dir()
+                legacy = (data / "isin-lei.csv").exists() or (data / "isin-lei.zip").exists()
+                if not legacy:
+                    fetch_gleif(data)  # mirror re-downloads only when stale (weekly)
             except Exception as exc:  # noqa: BLE001 — never kills the loop
                 log.warning("gleif self-heal failed: %s", exc)
             last_gleif = now

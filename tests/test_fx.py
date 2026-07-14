@@ -47,6 +47,23 @@ def test_attach_fx_adds_eur_companions_without_touching_ratios() -> None:
     pd.testing.assert_series_equal(out["return_on_equity"], snapshot["return_on_equity"])
 
 
+def test_attach_fx_fills_only_the_latest_period_per_symbol() -> None:
+    """F12 — only the current spot rate is mirrored, so *_eur is filled for the
+    latest period only; historical periods stay NULL rather than get today's
+    rate applied to a five-year-old figure."""
+    snapshot = pd.DataFrame(
+        {
+            "symbol": ["AAPL", "AAPL"],
+            "period": ["2019", "2024"],
+            "currency": ["USD", "USD"],
+            "revenue": [216.0, 432.0],
+        }
+    )
+    out = attach_fx(snapshot, data_dir=None, rates=RATES).set_index("period")
+    assert out.loc["2024", "revenue_eur"] == 400.0  # 432 / 1.08, latest period
+    assert math.isnan(out.loc["2019", "revenue_eur"])  # historical → NULL, not spot-rated
+
+
 class _Resp:
     def __init__(self, body: bytes) -> None:
         self.status_code = 200

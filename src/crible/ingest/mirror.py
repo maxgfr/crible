@@ -48,6 +48,14 @@ def _read_meta(meta_path: Path) -> dict:
         return {}
 
 
+def _write_meta(meta_path: Path, data: dict) -> None:
+    """Atomic sidecar write — a crash mid-write must not leave a truncated meta
+    that then reads as {} and forces a needless full re-download (F4)."""
+    tmp = meta_path.with_name(meta_path.name + ".tmp")
+    tmp.write_text(json.dumps(data))
+    tmp.rename(meta_path)
+
+
 def fetch_if_stale(
     data_dir: Path | str,
     source: str,
@@ -86,7 +94,7 @@ def fetch_if_stale(
         path.parent.mkdir(parents=True, exist_ok=True)
         with http.stream("GET", url, headers=request_headers) as response:
             if getattr(response, "status_code", 200) == 304 and path.exists():
-                meta_path.write_text(json.dumps({**meta, "fetched_at": now()}))
+                _write_meta(meta_path, {**meta, "fetched_at": now()})
                 return MirrorResult(path=path, source="cached")
             response.raise_for_status()
             tmp = path.with_name(path.name + ".tmp")
@@ -95,9 +103,7 @@ def fetch_if_stale(
                     out.write(block)
             tmp.rename(path)
         etag = getattr(response, "headers", {}) or {}
-        meta_path.write_text(
-            json.dumps({"etag": etag.get("ETag"), "fetched_at": now()})
-        )
+        _write_meta(meta_path, {"etag": etag.get("ETag"), "fetched_at": now()})
         log.info("mirror: refreshed %s/%s from %s", source, name, url)
         return MirrorResult(path=path, source="downloaded")
     except Exception as exc:  # noqa: BLE001 — never regress coverage on a hiccup

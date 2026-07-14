@@ -294,3 +294,33 @@ def test_incremental_compute_recomputes_only_dirty_symbols(tmp_path, monkeypatch
     calls.clear()
     assert snap.build_snapshot_incremental(tmp_path) is None
     assert calls == []
+
+
+def test_incremental_compute_rebuilds_all_when_the_price_distillate_refreshes(tmp_path, monkeypatch) -> None:
+    """F8 — a refreshed prices-latest.parquet changes every symbol's baked-in
+    price_quote, so incremental must rebuild all rows, not serve stale prices."""
+    import time
+
+    import crible.compute.snapshot as snap
+    from crible.ingest.raw import write_raw_statement
+
+    frame = pd.DataFrame({"period": ["2024"], "TotalRevenue": [100.0]})
+    for sym in ("AAA", "BBB"):
+        write_raw_statement(
+            tmp_path, symbol=sym, provider="yfinance",
+            statement_type="income", freq="annual", frame=frame, fetched_at=1000.0,
+        )
+    snap.build_snapshot_incremental(tmp_path)  # base built
+
+    calls: list[list[str]] = []
+    original = snap.build_symbol_rows
+    monkeypatch.setattr(snap, "build_symbol_rows", lambda d, s: (calls.append(list(s)), original(d, s))[1])
+
+    # a fresh price distillate lands after the base (the shape _price_quotes reads)
+    time.sleep(0.02)
+    pd.DataFrame(
+        {"symbol": ["AAA"], "close": [10.0], "price_asof": ["2024-12-31"], "return_6m": [0.1]}
+    ).to_parquet(tmp_path / "prices-latest.parquet", index=False)
+
+    snap.build_snapshot_incremental(tmp_path)
+    assert calls and sorted(calls[0]) == ["AAA", "BBB"]  # ALL symbols rebuilt, not none

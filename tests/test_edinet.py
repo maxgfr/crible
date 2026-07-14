@@ -54,6 +54,7 @@ def test_parse_xbrl_instance_extracts_full_year_facts() -> None:
 def test_sec_code_maps_yahoo_jp_tickers() -> None:
     assert sec_code("7203.T") == "72030"
     assert sec_code("6758.T") == "67580"
+    assert sec_code("130A.T") == "130A0"  # 2024+ alphanumeric TSE code (F6)
     assert sec_code("AAPL") is None  # not a JP listing
 
 

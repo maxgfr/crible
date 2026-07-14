@@ -88,11 +88,25 @@ def attach_fx(
         rates = load_rates(data_dir) if data_dir is not None else None
     if not rates or snapshot.empty or "currency" not in snapshot.columns:
         return snapshot
+    # we mirror only the CURRENT spot rate, so *_eur is filled only for the
+    # latest period per symbol (the row screens use). Applying today's rate to a
+    # 2020 figure would be wrong, so older periods stay NULL — never imputed (F12).
+    if "period" in snapshot.columns and "symbol" in snapshot.columns:
+        latest = set(
+            snapshot.assign(_p=snapshot["period"].astype(str))
+            .sort_values("_p")
+            .groupby("symbol", sort=False)
+            .tail(1)
+            .index
+        )
+    else:
+        latest = set(snapshot.index)
     additions: dict[str, list] = {}
     for field in FX_FIELDS:
         if field in snapshot.columns:
             additions[f"{field}_eur"] = [
-                to_eur(v, c, rates) for v, c in zip(snapshot[field], snapshot["currency"])
+                to_eur(v, c, rates) if idx in latest else None
+                for idx, v, c in zip(snapshot.index, snapshot[field], snapshot["currency"])
             ]
     if not additions:
         return snapshot

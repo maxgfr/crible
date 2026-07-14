@@ -259,7 +259,14 @@ def build_snapshot_incremental(data_dir: Path | str) -> pd.DataFrame | None:
         return finalize_snapshot(rows, data_dir)
 
     base_mtime = base_path.stat().st_mtime
-    dirty = [s for s in symbols if _newest_raw_stamp(data_dir, s) > base_mtime]
+    # a refreshed price distillate changes the price_quote / return_6m baked into
+    # EVERY symbol's base row, so it makes them all dirty (F8) — otherwise the
+    # base-persisted rows serve stale prices and value/momentum ranks.
+    price_file = data_dir / "prices-latest.parquet"
+    if price_file.exists() and price_file.stat().st_mtime > base_mtime:
+        dirty = list(symbols)
+    else:
+        dirty = [s for s in symbols if _newest_raw_stamp(data_dir, s) > base_mtime]
     prev = pd.read_parquet(base_path)
     known = set(prev["symbol"]) if "symbol" in prev.columns else set()
     # a symbol vanishing from the raw layer is also a change (drop its rows)
