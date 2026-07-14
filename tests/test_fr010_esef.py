@@ -247,6 +247,24 @@ def test_fr010_snapshot_marks_audited_provenance() -> None:
 #  test_fr010_service_cycle_outage_records_and_resumes below)
 
 
+def test_fr010_audited_only_symbol_carries_field_provenance(tmp_path) -> None:
+    """F2/c3 — an audited-only listing (ESEF/EDGAR, no Yahoo scrape) must carry
+    field-level audited provenance through build_snapshot, not an empty
+    audited_fields — 'every number traceable to its source' is the value prop."""
+    from crible.compute.snapshot import build_snapshot
+    from crible.ingest.raw import write_raw_statement
+
+    write_raw_statement(
+        tmp_path, symbol="SAP.DE", provider="esef", statement_type="income", freq="annual",
+        frame=pd.DataFrame({"period": ["2024"], "TotalRevenue": [34e9], "NetIncome": [6e9]}),
+        fetched_at=1000.0,
+    )
+    snap = build_snapshot(tmp_path)
+    row = snap[snap.symbol == "SAP.DE"].iloc[0]
+    assert row["revenue"] == 34e9
+    assert row["audited_fields"] and "revenue" in row["audited_fields"]
+
+
 def test_fr010_service_enrichment_cycle_writes_esef_raw_and_counts_unmatched(tmp_path, monkeypatch) -> None:
     """FR-010 — the enrichment cycle end-to-end (offline): EU companies with a
     resolvable LEI get provider='esef' raw frames; unmatched are counted."""

@@ -192,11 +192,15 @@ def build_symbol_rows(data_dir: Path | str, symbols: list[str]) -> pd.DataFrame:
         if not scraped and not audited:
             continue
         quote = quotes.get(symbol)
+        # pass the audited frames ALWAYS (not only when scraped exists): an
+        # audited-only listing has empty scraped canonical, so build_symbol_snapshot
+        # takes the audited frames as the base AND marks their field-level
+        # provenance — otherwise audited-only symbols ship blank audited_fields (F2/c3).
         part = build_symbol_snapshot(
             symbol,
-            scraped or audited,
+            scraped,
             provider="yfinance" if scraped else _frames_provider(audited, "esef"),
-            audited_frames=audited if scraped else None,
+            audited_frames=audited or None,
             price_quote=(quote[0], quote[1]) if quote else None,
             momentum_6m=quote[2] if quote else None,
         )

@@ -91,3 +91,17 @@ def test_mirror_without_last_good_raises_when_offline(tmp_path) -> None:
             tmp_path, "gleif", "isin-lei.csv", URL,
             http=FakeHttp(fail=True), max_age_seconds=0, now=lambda: 1000.0,
         )
+
+
+def test_mirror_aborts_a_response_over_the_size_ceiling(tmp_path) -> None:
+    """A pathological/huge response must not fill the disk — the stream aborts
+    past max_bytes and leaves no partial file behind."""
+    with pytest.raises(MirrorError):
+        fetch_if_stale(
+            tmp_path, "edgar", "companyfacts.zip", URL,
+            http=FakeHttp(body=b"x" * 5000), max_age_seconds=0, now=lambda: 1000.0,
+            max_bytes=1000,
+        )
+    # no partial download left behind
+    assert not (tmp_path / "mirror" / "edgar" / "companyfacts.zip").exists()
+    assert not list((tmp_path / "mirror" / "edgar").glob("*.tmp")) if (tmp_path / "mirror" / "edgar").exists() else True
