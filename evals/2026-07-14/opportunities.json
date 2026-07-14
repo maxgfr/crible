@@ -1,0 +1,54 @@
+{
+  "opportunities": [
+    {
+      "dimension": "correctness",
+      "impact": "high",
+      "effort": "M",
+      "title": "GLEIF ISIN→LEI auto-fetch (crible ingest --fetch-gleif) — unlock the idle audited-EU layer",
+      "statement": "The whole ESEF audited-EU enrichment (run_esef_sweep/run_esef_cycle) is wired but stays idle out-of-the-box: it needs data/isin-lei.csv and nothing downloads it. gleif.py:21 defines ISIN_LEI_LATEST_URL but it is never referenced (dead constant); service.py:229 tells the operator to fetch the ~200 MB file by hand. A self-hoster gets zero audited EU coverage until they discover this. The research doc confirms GLEIF publishes the ISIN↔LEI relationship files as keyless open data ([S12][S53]).",
+      "recommendation": "Add a downloader (stream ISIN_LEI_LATEST_URL to data/isin-lei.csv, with timeout + size guard) exposed as `crible ingest --fetch-gleif`, and call it from run_refresh so the nightly self-heals the mapping.",
+      "evidence": [
+        { "ref": "src/crible/providers/gleif.py:21", "note": "ISIN_LEI_LATEST_URL defined but never referenced" },
+        { "ref": "src/crible/ingest/service.py:227-232", "note": "ESEF skips: 'download the ISIN-LEI relationship file to data/isin-lei.csv'" },
+        { "ref": "docs/research/2026-07-13-data-sources/SUMMARY.md:5", "note": "[S12][S53] GLEIF ISIN↔LEI daily files are keyless open data" }
+      ]
+    },
+    {
+      "dimension": "correctness",
+      "impact": "high",
+      "effort": "S",
+      "title": "Periodic universe refresh inside run_loop (the self-hosted service never re-downloads FinanceDatabase)",
+      "statement": "refresh_universe already exists (universe.py:213) and the nightly run_refresh calls it (service.py:697), but the long-lived Docker service (docker-compose command `crible ingest --loop`) only bootstraps on first boot (service.py:776-778) and never refreshes again. A self-hoster's delisted flags and new listings freeze forever. The upsert is already idempotent, so this is a scheduler, not new logic.",
+      "recommendation": "Add a weekly `if now - last_universe_refresh >= 7*86400: refresh_universe(con); queue.seed_from_universe()` branch to run_loop, mirroring the price-refresh cadence already there (service.py:793).",
+      "evidence": [
+        { "ref": "src/crible/ingest/service.py:776-778", "note": "run_loop bootstraps only when companies table is absent" },
+        { "ref": "src/crible/universe.py:213-224", "note": "refresh_universe ready, idempotent upsert" },
+        { "ref": "docker-compose.yml:8", "note": "self-hosted path runs run_loop" }
+      ]
+    },
+    {
+      "dimension": "performance",
+      "impact": "med",
+      "effort": "M",
+      "title": "Incremental compute via the existing build_snapshot(symbols=…) seam",
+      "statement": "Every compute cycle rebuilds the entire snapshot: run_compute() calls build_snapshot(data) with no symbols, which re-reads every crawled symbol's raw parquet and recomputes all ratios/scores/ranks (snapshot.py:171-172). build_snapshot ALREADY accepts a symbols= argument — the seam exists, the caller just never uses it. Fine at ~500 companies, quadratic pain toward the 150k universe the README advertises.",
+      "recommendation": "Track symbols whose raw changed since the last snapshot (fetched_at stamps already exist) and pass them to build_snapshot; ranks stay cross-sectional so recompute ranks over the union, but skip re-parsing unchanged raw.",
+      "evidence": [
+        { "ref": "src/crible/compute/snapshot.py:171-172", "note": "build_snapshot has symbols= param; defaults to all crawled symbols" },
+        { "ref": "src/crible/ingest/service.py:653", "note": "run_compute passes no symbols → full rebuild every cycle" }
+      ]
+    },
+    {
+      "dimension": "correctness",
+      "impact": "med",
+      "effort": "M",
+      "title": "FX normalization (Frankfurter/ECB, keyless) for cross-currency absolute comparisons",
+      "statement": "Ratios are currency-neutral so the gap is modest, but absolute values (market_cap, revenue) are stored in native currency with no normalized companion columns — grep for frankfurter|market_cap_eur|fx_rate finds nothing. Cross-currency screening on absolute size is therefore misleading. The research doc identifies a keyless source: ECB reference rates via api.frankfurter.dev ([S71][S72]).",
+      "recommendation": "Store daily ECB rates (Frankfurter, keyless, cite source), add companion columns (market_cap_eur, revenue_eur…) at snapshot build, expose via whitelist/UI.",
+      "evidence": [
+        { "ref": "src/crible/compute/snapshot.py:135-148", "note": "universe columns embed native currency; no normalized value columns" },
+        { "ref": "docs/research/2026-07-13-data-sources/SUMMARY.md:9", "note": "[S71][S72] ECB daily reference rates via keyless Frankfurter API" }
+      ]
+    }
+  ]
+}

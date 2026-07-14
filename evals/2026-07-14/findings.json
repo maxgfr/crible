@@ -1,0 +1,333 @@
+{
+  "findings": [
+    {
+      "id": "F1",
+      "kind": "defect",
+      "dimension": "correctness",
+      "severity": "P1",
+      "title": "run_loop resets the rate budget every cycle — NFR-007 (330 req/h polite crawl) is silently violated on the self-hosted `ingest --loop` path",
+      "statement": "The shipped self-hosted service runs `crible ingest --loop` (docker-compose.yml:8) → run_loop, which calls run_once once per cycle (service.py:788). run_once builds a FRESH crawler with a FRESH TokenBucket every call (service.py:187 → _make_crawler service.py:178). TokenBucket state is per-instance (budget.py:28), so each cycle starts with a full 330-token budget. With cycle_limit=40 and yfinance requests_per_fetch=7 (yfinance_provider.py:31), one cycle spends 280 < 330 and never throttles, then returns and the loop immediately starts another full-budget cycle (no inter-cycle sleep unless the queue is drained, service.py:819-820). Steady-state crawl therefore issues far more than 330 requests/rolling-hour. run_refresh's own docstring documents exactly this hazard and fixes it by sharing ONE bucket across cycles (service.py:678-680, crawler built once service.py:707) — run_loop never received that fix. budget.py:3-5 calls staying under budget 'a hard constraint of the keyless design, not an optimisation' (NFR-007).",
+      "evidence": [
+        {
+          "ref": "src/crible/ingest/service.py:788",
+          "note": "run_loop calls run_once every cycle"
+        },
+        {
+          "ref": "src/crible/ingest/service.py:184-199",
+          "note": "run_once builds a fresh crawler (and bucket) per call"
+        },
+        {
+          "ref": "src/crible/ingest/service.py:174-181",
+          "note": "_make_crawler instantiates a new TokenBucket each time"
+        },
+        {
+          "ref": "src/crible/ingest/service.py:678-680",
+          "note": "run_refresh docstring: repeated fresh-bucket calls 'bust the hourly budget' — the exact pattern run_loop uses"
+        },
+        {
+          "ref": "src/crible/ingest/budget.py:35-43",
+          "note": "try_acquire counts only this instance's stamps; a new instance = full budget"
+        },
+        {
+          "ref": "docker-compose.yml:8",
+          "note": "the shipped self-hosted service runs run_loop"
+        }
+      ],
+      "failureScenario": "A self-hoster runs the shipped `docker compose up`; during backlog burn-down the ingest loop issues ~280 requests every few seconds — thousands/hour — blowing past the 330/h politeness budget and getting the IP rate-limited or banned by Yahoo, contradicting the keyless design's central promise.",
+      "recommendation": "Build the crawler + one TokenBucket once outside the loop (as run_refresh does) and reuse crawler.run_cycle across iterations; or hold the bucket in run_loop and inject it into run_once. Add a regression test asserting cumulative acquisitions across N cycles stay ≤ capacity per rolling hour.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F2",
+      "kind": "defect",
+      "dimension": "correctness",
+      "severity": "P1",
+      "title": "No per-request watchdog — a hung yfinance fetch stalls the whole long-lived loop; two docstrings claim a watchdog that does not exist",
+      "statement": "Crawler.crawl_symbol calls provider.fetch_statements(symbol) with no hard timeout (crawler.py:70); there is no signal/thread-join/ThreadPoolExecutor timeout anywhere in ingest/ or providers/. Yet prices.py:6-7 says hangs are 'enforced by the crawler's watchdog' and yfinance_provider.py:6 says 'a per-call watchdog is the crawler's job, not ours' — both delegate hang-protection to a watchdog that was never implemented (ADR-0004 promised it per TODO.md:17-22). yfinance owns its own session and has documented hang cases; a single stuck socket blocks the entire single-threaded run_loop indefinitely with no reschedule.",
+      "evidence": [
+        {
+          "ref": "src/crible/ingest/crawler.py:60-70",
+          "note": "fetch_statements called with no hard timeout wrapper"
+        },
+        {
+          "ref": "src/crible/providers/yfinance_provider.py:6",
+          "note": "docstring: 'a per-call watchdog is the crawler's job, not ours'"
+        },
+        {
+          "ref": "src/crible/ingest/prices.py:6-7",
+          "note": "docstring: hangs 'enforced by the crawler's watchdog'"
+        },
+        {
+          "ref": "TODO.md:17-22",
+          "note": "documented gap: ADR-0004 promises a watchdog; today relies on yfinance internal timeouts"
+        },
+        {
+          "ref": "src/crible/providers/yfinance_provider.py:36-58",
+          "note": "get_income_stmt/get_balance_sheet/get_cash_flow + ticker.history — network calls with no enforceable timeout"
+        }
+      ],
+      "failureScenario": "yfinance hangs on one symbol (known upstream behaviour); crawl_symbol never returns, the loop stops advancing, the heartbeat goes stale, and coverage plateaus until an operator restarts the container.",
+      "recommendation": "Wrap fetch_statements in a hard deadline (thread + .join(timeout) or a watchdog thread), treat a timeout as a failure → queue.mark_failed + reschedule; then the two docstrings become true.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F3",
+      "kind": "defect",
+      "dimension": "performance",
+      "severity": "P2",
+      "title": "attach_ranks fragments the snapshot frame — reproducible PerformanceWarning on the compute hot path",
+      "statement": "attach_ranks adds rank columns one at a time via repeated single-column assignment on the full snapshot frame (ranks.py:96-99: a per-column loop then two more inserts), triggering pandas' 'DataFrame is highly fragmented' PerformanceWarning — reproduced 16x in the test run (tests/test_refresh.py). It runs on the compute write path over the whole assembled universe, so cost scales with universe size exactly where the README targets ~150k rows.",
+      "evidence": [
+        {
+          "ref": "src/crible/compute/ranks.py:96-99",
+          "note": "per-column NaN/None assignments fragment the frame"
+        },
+        {
+          "ref": "run:runs/core.md#L11",
+          "note": "PerformanceWarning reproduced 16x from ranks.py:97-103 in pytest"
+        }
+      ],
+      "failureScenario": "As the universe grows, the fragmented-frame inserts turn a linear column-attach into repeated full-frame copies, inflating each compute cycle's wall-clock with no functional signal that anything is wrong.",
+      "recommendation": "Build the rank columns in a dict / separate frame and attach with a single pd.concat(axis=1), or pre-allocate; assert no PerformanceWarning in a focused test.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F4",
+      "kind": "defect",
+      "dimension": "maintainability",
+      "severity": "P2",
+      "title": "ingest/service.py hotspot has more than doubled (820 LOC, nesting 14) — worst module in the repo, up from 370 LOC last cycle",
+      "statement": "service.py is the #1 hotspot at 820 LOC with nesting depth 14 (analysis.json). Last cycle's F2 flagged the same module at 370 LOC; the ESEF/EDGAR/bulk enrichment cycles (run_esef_cycle, run_esef_sweep, run_edgar_cycle, run_edgar_bulk, run_refresh, run_loop) were all added to this one file, so the deferred 'extract collaborators' debt is now materially larger and each cycle duplicates the same GLEIF-file / connection / heartbeat boilerplate.",
+      "evidence": [
+        {
+          "ref": "src/crible/ingest/service.py:1-820",
+          "note": "820 LOC, nesting 14 — #1 hotspot"
+        },
+        {
+          "ref": "run:analysis.json",
+          "note": "hotspots[0] = ingest/service.py (820 LOC, churn 11)"
+        },
+        {
+          "ref": "src/crible/ingest/service.py:223-234",
+          "note": "GLEIF-file lookup boilerplate duplicated at 507-518"
+        }
+      ],
+      "failureScenario": "Adding the next data source (e.g. a GLEIF fetcher or a universe-refresh scheduler) means editing an 820-LOC module that mixes queue, budget, ESEF, EDGAR, prices, compute and heartbeat — high regression surface, no boundaries.",
+      "recommendation": "Extract the enrichment cycles (EsefCycle, EdgarCycle) and shared helpers (GLEIF mapping loader, _connect/heartbeat) into their own modules; the per-cycle contracts are already clear.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F5",
+      "kind": "opportunity",
+      "dimension": "correctness",
+      "severity": "P1",
+      "impact": "high",
+      "effort": "S",
+      "title": "Periodic universe refresh inside run_loop (the self-hosted service never re-downloads FinanceDatabase)",
+      "statement": "refresh_universe already exists (universe.py:213) and the nightly run_refresh calls it (service.py:697), but the long-lived Docker service (docker-compose command `crible ingest --loop`) only bootstraps on first boot (service.py:776-778) and never refreshes again. A self-hoster's delisted flags and new listings freeze forever. The upsert is already idempotent, so this is a scheduler, not new logic.",
+      "evidence": [
+        {
+          "ref": "src/crible/ingest/service.py:776-778",
+          "note": "run_loop bootstraps only when companies table is absent"
+        },
+        {
+          "ref": "src/crible/universe.py:213-224",
+          "note": "refresh_universe ready, idempotent upsert"
+        },
+        {
+          "ref": "docker-compose.yml:8",
+          "note": "self-hosted path runs run_loop"
+        }
+      ],
+      "recommendation": "Add a weekly `if now - last_universe_refresh >= 7*86400: refresh_universe(con); queue.seed_from_universe()` branch to run_loop, mirroring the price-refresh cadence already there (service.py:793).",
+      "status": "confirmed"
+    },
+    {
+      "id": "F6",
+      "kind": "opportunity",
+      "dimension": "correctness",
+      "severity": "P1",
+      "impact": "high",
+      "effort": "M",
+      "title": "GLEIF ISIN→LEI auto-fetch (crible ingest --fetch-gleif) — unlock the idle audited-EU layer",
+      "statement": "The whole ESEF audited-EU enrichment (run_esef_sweep/run_esef_cycle) is wired but stays idle out-of-the-box: it needs data/isin-lei.csv and nothing downloads it. gleif.py:21 defines ISIN_LEI_LATEST_URL but it is never referenced (dead constant); service.py:229 tells the operator to fetch the ~200 MB file by hand. A self-hoster gets zero audited EU coverage until they discover this. The research doc confirms GLEIF publishes the ISIN↔LEI relationship files as keyless open data ([S12][S53]).",
+      "evidence": [
+        {
+          "ref": "src/crible/providers/gleif.py:21",
+          "note": "ISIN_LEI_LATEST_URL defined but never referenced"
+        },
+        {
+          "ref": "src/crible/ingest/service.py:227-232",
+          "note": "ESEF skips: 'download the ISIN-LEI relationship file to data/isin-lei.csv'"
+        },
+        {
+          "ref": "docs/research/2026-07-13-data-sources/SUMMARY.md:5",
+          "note": "[S12][S53] GLEIF ISIN↔LEI daily files are keyless open data"
+        }
+      ],
+      "recommendation": "Add a downloader (stream ISIN_LEI_LATEST_URL to data/isin-lei.csv, with timeout + size guard) exposed as `crible ingest --fetch-gleif`, and call it from run_refresh so the nightly self-heals the mapping.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F7",
+      "kind": "opportunity",
+      "dimension": "performance",
+      "severity": "P2",
+      "impact": "med",
+      "effort": "M",
+      "title": "Incremental compute via the existing build_snapshot(symbols=…) seam",
+      "statement": "Every compute cycle rebuilds the entire snapshot: run_compute() calls build_snapshot(data) with no symbols, which re-reads every crawled symbol's raw parquet and recomputes all ratios/scores/ranks (snapshot.py:171-172). build_snapshot ALREADY accepts a symbols= argument — the seam exists, the caller just never uses it. Fine at ~500 companies, quadratic pain toward the 150k universe the README advertises.",
+      "evidence": [
+        {
+          "ref": "src/crible/compute/snapshot.py:171-172",
+          "note": "build_snapshot has symbols= param; defaults to all crawled symbols"
+        },
+        {
+          "ref": "src/crible/ingest/service.py:653",
+          "note": "run_compute passes no symbols → full rebuild every cycle"
+        }
+      ],
+      "recommendation": "Track symbols whose raw changed since the last snapshot (fetched_at stamps already exist) and pass them to build_snapshot; ranks stay cross-sectional so recompute ranks over the union, but skip re-parsing unchanged raw.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F8",
+      "kind": "opportunity",
+      "dimension": "correctness",
+      "severity": "P2",
+      "impact": "med",
+      "effort": "M",
+      "title": "FX normalization (Frankfurter/ECB, keyless) for cross-currency absolute comparisons",
+      "statement": "Ratios are currency-neutral so the gap is modest, but absolute values (market_cap, revenue) are stored in native currency with no normalized companion columns — grep for frankfurter|market_cap_eur|fx_rate finds nothing. Cross-currency screening on absolute size is therefore misleading. The research doc identifies a keyless source: ECB reference rates via api.frankfurter.dev ([S71][S72]).",
+      "evidence": [
+        {
+          "ref": "src/crible/compute/snapshot.py:135-148",
+          "note": "universe columns embed native currency; no normalized value columns"
+        },
+        {
+          "ref": "docs/research/2026-07-13-data-sources/SUMMARY.md:9",
+          "note": "[S71][S72] ECB daily reference rates via keyless Frankfurter API"
+        }
+      ],
+      "recommendation": "Store daily ECB rates (Frankfurter, keyless, cite source), add companion columns (market_cap_eur, revenue_eur…) at snapshot build, expose via whitelist/UI.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F9",
+      "kind": "defect",
+      "dimension": "correctness",
+      "severity": "P1",
+      "title": "ESEF _fiscal_year tags audited facts by end-year with no duration check — an interim/quarterly value can be recorded as the annual audited figure (contradicts the module's own docstring)",
+      "statement": "facts_to_frames promises 'Only full-year instant/duration facts ... are kept' (esef.py:48), but _fiscal_year (esef.py:87-103) derives the fiscal year purely from the period's END date and never validates that a duration spans a full year (contrast EDGAR, which checks a ~full-year span). A duration fact like 2024-07-01/2024-12-31 (an interim period ending Dec 31) is therefore tagged year '2024' and, at esef.py:71 (values.setdefault(year,{})[column]=value, last-writer-wins), can overwrite the true annual value for the same concept/year. Because audited ESEF values OUTRANK scraped Yahoo values at reconciliation (reconcile.py:1-6, 84), a mis-tagged interim number silently corrupts the flagship 'audited & traceable' figure.",
+      "evidence": [
+        {
+          "ref": "src/crible/providers/esef.py:87-103",
+          "note": "_fiscal_year uses only the END date; no full-year duration validation"
+        },
+        {
+          "ref": "src/crible/providers/esef.py:45-51",
+          "note": "docstring guarantees 'only full-year ... facts are kept' — not enforced"
+        },
+        {
+          "ref": "src/crible/providers/esef.py:71",
+          "note": "last-writer-wins per (year,column) — an interim duration can overwrite the annual value"
+        },
+        {
+          "ref": "src/crible/compute/reconcile.py:84",
+          "note": "audited value always wins → the mis-tagged number reaches the snapshot"
+        }
+      ],
+      "failureScenario": "A filer's latest ESEF document (picked by sort -date_added) carries an interim duration fact ending Dec 31; it is stored as the annual audited Revenue/NetIncome, overrides the correct scraped value, and the screener ranks the company on a wrong 'audited' number.",
+      "recommendation": "In _fiscal_year (or facts_to_frames) require duration facts to span ~360-372 days before accepting them as annual; keep instants as period-end snapshots. Add a fixture with an interim duration asserting it is dropped.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F10",
+      "kind": "defect",
+      "dimension": "correctness",
+      "severity": "P2",
+      "title": "ESEF concept collisions resolve non-deterministically (last-writer-wins) — e.g. ProfitLoss vs ProfitLossAttributableToOwnersOfParent both map to NetIncome",
+      "statement": "Two distinct IFRS concepts map to the same canonical column (Revenue and RevenueFromContractsWithCustomers → TotalRevenue, esef.py:23-24; ProfitLoss and ProfitLossAttributableToOwnersOfParent → NetIncome, esef.py:27-28). facts_to_frames writes them with last-writer-wins keyed only by (year,column) (esef.py:71), so which concept survives depends on JSON iteration order. For consolidated statements ProfitLoss (group total) and the owners-of-parent figure differ materially (minority interests), yielding a non-deterministic audited NetIncome.",
+      "evidence": [
+        {
+          "ref": "src/crible/providers/esef.py:22-39",
+          "note": "two concepts each mapped to one canonical column (TotalRevenue, NetIncome, StockholdersEquity)"
+        },
+        {
+          "ref": "src/crible/providers/esef.py:71",
+          "note": "values.setdefault(year,{})[column]=value overwrites without precedence"
+        }
+      ],
+      "failureScenario": "An IFRS filing tags both ProfitLoss and ProfitLossAttributableToOwnersOfParent; the audited NetIncome depends on JSON key order, so two runs (or two filers) disagree on the 'audited' bottom line.",
+      "recommendation": "Give colliding concepts an explicit precedence (prefer the whole-group total, or the most-specific) and only overwrite when the incoming concept ranks higher; unit-test the collision.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F11",
+      "kind": "defect",
+      "dimension": "correctness",
+      "severity": "P2",
+      "title": "Raw layer glob('*.parquet') matches leftover '.tmp-*.parquet' partials — pathlib includes dotfiles, defeating write-temp-then-rename atomicity",
+      "statement": "write_raw_statement stages to '.tmp-{...}.parquet' then renames to the final name (raw.py:51,59), relying on the tmp being invisible to readers. But pathlib's glob('*.parquet') DOES match dotfiles (verified empirically), so prune_raw (raw.py:26) and latest_raw_frames (snapshot.py:121) both enumerate leftover '.tmp-*.parquet' files. A crash between to_parquet(tmp) and rename leaves a partial parquet that a later glob picks up; stem.split('-',2) yields a junk '.tmp' statement_type and pd.read_parquet on the truncated file can raise, breaking the snapshot build for that symbol. The raw layer is documented as 'the durable source of truth any snapshot can be recomputed from' (raw.py:1-6).",
+      "evidence": [
+        {
+          "ref": "src/crible/ingest/raw.py:51",
+          "note": "tmp file named '.tmp-...parquet' (leading dot)"
+        },
+        {
+          "ref": "src/crible/ingest/raw.py:26",
+          "note": "prune_raw globs '*.parquet' — matches the '.tmp-' partial"
+        },
+        {
+          "ref": "src/crible/compute/snapshot.py:120-123",
+          "note": "latest_raw_frames globs '*.parquet' and splits stem — same exposure"
+        }
+      ],
+      "failureScenario": "An ingest container is killed mid-write; the leftover '.tmp-income-annual-<stamp>.parquet' is later read by the compute step and raises on the truncated parquet, silently dropping that symbol from the snapshot until an operator cleans up.",
+      "recommendation": "Write the tmp OUTSIDE the globbed tree or name it without a '.parquet' suffix, and filter '.tmp-*' in prune_raw/latest_raw_frames; sweep stale tmp files on startup.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F12",
+      "kind": "defect",
+      "dimension": "security",
+      "severity": "P2",
+      "title": "Stooq solve_pow loops unbounded on a server-supplied difficulty — a raised value pins a CPU core with no time budget or watchdog",
+      "statement": "solve_pow (stooq_fetch.py:61-68) brute-forces SHA-256 until the digest starts with `difficulty` hex zeros, with no upper bound and no time budget; `difficulty` comes verbatim from the remote page (parsed at stooq_fetch.py:90 and passed at :93). Each extra hex zero multiplies expected work ~16x, so a changed or hostile value makes the automated bulk-price download spin a core indefinitely — and there is no crawler watchdog to interrupt it (see F2).",
+      "evidence": [
+        {
+          "ref": "src/crible/ingest/stooq_fetch.py:61-68",
+          "note": "while-loop with no cap on difficulty or elapsed time"
+        },
+        {
+          "ref": "src/crible/ingest/stooq_fetch.py:90-93",
+          "note": "difficulty taken from the remote HTML and passed straight to solve_pow"
+        }
+      ],
+      "failureScenario": "Stooq raises the PoW difficulty (or serves a hostile value); the headless bulk import wedges on 100% CPU with no timeout, blocking the price refresh indefinitely.",
+      "recommendation": "Bound solve_pow by a max difficulty and a wall-clock/iteration budget; raise StooqError past the budget so the caller degrades to the manual archive path.",
+      "status": "confirmed"
+    },
+    {
+      "id": "F13",
+      "kind": "defect",
+      "dimension": "performance",
+      "severity": "P2",
+      "title": "bootstrap downloads the published dataset non-streaming and buffers it entirely in memory (io.BytesIO(response.content)) — OOM risk on a small self-hosted host",
+      "statement": "fetch_and_extract gets the dataset tarball with a non-streaming http.get (bootstrap.py:148) and wraps the full body in io.BytesIO(response.content) (bootstrap.py:153) before tarfile opens it. The whole (multi-hundred-MB and growing) published dataset is held in RAM at once — the opposite of the memory-safe member-by-member handling used for companyfacts.zip — so a small self-hosted box (the target audience) can OOM on the one-command bootstrap.",
+      "evidence": [
+        {
+          "ref": "src/crible/bootstrap.py:148",
+          "note": "http.get(url) — non-streaming download"
+        },
+        {
+          "ref": "src/crible/bootstrap.py:153",
+          "note": "io.BytesIO(response.content) buffers the entire tarball in memory"
+        }
+      ],
+      "failureScenario": "A self-hoster on a 512MB-1GB VPS runs the bootstrap; the dataset has grown past available RAM and the process is OOM-killed before extraction, with no partial-progress fallback.",
+      "recommendation": "Stream the download to a temp file (http.stream / iter_bytes) and open tarfile from the file, or extract members incrementally; cap peak memory independent of dataset size.",
+      "status": "confirmed"
+    }
+  ]
+}

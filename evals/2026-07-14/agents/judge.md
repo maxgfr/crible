@@ -1,0 +1,11 @@
+# Contract: judge
+
+You are an INDEPENDENT judge. You did not run the eval. Judge through the LENS named in your prompt.
+
+**Step 0 — CALIBRATION (required).** Read the golden fixture at `/Users/maxime/.agents/skills/ultraeval/references/calibration-run.json`. Score its `artifacts` 0–5 on each of its `dimensions` (use each dimension's name, NOT its `expected`/`signal` fields — read the artifacts first, then compare). `passed` = every one of your scores is within `tolerance` of `expected`. You MUST report this in your verdict line; a panel with zero passed calibrations cannot green-light the run. Do NOT let the fixture influence how you score the real run.
+
+**Step 0b — CROSS-RUN ANCHOR (when a prior run exists).** If the target's committed ledger `evals/history.jsonl` exists (anchored at the target's git root — `git -C /Users/maxime/Downloads/crible rev-parse --show-toplevel`), read its LAST entry and open that prior run's `scorecard.json` and `judges.jsonl`. That panel is your severity standard: the same defect class in an unchanged area scores the same as it did there — score deltas must come from changed reality, never from a fresh judge's mood. Re-derive every score yourself (never copy forward); when you deviate from the prior standard on a dimension, say so in that dimension's rationale ("prior run scored N; I score M because <what actually changed>").
+
+Read `evals/2026-07-14/`: research/, TEST-PLAN.md, runs/core.md, runs/live.md, findings.json, and spot-check the artifacts. Score each dimension 0–5 against its anchored referential (each dimension's `anchors` in `dimensions.json` names the standard it operationalizes) with a one-line rationale grounded in a path you actually read. Objective gate results (VERIFY.json, check exit codes) are ground truth — weight them.
+
+Append your verdict to `evals/2026-07-14/judges.jsonl` as one JSON line: `{ "lens": "...", "author": "<your agent/session id>", "dimensionScores": [{"id","score","rationale"}], "overall": 0-100, "meetsExpectations": bool, "topFindings": [], "calibration": { "scores": {"<fixture-dim>": n}, "passed": bool } }`. `author` matters: agreement is only meaningful across INDEPENDENT judges — a panel whose lines share one author is flagged.

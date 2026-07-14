@@ -1,0 +1,128 @@
+{
+  "target": "/Users/maxime/Downloads/crible",
+  "files": 110,
+  "loc": 12706,
+  "languages": {
+    ".mjs": 1,
+    ".py": 68,
+    ".tsx": 21,
+    ".ts": 20
+  },
+  "hotspots": [
+    {
+      "path": "src/crible/ingest/service.py",
+      "loc": 820,
+      "churn": 11,
+      "reason": "large: 820 LOC, 11 commits (churn), nesting depth 14"
+    },
+    {
+      "path": "src/crible/cli.py",
+      "loc": 313,
+      "churn": 10,
+      "reason": "large: 313 LOC, 10 commits (churn)"
+    },
+    {
+      "path": "ui/src/App.tsx",
+      "loc": 275,
+      "churn": 10,
+      "reason": "275 LOC, 10 commits (churn), nesting depth 9"
+    },
+    {
+      "path": "tests/test_fr010_esef.py",
+      "loc": 307,
+      "churn": 6,
+      "reason": "large: 307 LOC, nesting depth 8"
+    },
+    {
+      "path": "tests/test_fr016_edgar.py",
+      "loc": 340,
+      "churn": 3,
+      "reason": "large: 340 LOC, nesting depth 14"
+    },
+    {
+      "path": "src/crible/compute/snapshot.py",
+      "loc": 218,
+      "churn": 8,
+      "reason": "218 LOC"
+    },
+    {
+      "path": "tests/test_fr002_ingest.py",
+      "loc": 269,
+      "churn": 5,
+      "reason": "269 LOC"
+    },
+    {
+      "path": "src/crible/ingest/price_import.py",
+      "loc": 290,
+      "churn": 3,
+      "reason": "290 LOC, nesting depth 12"
+    },
+    {
+      "path": "ui/src/components/QueryBuilder.tsx",
+      "loc": 299,
+      "churn": 2,
+      "reason": "299 LOC, nesting depth 9"
+    },
+    {
+      "path": "src/crible/api/main.py",
+      "loc": 165,
+      "churn": 8,
+      "reason": "165 LOC, nesting depth 8"
+    },
+    {
+      "path": "src/crible/providers/edgar.py",
+      "loc": 247,
+      "churn": 3,
+      "reason": "247 LOC, nesting depth 10"
+    },
+    {
+      "path": "src/crible/runtime.py",
+      "loc": 205,
+      "churn": 5,
+      "reason": "205 LOC, nesting depth 12"
+    }
+  ],
+  "deps": {
+    "edges": 72,
+    "cycles": [
+      [
+        "ui/src/data/static-client.ts",
+        "ui/src/data/duckdb.ts"
+      ]
+    ]
+  },
+  "tests": {
+    "sourceFiles": 73,
+    "testFiles": 37,
+    "ratio": 0.51,
+    "untested": [
+      "evals/2026-07-14/eval.workflow.mjs",
+      "src/crible/api/main.py",
+      "src/crible/bootstrap.py",
+      "src/crible/cli.py",
+      "src/crible/compute/beneish.py",
+      "src/crible/compute/canonical.py",
+      "src/crible/compute/ranks.py",
+      "src/crible/compute/ratios.py",
+      "src/crible/compute/reconcile.py",
+      "src/crible/compute/scores.py",
+      "src/crible/compute/snapshot.py",
+      "src/crible/config.py",
+      "src/crible/dsl/compiler.py",
+      "src/crible/dsl/parser.py",
+      "src/crible/ingest/backoff.py",
+      "src/crible/ingest/budget.py",
+      "src/crible/ingest/crawler.py",
+      "src/crible/ingest/prices.py",
+      "src/crible/ingest/queue.py",
+      "src/crible/ingest/raw.py"
+    ]
+  },
+  "todos": 0,
+  "docs": [
+    "README.md",
+    "CONTRIBUTING.md",
+    "docs"
+  ],
+  "notes": []
+}
