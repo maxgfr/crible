@@ -1,0 +1,85 @@
+{
+  "run": "evals/2026-07-14-c4",
+  "pairs": [
+    {
+      "claimId": "F1",
+      "evidenceRef": "src/crible/providers/edinet.py:197",
+      "claim": "list_documents requests all filings for a day with type=2 and no docTypeCode/ordinanceCode filter (edinet.py:197-200), and _period takes a balance instant from any context whose period resolves (edinet.py:59-63) with no guard that the instant belongs to an annual securities report (有価証券報告書). Income/cashflow are protected by the full-year duration check (edinet.py:64-69), but balance instants are NOT, so a quarterly/semi-annual report's period-end instant can be booked as the annual balance. EDINET is opt-in (requires a Subscription-Key, edinet.py:200) so blast radius is limited, but the values are silently wrong when it is enabled.",
+      "digest": "195:         self._http = http\n196: \n197:     def list_documents(self, day: str) -> list[dict]:\n198:         response = self._http.get(\n199:             f\"{API_BASE}/documents.json\",",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F4",
+      "evidenceRef": "src/crible/providers/edinet.py:88",
+      "claim": "The audited enrichment cycles all still live in one module: enrichment.py is 617 LOC holding 7 parallel run_* cycles (ESEF enrichment.py:43, EDGAR :131, EDGAR-bulk :214, FSDS :301, Companies House :396, EDINET :437, ESEF-sweep :513). The per-cycle contracts are already clean, so each could move beside its provider (or an ingest/cycles/ package) to stop one file growing with every new source.",
+      "digest": "86:             continue\n87:         info: dict[str, str] = {}\n88:         for elem in ctx.iter():\n89:             local = _local(elem.tag)\n90:             field = {\"startdate\": \"start\", \"enddate\": \"end\", \"instant\": \"instant\"}.get(local)",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F1",
+      "evidenceRef": "src/crible/providers/edinet.py:60",
+      "claim": "list_documents requests all filings for a day with type=2 and no docTypeCode/ordinanceCode filter (edinet.py:197-200), and _period takes a balance instant from any context whose period resolves (edinet.py:59-63) with no guard that the instant belongs to an annual securities report (有価証券報告書). Income/cashflow are protected by the full-year duration check (edinet.py:64-69), but balance instants are NOT, so a quarterly/semi-annual report's period-end instant can be booked as the annual balance. EDINET is opt-in (requires a Subscription-Key, edinet.py:200) so blast radius is limited, but the values are silently wrong when it is enabled.",
+      "digest": "58:         return None\n59:     instant = ctx.get(\"instant\")\n60:     if statement == \"balance\":\n61:         if not instant:\n62:             return None",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F1",
+      "evidenceRef": "src/crible/providers/edinet.py:90",
+      "claim": "list_documents requests all filings for a day with type=2 and no docTypeCode/ordinanceCode filter (edinet.py:197-200), and _period takes a balance instant from any context whose period resolves (edinet.py:59-63) with no guard that the instant belongs to an annual securities report (有価証券報告書). Income/cashflow are protected by the full-year duration check (edinet.py:64-69), but balance instants are NOT, so a quarterly/semi-annual report's period-end instant can be booked as the annual balance. EDINET is opt-in (requires a Subscription-Key, edinet.py:200) so blast radius is limited, but the values are silently wrong when it is enabled.",
+      "digest": "88:         for elem in ctx.iter():\n89:             local = _local(elem.tag)\n90:             field = {\"startdate\": \"start\", \"enddate\": \"end\", \"instant\": \"instant\"}.get(local)\n91:             if field and elem.text:\n92:                 info[field] = elem.text.strip()",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F5",
+      "evidenceRef": "src/crible/ingest/enrichment.py:513",
+      "claim": "parse_xbrl_instance records only start/end/instant from each context (edinet.py:88-93) and never the explicit member that marks 連結 (Consolidated) vs 単体 (NonConsolidated). When both a consolidated and a non-consolidated context exist for the same concept and period, the winner is decided purely by concept rank / first-writer (edinet.py:114-119) with no preference for the consolidated member, so a parent-only figure can be booked as the group's audited value. Opt-in (Subscription-Key) so limited blast radius.",
+      "digest": "511: \n512: \n513: def run_esef_sweep(\n514:     limit: int = 100, client=None, mapping: dict[str, str] | None = None,\n515:     page_size: int = 100, max_pages: int = 300,",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F6",
+      "evidenceRef": "src/crible/ingest/enrichment.py:513",
+      "claim": "list_documents requests all filings for a day with type=2 and no docTypeCode/ordinanceCode filter (edinet.py:197-200), and _period takes a balance instant from any context whose period resolves (edinet.py:59-63) with no guard that the instant belongs to an annual securities report (有価証券報告書). Income/cashflow are protected by the full-year duration check (edinet.py:64-69), but balance instants are NOT, so a quarterly/semi-annual report's period-end instant can be booked as the annual balance. EDINET is opt-in (requires a Subscription-Key, edinet.py:200) so blast radius is limited, but the values are silently wrong when it is enabled.",
+      "digest": "511: \n512: \n513: def run_esef_sweep(\n514:     limit: int = 100, client=None, mapping: dict[str, str] | None = None,\n515:     page_size: int = 100, max_pages: int = 300,",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F2",
+      "evidenceRef": "src/crible/providers/edinet.py:88",
+      "claim": "parse_xbrl_instance records only start/end/instant from each context (edinet.py:88-93) and never the explicit member that marks 連結 (Consolidated) vs 単体 (NonConsolidated). When both a consolidated and a non-consolidated context exist for the same concept and period, the winner is decided purely by concept rank / first-writer (edinet.py:114-119) with no preference for the consolidated member, so a parent-only figure can be booked as the group's audited value. Opt-in (Subscription-Key) so limited blast radius.",
+      "digest": "86:             continue\n87:         info: dict[str, str] = {}\n88:         for elem in ctx.iter():\n89:             local = _local(elem.tag)\n90:             field = {\"startdate\": \"start\", \"enddate\": \"end\", \"instant\": \"instant\"}.get(local)",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F2",
+      "evidenceRef": "src/crible/providers/edinet.py:116",
+      "claim": "parse_xbrl_instance records only start/end/instant from each context (edinet.py:88-93) and never the explicit member that marks 連結 (Consolidated) vs 単体 (NonConsolidated). When both a consolidated and a non-consolidated context exist for the same concept and period, the winner is decided purely by concept rank / first-writer (edinet.py:114-119) with no preference for the consolidated member, so a parent-only figure can be booked as the group's audited value. Opt-in (Subscription-Key) so limited blast radius.",
+      "digest": "114:         rank = CONCEPT_RANK[_local(elem.tag)]\n115:         key = (period, column)\n116:         if key in claimed and claimed[key] <= rank:\n117:             continue\n118:         values.setdefault(period, {})[column] = value",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F3",
+      "evidenceRef": "src/crible/ingest/enrichment.py:43",
+      "claim": "The audited enrichment cycles all still live in one module: enrichment.py is 617 LOC holding 7 parallel run_* cycles (ESEF enrichment.py:43, EDGAR :131, EDGAR-bulk :214, FSDS :301, Companies House :396, EDINET :437, ESEF-sweep :513). The per-cycle contracts are already clean, so each could move beside its provider (or an ingest/cycles/ package) to stop one file growing with every new source.",
+      "digest": "41: \n42: \n43: def run_esef_cycle(limit: int = 5, client=None, mapping: dict[str, str] | None = None) -> dict:\n44:     \"\"\"FR-010 — the ESEF enrichment cycle: EU companies whose ISIN resolves to\n45:     an LEI (GLEIF file at data/isin-lei.csv, operator-provided) get audited",
+      "verdict": null,
+      "note": ""
+    },
+    {
+      "claimId": "F3",
+      "evidenceRef": "src/crible/ingest/enrichment.py:513",
+      "claim": "The audited enrichment cycles all still live in one module: enrichment.py is 617 LOC holding 7 parallel run_* cycles (ESEF enrichment.py:43, EDGAR :131, EDGAR-bulk :214, FSDS :301, Companies House :396, EDINET :437, ESEF-sweep :513). The per-cycle contracts are already clean, so each could move beside its provider (or an ingest/cycles/ package) to stop one file growing with every new source.",
+      "digest": "511: \n512: \n513: def run_esef_sweep(\n514:     limit: int = 100, client=None, mapping: dict[str, str] | None = None,\n515:     page_size: int = 100, max_pages: int = 300,",
+      "verdict": null,
+      "note": ""
+    }
+  ]
+}
