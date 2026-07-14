@@ -10,6 +10,7 @@ values at reconciliation time.
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Any
 
 import pandas as pd
@@ -17,6 +18,9 @@ import pandas as pd
 log = logging.getLogger("crible.providers.esef")
 
 FILINGS_API = "https://filings.xbrl.org/api/filings"
+
+# a full-year duration, with slack for 52/53-week fiscal calendars (as EDGAR)
+FULL_YEAR_DAYS = (320, 400)
 
 # IFRS concept (ifrs-full unless prefixed) → (canonical field, statement type)
 CONCEPT_MAP: dict[str, tuple[str, str]] = {
@@ -41,6 +45,12 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
 # canonical (yfinance-vocabulary) column → statement type, for frame assembly
 STATEMENT_OF = {canonical: stmt for canonical, stmt in CONCEPT_MAP.values()}
 
+# declared precedence for column collisions: when several IFRS concepts feed the
+# same canonical column (e.g. ProfitLoss vs ProfitLossAttributableToOwnersOfParent
+# → NetIncome), the concept listed FIRST in CONCEPT_MAP wins — deterministically,
+# never by JSON order (F10).
+CONCEPT_RANK = {concept: rank for rank, concept in enumerate(CONCEPT_MAP)}
+
 
 def facts_to_frames(xbrl_json: dict[str, Any]) -> dict[tuple[str, str], pd.DataFrame]:
     """xBRL-JSON → raw frames keyed by (statement_type, 'annual').
@@ -51,6 +61,7 @@ def facts_to_frames(xbrl_json: dict[str, Any]) -> dict[tuple[str, str], pd.DataF
     """
     facts = xbrl_json.get("facts", {})
     values: dict[str, dict[str, float]] = {}
+    claimed: dict[tuple[str, str], int] = {}  # (year, column) → winning concept rank
     for fact in facts.values():
         dimensions = fact.get("dimensions", {})
         concept = dimensions.get("concept")
@@ -68,7 +79,12 @@ def facts_to_frames(xbrl_json: dict[str, Any]) -> dict[tuple[str, str], pd.DataF
         except (TypeError, ValueError):
             continue
         column, _ = mapped
+        rank = CONCEPT_RANK[concept]
+        key = (year, column)
+        if key in claimed and claimed[key] <= rank:
+            continue  # an equal-or-earlier-precedence concept already set this column
         values.setdefault(year, {})[column] = value
+        claimed[key] = rank
 
     frames: dict[tuple[str, str], pd.DataFrame] = {}
     for statement_type in ("income", "balance", "cashflow"):
@@ -84,15 +100,32 @@ def facts_to_frames(xbrl_json: dict[str, Any]) -> dict[tuple[str, str], pd.DataF
     return frames
 
 
+def _full_year(start: str, end: str) -> bool:
+    try:
+        span = (date.fromisoformat(end[:10]) - date.fromisoformat(start[:10])).days
+    except ValueError:
+        return False
+    return FULL_YEAR_DAYS[0] <= span <= FULL_YEAR_DAYS[1]
+
+
 def _fiscal_year(period: str) -> str | None:
-    """xBRL-JSON period → fiscal year string.
+    """xBRL-JSON period → fiscal year string, or None if it is not a full year.
 
     Durations look like '2024-01-01T00:00:00/2025-01-01T00:00:00', instants
-    like '2025-01-01T00:00:00'. We tag the year that ENDS the period.
+    like '2025-01-01T00:00:00'. A duration is accepted only when it spans a
+    full fiscal year (320-400 days, EDGAR's 52/53-week slack) — an interim
+    (quarter/half-year) duration must NEVER be booked as an annual audited
+    figure (F9). Instants (balance-sheet facts) are point-in-time and always
+    tag the year that just closed.
     """
     if not period:
         return None
-    end = period.split("/")[-1]
+    if "/" in period:
+        start, end = period.split("/", 1)
+        if not _full_year(start, end):
+            return None
+    else:
+        end = period
     year = end[:4]
     if not year.isdigit():
         return None

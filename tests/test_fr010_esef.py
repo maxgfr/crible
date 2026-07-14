@@ -96,6 +96,70 @@ def test_fr010_xbrl_json_facts_map_to_canonical_annual_frames() -> None:
     assert (income["TotalRevenue"] == 999).sum() == 0
 
 
+# ------------------------------------------- F9: interim never stored as annual
+
+INTERIM_JSON = {
+    "facts": {
+        "annual": {
+            "value": "1000",
+            "dimensions": {
+                "concept": "ifrs-full:Revenue",
+                "period": "2024-01-01T00:00:00/2025-01-01T00:00:00",  # full year
+            },
+        },
+        "interim": {  # H1 2025 — must NEVER be stored as the 2025 annual figure
+            "value": "600",
+            "dimensions": {
+                "concept": "ifrs-full:Revenue",
+                "period": "2025-01-01T00:00:00/2025-07-01T00:00:00",  # ~181 days
+            },
+        },
+    }
+}
+
+
+def test_fr010_interim_duration_never_stored_as_annual() -> None:
+    """F9 — a half-year duration tagged by its end year would otherwise be
+    stored as an *audited* annual figure and then override the scraped value at
+    reconciliation, silently corrupting the flagship number. Only full-year
+    durations (EDGAR's 320-400 day window) are annual."""
+    frames = facts_to_frames(INTERIM_JSON)
+    income = frames[("income", "annual")].set_index("period")
+    assert income.loc["2024", "TotalRevenue"] == 1000.0
+    assert "2025" not in income.index  # the interim is dropped, not booked as FY
+
+
+# --------------------------------------------- F10: deterministic collisions
+
+COLLISION_JSON = {
+    "facts": {
+        "pl": {
+            "value": "600000",
+            "dimensions": {
+                "concept": "ifrs-full:ProfitLoss",
+                "period": "2024-01-01T00:00:00/2025-01-01T00:00:00",
+            },
+        },
+        "pl_owners": {
+            "value": "500000",
+            "dimensions": {
+                "concept": "ifrs-full:ProfitLossAttributableToOwnersOfParent",
+                "period": "2024-01-01T00:00:00/2025-01-01T00:00:00",
+            },
+        },
+    }
+}
+
+
+def test_fr010_concept_collision_resolves_by_declared_precedence() -> None:
+    """F10 — two IFRS concepts map to NetIncome; the winner must be the one
+    declared first in CONCEPT_MAP (ProfitLoss), deterministically, not whichever
+    the JSON happened to list last."""
+    frames = facts_to_frames(COLLISION_JSON)
+    income = frames[("income", "annual")].set_index("period")
+    assert income.loc["2024", "NetIncome"] == 600000.0
+
+
 # ------------------------------------------------------------- reconciliation
 
 
