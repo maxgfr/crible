@@ -59,11 +59,13 @@ jobs:
         continue-on-error: true # prices are an enrichment, never a gate
         run: uv run crible import-prices huggingface --max-age-days 6
 
-      - name: Bounded keyless refresh (crawl → ESEF → EDGAR bulk → prices → prune → compute)
+      - name: Bounded keyless refresh (crawl → ESEF → EDGAR bulk + FSDS → FX → prices → prune → compute)
         # deadline trimmed to 2h: the EDGAR bulk sweep (~10k US issuers from
         # one public-domain archive) takes the reclaimed time; ESEF cadence
-        # raised — filings.xbrl.org is not budget-bound like Yahoo
-        run: uv run crible refresh --deadline 7200 --esef-limit 100 --edgar-bulk
+        # raised — filings.xbrl.org is not budget-bound like Yahoo. --fetch-gleif
+        # and --fetch-fx default on (audited-EU mapping + ECB *_eur columns);
+        # --fsds-quarters backfills deep 'as-filed' US history (public domain).
+        run: uv run crible refresh --deadline 7200 --esef-limit 100 --edgar-bulk --fsds-quarters 2
 
       - name: Export the static site artifacts (min-symbols gate)
         run: uv run crible export-site --out site-data --min-symbols 50

@@ -432,6 +432,9 @@ def run_loop(cycle_limit: int = 40, compute_every_seconds: float = 1800.0) -> No
     last_compute = 0.0
     last_price_refresh = 0.0
     last_universe_refresh = time.time()  # just bootstrapped — next refresh in a week
+    last_gleif = 0.0  # fetch on the first cycle so ESEF is not idle out-of-the-box
+    last_fx = 0.0     # fetch on the first cycle so the snapshot gets *_eur columns
+    last_edgar_bulk = 0.0
     # ONE long-lived bucket shared by the crawl and the price refresh — both
     # hit Yahoo, so NFR-007 (330 req/h) is a single rolling window, not one per
     # cycle. Rebuilding it each cycle (the F1 bug) reset the window every few
@@ -463,6 +466,39 @@ def run_loop(cycle_limit: int = 40, compute_every_seconds: float = 1800.0) -> No
             log.warning("universe refresh failed: %s", exc)
         finally:
             con.close()
+
+        # F6: self-heal the audited-EU layer for the self-hosted `ingest --loop`
+        # deployment — download the GLEIF ISIN→LEI file (weekly) if we have none,
+        # so ESEF is not idle out-of-the-box exactly as `crible refresh` does
+        if now - last_gleif >= 7 * 24 * 3600:
+            try:
+                from crible.providers.gleif import fetch_gleif, load_mapping
+
+                if load_mapping(config.data_dir())[0] is None:
+                    fetch_gleif(config.data_dir())
+            except Exception as exc:  # noqa: BLE001 — never kills the loop
+                log.warning("gleif self-heal failed: %s", exc)
+            last_gleif = now
+
+        # F8: mirror the ECB rates (daily) so the snapshot gets *_eur columns
+        if now - last_fx >= 20 * 3600:
+            try:
+                from crible.providers.fx import fetch_rates
+
+                fetch_rates(config.data_dir())
+            except Exception as exc:  # noqa: BLE001 — never kills the loop
+                log.warning("fx rates fetch failed: %s", exc)
+            last_fx = now
+
+        # optional: whole-US audited coverage fast via the companyfacts bulk
+        # (~1.4 GB) weekly, instead of the per-CIK trickle — opt-in for hosts
+        # that can spare the bandwidth (CRIBLE_EDGAR_BULK=1)
+        if os.environ.get("CRIBLE_EDGAR_BULK") and now - last_edgar_bulk >= 7 * 24 * 3600:
+            try:
+                log.info("edgar bulk: %s", run_edgar_bulk())
+            except Exception as exc:  # noqa: BLE001 — never kills the loop
+                log.warning("edgar bulk failed: %s", exc)
+            last_edgar_bulk = now
 
         # FR-010: audited ESEF enrichment (keyless; idle without a GLEIF file)
         try:

@@ -19,11 +19,17 @@ def test_fr008_compose_defines_ingest_and_api_with_shared_volume_and_healthcheck
     assert 'command: ["crible", "ingest", "--loop"]' in compose
 
 
-def test_fr008_zero_key_mode_is_the_only_mode() -> None:
-    # the keyless contract, strengthened (2026-07-13): the stack passes NO
-    # provider key env vars at all — there is nothing to configure
+def test_fr008_keyless_by_default_any_key_is_an_optional_passthrough() -> None:
+    # the keyless contract (2026-07-14): the stack runs with NO keys — any
+    # provider key is an OPTIONAL passthrough that DEFAULTS TO EMPTY (disabled),
+    # never required and never hardcoded. EDINET is the one free-key opt-in.
+    import re
+
     compose = (ROOT / "docker-compose.yml").read_text()
-    assert "_KEY" not in compose
+    for line in compose.splitlines():
+        if "_KEY" in line and not line.strip().startswith("#"):
+            assert re.search(r"_KEY:\s*\$\{[A-Z_]+:-\}", line), f"key not empty-defaulted: {line!r}"
+    assert "CRIBLE_EDINET_KEY: ${CRIBLE_EDINET_KEY:-}" in compose
 
 
 def test_fr008_no_secrets_baked_into_the_image() -> None:

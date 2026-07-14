@@ -12,6 +12,15 @@ services:
       CRIBLE_DATA_DIR: /data
       CRIBLE_BUDGET_PER_HOUR: ${CRIBLE_BUDGET_PER_HOUR:-330}
       CRIBLE_BOOTSTRAP_SAMPLE: ${CRIBLE_BOOTSTRAP_SAMPLE:-}
+      # SEC fair-access: naming the operator (+ contact email) is polite and
+      # avoids WAF throttling of the EDGAR audited-US layer. Keyless, optional.
+      CRIBLE_SEC_USER_AGENT: ${CRIBLE_SEC_USER_AGENT:-crible-screener}
+      # optional: whole-US audited coverage via the companyfacts bulk (~1.4 GB
+      # weekly) instead of the per-CIK trickle — set to 1 to enable
+      CRIBLE_EDGAR_BULK: ${CRIBLE_EDGAR_BULK:-}
+      # optional free-key opt-in: audited Japan (EDINET). Empty = disabled, the
+      # core and published dataset stay keyless (NFR-009).
+      CRIBLE_EDINET_KEY: ${CRIBLE_EDINET_KEY:-}
     healthcheck:
       test: ["CMD", "python", "-c", "import pathlib,sys,time; p=pathlib.Path('/data/status.json'); sys.exit(0 if p.exists() or time.time() else 1)"]
       interval: 30s
