@@ -35,6 +35,29 @@ class AuditedBulkProvider(Protocol):
         ...
 
 
+def merge_audited(
+    primary: dict[tuple[str, str], pd.DataFrame],
+    *fallbacks: dict[tuple[str, str], pd.DataFrame],
+) -> dict[tuple[str, str], pd.DataFrame]:
+    """Merge several audited frame-dicts for one listing, per statement/freq.
+
+    The primary source wins on every period it reports; each fallback only
+    backfills periods the merge does not yet have (e.g. SEC FSDS adding
+    pre-8-year history under companyfacts). Frames are keyed by
+    (statement_type, freq) with a ``period`` column."""
+    out: dict[tuple[str, str], pd.DataFrame] = {k: v.copy() for k, v in primary.items()}
+    for fallback in fallbacks:
+        for key, frame in fallback.items():
+            if key not in out:
+                out[key] = frame.copy()
+                continue
+            have = set(out[key]["period"].astype(str))
+            extra = frame[~frame["period"].astype(str).isin(have)]
+            if len(extra):
+                out[key] = pd.concat([out[key], extra], ignore_index=True)
+    return out
+
+
 def write_audited_frames(
     data_dir: Path | str,
     *,

@@ -18,6 +18,7 @@ from crible.compute.ranks import attach_ranks, price_return
 from crible.compute.ratios import compute_ratios
 from crible.compute.scores import all_scores
 from crible.ingest.raw import iter_raw_files
+from crible.providers.audited import merge_audited
 
 SNAPSHOT_NAME = "snapshot.parquet"
 
@@ -175,12 +176,16 @@ def build_snapshot(data_dir: Path | str, symbols: list[str] | None = None) -> pd
     parts = []
     for symbol in todo:
         scraped = latest_raw_frames(data_dir, symbol, provider="yfinance")
-        # the audited layer: ESEF for the EU, EDGAR for the US — a symbol
-        # realistically has one of the two
-        audited = {
-            **latest_raw_frames(data_dir, symbol, provider="esef"),
-            **latest_raw_frames(data_dir, symbol, provider="edgar"),
-        }
+        # the audited layer, per region (a listing realistically has one): US
+        # companyfacts wins recent periods and FSDS backfills the deep history;
+        # ESEF (EU), Companies House (UK) and EDINET (JP) don't overlap it.
+        audited = merge_audited(
+            latest_raw_frames(data_dir, symbol, provider="edgar"),
+            latest_raw_frames(data_dir, symbol, provider="edgar-fsds"),
+            latest_raw_frames(data_dir, symbol, provider="esef"),
+            latest_raw_frames(data_dir, symbol, provider="companies-house"),
+            latest_raw_frames(data_dir, symbol, provider="edinet"),
+        )
         if not scraped and not audited:
             continue
         quote = quotes.get(symbol)

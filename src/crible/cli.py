@@ -281,13 +281,18 @@ def refresh(
         True, "--fetch-fx/--no-fetch-fx",
         help="Mirror the ECB daily rates so the snapshot gets *_eur columns",
     ),
+    fsds_quarters: int = typer.Option(
+        0, "--fsds-quarters",
+        help="Backfill deep US history from the N most recent SEC FSDS quarters (0=off)",
+    ),
 ) -> None:
     """One bounded keyless refresh pass (the nightly dataset run)."""
     from crible.ingest.service import run_refresh
 
     result = run_refresh(
         deadline_seconds=deadline, esef_limit=esef_limit, edgar_limit=edgar_limit,
-        edgar_bulk=edgar_bulk, fetch_gleif=fetch_gleif, fetch_fx=fetch_fx,
+        edgar_bulk=edgar_bulk, fsds_quarters=fsds_quarters,
+        fetch_gleif=fetch_gleif, fetch_fx=fetch_fx,
     )
     typer.echo(json.dumps(result, indent=2, default=str))
 

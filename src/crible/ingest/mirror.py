@@ -55,6 +55,7 @@ def fetch_if_stale(
     url: str,
     *,
     http=None,
+    headers: dict | None = None,
     max_age_seconds: float = DEFAULT_MAX_AGE,
     now: Callable[[], float] = time.time,
     chunk: int = 1 << 20,
@@ -78,10 +79,12 @@ def fetch_if_stale(
 
         http = httpx.Client(timeout=120, follow_redirects=True)
 
-    headers = {"If-None-Match": meta["etag"]} if meta.get("etag") and path.exists() else {}
+    request_headers = dict(headers or {})
+    if meta.get("etag") and path.exists():
+        request_headers["If-None-Match"] = meta["etag"]
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with http.stream("GET", url, headers=headers) as response:
+        with http.stream("GET", url, headers=request_headers) as response:
             if getattr(response, "status_code", 200) == 304 and path.exists():
                 meta_path.write_text(json.dumps({**meta, "fetched_at": now()}))
                 return MirrorResult(path=path, source="cached")

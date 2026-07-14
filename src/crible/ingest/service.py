@@ -25,6 +25,7 @@ from crible.ingest.enrichment import (  # re-exported for the CLI/tests/site_exp
     run_edgar_cycle,
     run_esef_cycle,
     run_esef_sweep,
+    run_fsds,
 )
 from crible.ingest.queue import CrawlQueue
 from crible.ingest.state import connect as _connect
@@ -33,7 +34,7 @@ from crible.providers.yfinance_provider import YFinanceProvider
 from crible.universe import BootstrapReport, UniverseSourceError, refresh_universe
 
 __all__ = [
-    "run_esef_cycle", "run_esef_sweep", "run_edgar_cycle", "run_edgar_bulk",
+    "run_esef_cycle", "run_esef_sweep", "run_edgar_cycle", "run_edgar_bulk", "run_fsds",
     "run_once", "run_refresh", "run_loop", "run_bootstrap", "run_compute",
     "run_price_refresh", "bootstrap_sample",
 ]
@@ -280,6 +281,7 @@ def run_refresh(
     edgar_limit: int = 25,
     *,
     edgar_bulk: bool = False,
+    fsds_quarters: int = 0,
     fetch_gleif: bool = False,
     fetch_fx: bool = False,
     fetch_universe=None,
@@ -378,6 +380,14 @@ def run_refresh(
     except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
         log.warning("edgar cycle failed: %s", exc)
         result["edgar"] = {"outage": str(exc)}
+    if fsds_quarters > 0:
+        try:
+            from crible.providers.edgar_fsds import recent_quarters
+
+            result["fsds"] = run_fsds(recent_quarters(fsds_quarters), client=edgar_client)
+        except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
+            log.warning("fsds cycle failed: %s", exc)
+            result["fsds"] = {"outage": str(exc)}
     try:
         result["prices"] = run_price_refresh(crawler.budget, provider=price_provider)
     except Exception as exc:  # noqa: BLE001

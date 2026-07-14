@@ -294,6 +294,81 @@ def run_edgar_bulk(
         con.close()
 
 
+FSDS_MAX_AGE = 7 * 24 * 3600
+
+
+def run_fsds(
+    quarters, client=None, ticker_map: dict[str, int] | None = None, http=None,
+    limit: int | None = None,
+) -> dict:
+    """SEC FSDS depth cycle: for each (year, quarter), mirror the archive and
+    write provider='edgar-fsds' raw for resolved US issuers. companyfacts
+    (provider='edgar') wins recent periods at reconcile; FSDS backfills the
+    pre-8-year history companyfacts drops. Public domain — redistributable."""
+    from crible.ingest.mirror import fetch_if_stale
+    from crible.providers.audited import write_audited_frames
+    from crible.providers.edgar import resolve_ciks
+    from crible.providers.edgar_fsds import iter_fsds, quarter_url
+
+    data = config.data_dir()
+    outcome: dict = {"enriched": 0, "quarters": [], "unmatched": 0, "outage": None, "skipped": None}
+
+    con = _connect()
+    try:
+        companies = [
+            {"symbol": s}
+            for (s,) in con.execute(
+                "SELECT symbol FROM companies WHERE region = 'us' AND NOT delisted"
+            ).fetchall()
+        ]
+        if not companies:
+            outcome["skipped"] = "no US companies in the universe yet"
+            return outcome
+        if ticker_map is None:
+            if client is None:
+                from crible.providers.edgar import EdgarClient
+
+                client = EdgarClient()
+            try:
+                ticker_map = client.company_tickers()
+            except Exception as exc:  # noqa: BLE001 — outage: record, resume next run
+                outcome["outage"] = f"company_tickers.json: {exc}"
+                log.warning("fsds: %s", outcome["outage"])
+                return outcome
+        resolved, unmatched = resolve_ciks(companies, ticker_map)
+        outcome["unmatched"] = len(unmatched)
+        by_cik = {cik: symbol for symbol, cik in resolved.items()}
+        headers = {"User-Agent": config.sec_user_agent()}
+        fetched_at = time.time()
+        for year, quarter in quarters:
+            try:
+                result = fetch_if_stale(
+                    data, "edgar-fsds", f"{year}q{quarter}.zip", quarter_url(year, quarter),
+                    http=http, headers=headers, max_age_seconds=FSDS_MAX_AGE,
+                )
+            except Exception as exc:  # noqa: BLE001 — one bad quarter never sinks the run
+                outcome["outage"] = f"{year}q{quarter}: {exc}"
+                log.warning("fsds: %s — skipping quarter", outcome["outage"])
+                continue
+            count = 0
+            for cik, frames in iter_fsds(result.path, set(by_cik)):
+                write_audited_frames(
+                    data, symbol=by_cik[cik], provider_id="edgar-fsds",
+                    frames=frames, fetched_at=fetched_at,
+                )
+                count += 1
+                outcome["enriched"] += 1
+                if limit is not None and outcome["enriched"] >= limit:
+                    break
+            outcome["quarters"].append(f"{year}q{quarter} ({count})")
+            if limit is not None and outcome["enriched"] >= limit:
+                break
+        log.info("fsds: enriched %d issuer-quarters across %s", outcome["enriched"], outcome["quarters"])
+        return outcome
+    finally:
+        con.close()
+
+
 def _esef_due(con: duckdb.DuckDBPyConnection, symbol: str, cutoff: float) -> bool:
     row = con.execute(
         "SELECT last_fetched_at FROM esef_tasks WHERE symbol = ?", [symbol]
