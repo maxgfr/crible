@@ -171,20 +171,24 @@ def run_bootstrap() -> BootstrapReport:
         con.close()
 
 
-def _make_crawler(con: duckdb.DuckDBPyConnection, provider=None) -> Crawler:
+def _make_crawler(con: duckdb.DuckDBPyConnection, provider=None, budget=None) -> Crawler:
     return Crawler(
         queue=CrawlQueue(con),
         provider=provider if provider is not None else YFinanceProvider(),
-        budget=TokenBucket(capacity=config.budget_per_hour(), window_seconds=3600),
+        # a caller-owned bucket is reused across cycles (the long-lived loop
+        # keeps ONE rolling window, NFR-007); only a one-shot gets a fresh one
+        budget=budget
+        if budget is not None
+        else TokenBucket(capacity=config.budget_per_hour(), window_seconds=3600),
         backoff=BackoffPolicy(),
         data_dir=config.data_dir(),
     )
 
 
-def run_once(limit: int = 50) -> CrawlOutcome:
+def run_once(limit: int = 50, budget=None, provider=None) -> CrawlOutcome:
     con = _connect()
     try:
-        crawler = _make_crawler(con)
+        crawler = _make_crawler(con, provider=provider, budget=budget)
         outcome = crawler.run_cycle(limit=limit)
         update_heartbeat(
             requests_last_hour=crawler.budget.used_in_window(),
@@ -780,19 +784,24 @@ def run_loop(cycle_limit: int = 40, compute_every_seconds: float = 1800.0) -> No
     first_cycle = not (config.data_dir() / "snapshot").exists()
     last_compute = 0.0
     last_price_refresh = 0.0
-    price_budget = TokenBucket(capacity=config.budget_per_hour(), window_seconds=3600)
+    # ONE long-lived bucket shared by the crawl and the price refresh — both
+    # hit Yahoo, so NFR-007 (330 req/h) is a single rolling window, not one per
+    # cycle. Rebuilding it each cycle (the F1 bug) reset the window every few
+    # seconds and busted the budget. Mirrors run_refresh's shared bucket.
+    budget = TokenBucket(capacity=config.budget_per_hour(), window_seconds=3600)
+    provider = YFinanceProvider()
     while True:
         # first boot: crawl exactly the bootstrap sample, then publish
         # immediately — a first screen must return rows within hours (FR-008)
         limit = max(10, len(bootstrap_sample())) if first_cycle else cycle_limit
-        outcome = run_once(limit=limit)
+        outcome = run_once(limit=limit, budget=budget, provider=provider)
         first_cycle = False
         now = time.time()
 
         # FR-011: daily priority-tier price refresh (shares the request budget)
         if now - last_price_refresh >= 20 * 3600:
             try:
-                log.info("price refresh: %s", run_price_refresh(price_budget))
+                log.info("price refresh: %s", run_price_refresh(budget))
             except Exception as exc:  # noqa: BLE001 — never kills the loop
                 log.warning("price refresh failed: %s", exc)
             last_price_refresh = now
