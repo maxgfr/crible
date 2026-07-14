@@ -198,7 +198,11 @@ def build_snapshot(data_dir: Path | str, symbols: list[str] | None = None) -> pd
         return pd.DataFrame()
     # FR-015: ranks are cross-sectional — computed once the whole universe
     # snapshot is assembled (peer groups need region/sector from the universe).
-    return attach_ranks(attach_universe(pd.concat(parts, ignore_index=True), data_dir))
+    # FX companions (*_eur) are attached after the universe (needs currency);
+    # a no-op when no ECB rates are mirrored, so offline builds are unchanged.
+    from crible.providers.fx import attach_fx
+
+    return attach_ranks(attach_fx(attach_universe(pd.concat(parts, ignore_index=True), data_dir), data_dir))
 
 
 def publish_snapshot(snapshot: pd.DataFrame, data_dir: Path | str) -> Path:

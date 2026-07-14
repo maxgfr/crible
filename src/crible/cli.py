@@ -277,13 +277,17 @@ def refresh(
         True, "--fetch-gleif/--no-fetch-gleif",
         help="Self-heal the GLEIF ISIN→LEI mirror so audited EU (ESEF) is enabled",
     ),
+    fetch_fx: bool = typer.Option(
+        True, "--fetch-fx/--no-fetch-fx",
+        help="Mirror the ECB daily rates so the snapshot gets *_eur columns",
+    ),
 ) -> None:
     """One bounded keyless refresh pass (the nightly dataset run)."""
     from crible.ingest.service import run_refresh
 
     result = run_refresh(
         deadline_seconds=deadline, esef_limit=esef_limit, edgar_limit=edgar_limit,
-        edgar_bulk=edgar_bulk, fetch_gleif=fetch_gleif,
+        edgar_bulk=edgar_bulk, fetch_gleif=fetch_gleif, fetch_fx=fetch_fx,
     )
     typer.echo(json.dumps(result, indent=2, default=str))
 

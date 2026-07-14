@@ -281,6 +281,7 @@ def run_refresh(
     *,
     edgar_bulk: bool = False,
     fetch_gleif: bool = False,
+    fetch_fx: bool = False,
     fetch_universe=None,
     provider=None,
     price_provider=None,
@@ -318,6 +319,15 @@ def run_refresh(
                 _fetch_gleif(data)
             except Exception as exc:  # noqa: BLE001 — never kills the refresh
                 log.warning("gleif auto-fetch failed: %s — ESEF stays idle this run", exc)
+
+    if fetch_fx:
+        # mirror the ECB daily rates so the snapshot gets *_eur companions
+        from crible.providers.fx import fetch_rates
+
+        try:
+            fetch_rates(data)
+        except Exception as exc:  # noqa: BLE001 — never kills the refresh
+            log.warning("fx rates fetch failed: %s — *_eur columns stay NULL this run", exc)
 
     con = _connect()
     try:
