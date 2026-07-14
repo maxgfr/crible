@@ -157,6 +157,28 @@ def run_bootstrap() -> BootstrapReport:
         con.close()
 
 
+UNIVERSE_REFRESH_SECONDS = 7 * 24 * 3600
+
+
+def maybe_refresh_universe(
+    con: duckdb.DuckDBPyConnection, last_refresh: float, now: float, *, fetch=None,
+    interval: float = UNIVERSE_REFRESH_SECONDS,
+) -> float:
+    """Re-fetch the universe (idempotent upsert) and re-seed the queue at most
+    once per ``interval``; returns the timestamp to record. The self-hosted
+    loop only bootstrapped once (F5), so new listings and delistings froze
+    forever. A source outage is logged and retried next interval, never fatal."""
+    if now - last_refresh < interval:
+        return last_refresh
+    try:
+        refresh_universe(con, fetch=fetch) if fetch else refresh_universe(con)
+        CrawlQueue(con).seed_from_universe()
+        log.info("universe refreshed (periodic)")
+    except UniverseSourceError as exc:
+        log.warning("periodic universe refresh skipped: %s", exc)
+    return now
+
+
 def _make_crawler(con: duckdb.DuckDBPyConnection, provider=None, budget=None) -> Crawler:
     return Crawler(
         queue=CrawlQueue(con),
@@ -386,6 +408,7 @@ def run_loop(cycle_limit: int = 40, compute_every_seconds: float = 1800.0) -> No
     first_cycle = not (config.data_dir() / "snapshot").exists()
     last_compute = 0.0
     last_price_refresh = 0.0
+    last_universe_refresh = time.time()  # just bootstrapped — next refresh in a week
     # ONE long-lived bucket shared by the crawl and the price refresh — both
     # hit Yahoo, so NFR-007 (330 req/h) is a single rolling window, not one per
     # cycle. Rebuilding it each cycle (the F1 bug) reset the window every few
@@ -407,6 +430,16 @@ def run_loop(cycle_limit: int = 40, compute_every_seconds: float = 1800.0) -> No
             except Exception as exc:  # noqa: BLE001 — never kills the loop
                 log.warning("price refresh failed: %s", exc)
             last_price_refresh = now
+
+        # F5: keep the universe current — new listings / delistings otherwise
+        # freeze at first boot (the self-hosted loop never re-fetched it)
+        con = _connect()
+        try:
+            last_universe_refresh = maybe_refresh_universe(con, last_universe_refresh, now)
+        except Exception as exc:  # noqa: BLE001 — never kills the loop
+            log.warning("universe refresh failed: %s", exc)
+        finally:
+            con.close()
 
         # FR-010: audited ESEF enrichment (keyless; idle without a GLEIF file)
         try:
