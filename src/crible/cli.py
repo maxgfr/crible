@@ -320,11 +320,17 @@ def export_site_cmd(
 @app.command()
 def compute() -> None:
     """Build and atomically publish the wide snapshot from the raw layer."""
-    from crible.compute.snapshot import build_snapshot, publish_snapshot
     from crible import config
+    from crible.compute.snapshot import build_snapshot_incremental, publish_snapshot
 
     data = config.data_dir()
-    snapshot = build_snapshot(data)
+    # incremental: rebuild only symbols whose raw changed since the last build,
+    # reuse the base cache for the rest, and skip the republish when nothing
+    # changed (F7) — same path the service loop and nightly refresh use
+    snapshot = build_snapshot_incremental(data)
+    if snapshot is None:
+        typer.echo("snapshot unchanged — no raw changes since the last build")
+        return
     if snapshot.empty:
         _fail("no raw data yet — run `crible ingest --bootstrap` then `crible ingest --once` first")
     path = publish_snapshot(snapshot, data)

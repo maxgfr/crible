@@ -141,3 +141,29 @@ def test_fr005_status_exposes_coverage_freshness_and_provider_health(data_dir) -
     assert ingest["providers"]["yfinance"] == "healthy"
     assert ingest["esef_unmatched"] == 3  # FR-010 AC-4 visibility
     assert body["by_region"]["europe"] == 6
+
+
+def test_fr005_compute_is_incremental_and_skips_when_unchanged(tmp_path, monkeypatch) -> None:
+    """The CLI `compute` must use the incremental path (F7): write the base
+    cache and, on a second run with no raw change, skip the republish."""
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    con = duckdb.connect(str(tmp_path / "crible.duckdb"))
+    bootstrap_universe(con, fixture_frame())
+    export_universe_parquet(con, tmp_path)
+    con.close()
+    from crible.ingest.raw import write_raw_statement
+
+    write_raw_statement(
+        tmp_path, symbol="AIR.PA", provider="yfinance", statement_type="income",
+        freq="annual", frame=pd.DataFrame({"period": ["2024"], "TotalRevenue": [100.0]}),
+        fetched_at=1000.0,
+    )
+
+    first = runner.invoke(app, ["compute"])
+    assert first.exit_code == 0, first.output
+    assert "published" in first.output
+    assert (tmp_path / "snapshot" / "base.parquet").exists()  # incremental cache written
+
+    second = runner.invoke(app, ["compute"])
+    assert second.exit_code == 0, second.output
+    assert "unchanged" in second.output.lower()  # no raw change → no republish
