@@ -24,7 +24,7 @@ Branch : `improve/2026-07-14-bulk-first-data`.
 - [x] **FIX-012 · F12 · P2 — borner `solve_pow`.** RED `tests/test_captcha.py` : difficulté absurde → abort sous ceiling (itérations/temps). GREEN : cap `max_iterations`/deadline dans `solve_pow`, `StooqError` au-delà.
 - [x] **FIX-013 · F13 · P2 — bootstrap streamé.** RED `tests/test_bootstrap_data.py` : download streamé vers fichier temp (pas de `BytesIO(response.content)`). GREEN : `http.stream` + `iter_bytes` → temp-then-rename, comme `edgar.download_bulk`.
 - [x] **FIX-008 · F3 · P2 — dé-fragmenter `attach_ranks`.** RED `tests/test_fr015_ranks.py` : aucun `PerformanceWarning` (filterwarnings error). GREEN : construire les colonnes de rang en un `concat`.
-- [ ] **FIX-009 · F4 · P2 — refactor `service.py` + seam.** GREEN : extraire `ingest/enrichment.py` (cycles audités) + `ingest/refresh.py` (orchestration), poser `providers/audited.py::AuditedBulkProvider` (contrat `resolve/fetch/iter_bulk` + fraîcheur `*_tasks`) et `ingest/mirror.py` (couche miroir/last-good). Tests existants restent verts (caractérisation). Dé-duppliquer le boilerplate GLEIF (223-234 vs 507-518).
+- [x] **FIX-009 · F4 · P2 — refactor `service.py` + seam.** GREEN : extraire `ingest/enrichment.py` (cycles audités) + `ingest/refresh.py` (orchestration), poser `providers/audited.py::AuditedBulkProvider` (contrat `resolve/fetch/iter_bulk` + fraîcheur `*_tasks`) et `ingest/mirror.py` (couche miroir/last-good). Tests existants restent verts (caractérisation). Dé-duppliquer le boilerplate GLEIF (223-234 vs 507-518).
 - [ ] **GATE Phase 1** : `pytest` + `vitest` verts ; `ultraeval` re-run partiel → `compare --gate` EXIT 0 (≥ 80).
 
 ## Phase 2 — Étendre (chaque source sur le seam + miroir)
