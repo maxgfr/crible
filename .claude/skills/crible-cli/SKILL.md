@@ -1,6 +1,6 @@
 ---
 name: crible-cli
-description: Use when the user wants to screen stocks or run the crible screener from the terminal — find quality/value/undervalued companies, filter by fundamentals (P/E, ROE, debt, margins), scores (Piotroski, Altman Z, Beneish M), composite ranks, country/region/sector, export screening results to CSV, list filterable fields, check data coverage/freshness, or set up local data. Triggers include "screen for…", "find stocks/companies that…", "quelles sociétés…", "run a screen", "crible", "quality stocks in Europe", "P/E below…", "export the results".
+description: Use when the user wants to screen stocks OR operate the crible screener from the terminal — find quality/value/undervalued companies, filter by fundamentals (P/E, ROE, debt, margins), scores (Piotroski, Altman Z, Beneish M), composite ranks, country/region/sector, export screening results to CSV, list filterable fields; AND to manage its data: pull/refresh the dataset, crawl or bootstrap the universe, import price dumps, download Stooq bulk, rebuild the snapshot, publish the static site, check coverage/freshness. Triggers include "screen for…", "find stocks/companies that…", "quelles sociétés…", "run a screen", "crible", "quality stocks in Europe", "P/E below…", "export the results", "refresh crible data", "update the dataset", "rebuild the snapshot", "publish the site", "ingest / crawl", "import prices".
 ---
 
 # Run stock screens with the crible CLI
@@ -95,15 +95,51 @@ When a screen returns 0 rows, loosen one clause at a time (coverage is bounded:
 `crible status` shows how many companies are crawled) — do not conclude "no
 company matches" from a thin dataset.
 
-## 5. Keeping data fresh
+## 5. Operating crible (managing the data lifecycle)
 
-`docker compose up` runs the continuous crawl loop; a nightly
-`uv run crible demo-refresh --deadline 9000` is the bounded cron alternative;
-consume-only setups re-pull the published dataset with
-`uv run crible bootstrap --force`.
+Every command below is keyless. Pick the path that matches the setup.
 
-Prices for symbols the crawl has not reached come from dump distillates:
-`crible import-prices huggingface` (US, plain HTTPS) or
-`crible import-prices <stooq-zip>` (worldwide, manual download from
-stooq.com/db/h/), then `crible compute`. Check `price_asof` in results —
-it carries the staleness honestly.
+**Consume-only (fastest — no crawl):** pull the published open dataset.
+```bash
+uv run crible bootstrap                 # ~30 s; refuses to overwrite an existing data/
+uv run crible bootstrap --force         # re-pull the latest layer
+uv run crible bootstrap --repo owner/name   # pull from a fork's published dataset
+```
+
+**Crawl your own universe:**
+```bash
+uv run crible ingest --bootstrap        # load the universe from FinanceDatabase (once)
+uv run crible ingest --once --limit 50  # one bounded crawl cycle
+uv run crible ingest --loop             # continuous crawl loop
+uv run crible ingest --once --fetch-gleif   # also mirror GLEIF ISIN→LEI (unlocks audited EU)
+```
+
+**Nightly bounded refresh (the real dataset run — audited enrichment):**
+```bash
+uv run crible refresh --deadline 9000   # keyless pass: ESEF + EDGAR enrich, self-heal GLEIF, mirror ECB FX; prints a JSON report
+```
+Flags: `--edgar-bulk` (download companyfacts.zip ~1.4 GB and ingest ALL
+resolved US issuers), `--fsds-quarters N` (backfill deep US history from the N
+most recent SEC FSDS quarters), `--esef-limit` / `--edgar-limit` (per-run
+caps, default 25), `--no-fetch-gleif` / `--no-fetch-fx` (skip those steps).
+
+**Prices (dump-based, no API):**
+```bash
+uv run crible import-prices huggingface           # US OHLCV dump, plain HTTPS
+uv run crible import-prices path/to/stooq.zip     # worldwide (manual dl from stooq.com/db/h/)
+uv run crible import-prices huggingface --max-age-days 1   # skip if imported < 1 day ago
+uv run crible stooq-download d_world_txt --import # auto-fetch the captcha-gated Stooq bulk (clears PoW + OCR), then import
+uv run crible solve-captcha shot.png              # standalone captcha OCR helper (optional 'captcha' extra)
+```
+Distillate = last close + as-of date + trailing 6-month return in
+`data/prices-latest.parquet`; the windowed series lands in `data/prices/`.
+
+**Rebuild & publish:**
+```bash
+uv run crible compute                   # build + atomically publish the wide snapshot (incremental: skips the republish when nothing changed)
+uv run crible export-site --out site-data --min-symbols 50   # write the static artifacts the hosted screener serves (refuses below --min-symbols)
+```
+
+`docker compose up` runs the continuous crawl+compute loop as a service.
+After any raw change, `crible compute` is what refreshes ratios/ranks. Check
+`price_asof` in results — staleness is reported honestly, never imputed.
