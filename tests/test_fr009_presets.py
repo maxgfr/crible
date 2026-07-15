@@ -91,6 +91,7 @@ def test_fr009_running_a_preset_is_byte_for_byte_its_dsl() -> None:
             "shareholder_yield": [0.07, 0.01, 0.09],
             "sloan_accruals": [-0.02, 0.12, -0.05],
             "return_12_1": [0.35, -0.1, 0.28],
+            "mohanram_g": [5.0, 2.0, 6.0],
         }
     )
     con.register("snapshot_latest", frame)

@@ -93,6 +93,7 @@ const CATALOG: Record<string, CatalogEntry> = {
   zmijewski_score: { label: "Zmijewski", group: "Scores" },
   ohlson_o: { label: "Ohlson O", group: "Scores" },
   montier_c: { label: "Montier C", group: "Scores" },
+  mohanram_g: { label: "Mohanram G (6/8)", group: "Scores" },
   // ranks & momentum (FR-015)
   composite_rank: { label: "Composite rank", group: "Ranks" },
   quality_rank: { label: "Quality rank", group: "Ranks" },
@@ -208,7 +209,8 @@ export function fieldGroup(name: string): string {
   if (name.endsWith("_rank") || name.startsWith("rank_")) return "Ranks";
   if (
     name.startsWith("piotroski_") || name.startsWith("altman_") || name.startsWith("beneish_") ||
-    name.startsWith("zmijewski") || name.startsWith("ohlson") || name.startsWith("montier")
+    name.startsWith("zmijewski") || name.startsWith("ohlson") || name.startsWith("montier") ||
+    name.startsWith("mohanram") || name.startsWith("dechow")
   ) {
     return "Scores";
   }

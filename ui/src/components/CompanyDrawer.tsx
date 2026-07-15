@@ -36,6 +36,11 @@ const MONTIER = [
   "montier_ni_cfo_diverging", "montier_dso_rising", "montier_dsi_rising",
   "montier_oca_to_rev_rising", "montier_depr_declining", "montier_asset_growth_high",
 ];
+// Mohanram G (partial 6/8): peer-relative 0/1 signals, latest period only
+const MOHANRAM = [
+  "mohanram_g1_roa", "mohanram_g2_cfo_roa", "mohanram_g3_accruals",
+  "mohanram_g4_roa_stability", "mohanram_g5_growth_stability", "mohanram_g6_capex_intensity",
+];
 // value toolkit — each metric links back to the components it is built from
 const VALUE_ROWS: [string, string][] = [
   ["Magic Formula rank", "magic_formula_rank"],
@@ -426,6 +431,22 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                       <td className="meta">{flag.replace("montier_", "· ")}</td>
                       {detail.periods.map((p) => (
                         <td key={String(p.period)}>{num(p[flag])}</td>
+                      ))}
+                    </tr>
+                  ))}
+                  <tr>
+                    <td>Mohanram G (6/8)</td>
+                    {detail.periods.map((p) => (
+                      <td key={String(p.period)}>
+                        <Val column="mohanram_g" value={p.mohanram_g} />
+                      </td>
+                    ))}
+                  </tr>
+                  {MOHANRAM.map((signal) => (
+                    <tr key={signal}>
+                      <td className="meta">{signal.replace("mohanram_", "· ")}</td>
+                      {detail.periods.map((p) => (
+                        <td key={String(p.period)}>{num(p[signal])}</td>
                       ))}
                     </tr>
                   ))}

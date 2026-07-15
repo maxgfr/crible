@@ -246,9 +246,10 @@ def finalize_snapshot(rows: pd.DataFrame, data_dir: Path | str) -> pd.DataFrame:
         return rows
     # FX companions (*_eur) attach after the universe (needs currency); a no-op
     # when no ECB rates are mirrored, so offline builds are unchanged.
+    from crible.compute.mohanram import attach_mohanram
     from crible.providers.fx import attach_fx
 
-    return attach_ranks(attach_fx(attach_universe(rows, data_dir), data_dir))
+    return attach_mohanram(attach_ranks(attach_fx(attach_universe(rows, data_dir), data_dir)))
 
 
 def build_snapshot(data_dir: Path | str, symbols: list[str] | None = None) -> pd.DataFrame:
@@ -265,7 +266,8 @@ BASE_SCHEMA_NAME = "base-schema.json"
 # 2: quick-win indicators (CCC/operating cycle, payout, ROIC, rule of 40,
 #    Sloan accruals, PEG, shareholder yield)
 # 3: momentum trio (return_12_1, high_52w_proximity, volatility_1y)
-ENGINE_SCHEMA_VERSION = 3
+# 4: Mohanram G (partial 6/8) — inputs + peer-relative signals + score
+ENGINE_SCHEMA_VERSION = 4
 
 
 def _newest_raw_stamp(data_dir: Path | str, symbol: str) -> float:

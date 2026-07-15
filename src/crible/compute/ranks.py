@@ -89,6 +89,29 @@ def _rank_group(group: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def latest_period_index(snapshot: pd.DataFrame) -> pd.Index:
+    """Index of each symbol's latest fiscal row — the only rows ranked
+    (percentiles are cross-sectional; older periods keep NULL)."""
+    period = snapshot["period"] if "period" in snapshot.columns else pd.Series("", index=snapshot.index)
+    return (
+        snapshot.assign(_period=period.astype(str))
+        .sort_values("_period")
+        .groupby("symbol", sort=False)
+        .tail(1)
+        .index
+    )
+
+
+def peer_group_key(latest: pd.DataFrame) -> pd.Series:
+    """region×sector when the pair holds ≥ MIN_PEERS latest rows, else
+    'global' — the peer-group rule shared by ranks and Mohanram."""
+    region = latest["region"] if "region" in latest.columns else pd.Series(None, index=latest.index)
+    sector = latest["sector"] if "sector" in latest.columns else pd.Series(None, index=latest.index)
+    pair = region.astype("string").str.cat(sector.astype("string"), sep="×")
+    sizes = pair.groupby(pair).transform("size")
+    return pair.where(pair.notna() & (sizes >= MIN_PEERS), "global")
+
+
 def attach_ranks(snapshot: pd.DataFrame) -> pd.DataFrame:
     """Attach FR-015 rank columns to the latest period row of each symbol."""
     if snapshot.empty or "symbol" not in snapshot.columns:
@@ -106,23 +129,8 @@ def attach_ranks(snapshot: pd.DataFrame) -> pd.DataFrame:
     )
     snapshot = pd.concat([snapshot, new_cols], axis=1).copy()
 
-    period = snapshot["period"] if "period" in snapshot.columns else pd.Series("", index=snapshot.index)
-    latest_idx = (
-        snapshot.assign(_period=period.astype(str))
-        .sort_values("_period")
-        .groupby("symbol", sort=False)
-        .tail(1)
-        .index
-    )
-    latest = snapshot.loc[latest_idx]
-
-    region = latest["region"] if "region" in latest.columns else pd.Series(None, index=latest.index)
-    sector = latest["sector"] if "sector" in latest.columns else pd.Series(None, index=latest.index)
-    pair = region.astype("string").str.cat(sector.astype("string"), sep="×")
-    sizes = pair.groupby(pair).transform("size")
-    group_key = pair.where(pair.notna() & (sizes >= MIN_PEERS), "global")
-
-    for key, members in latest.groupby(group_key, sort=False):
+    latest = snapshot.loc[latest_period_index(snapshot)]
+    for key, members in latest.groupby(peer_group_key(latest), sort=False):
         ranks = _rank_group(members)
         for col in ranks.columns:
             snapshot.loc[members.index, col] = ranks[col]

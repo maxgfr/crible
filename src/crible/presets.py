@@ -150,6 +150,13 @@ _PRESETS = [
         columns=("dividend_coverage", "weighted_dividend_yield", "fcf_margin", "net_income"),
     ),
     Preset(
+        id="mohanram-growth",
+        name="Mohanram growth quality",
+        description="At least 5 of the 6 available G-Score signals (adapted starting point — the published cutoff is 6-of-8)",
+        dsl="mohanram_g >= 5",
+        columns=("mohanram_g", "mohanram_roa", "mohanram_cfo_roa", "mohanram_capex_intensity", "composite_rank"),
+    ),
+    Preset(
         id="momentum-12-1",
         name="Momentum 12-1",
         description="Classic Jegadeesh-Titman momentum: 12-month return skipping the last month, over 20%",

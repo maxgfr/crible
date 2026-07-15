@@ -164,6 +164,8 @@ def ohlson(canonical: pd.DataFrame) -> pd.DataFrame:
 
 
 def all_scores(canonical: pd.DataFrame, price: pd.Series | None = None) -> pd.DataFrame:
+    from crible.compute.mohanram import mohanram_inputs
+
     return pd.concat(
         [
             piotroski(canonical),
@@ -172,6 +174,9 @@ def all_scores(canonical: pd.DataFrame, price: pd.Series | None = None) -> pd.Da
             zmijewski(canonical),
             ohlson(canonical),
             montier_components(canonical),
+            # per-symbol inputs only — the peer-relative signals + mohanram_g
+            # attach at finalize (cross-sectional, like the FR-015 ranks)
+            mohanram_inputs(canonical),
         ],
         axis=1,
     )

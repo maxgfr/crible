@@ -38,6 +38,7 @@ imputée** ; la colonne `missing_inputs` du snapshot nomme les champs absents.
 | `sloan_accruals` | (NI − OCF) / avg assets | ~unbounded | lower · plus bas | — |
 | `peg_ratio` | P/E ÷ 3y EPS CAGR (%) | > 0 | lower · plus bas | `<= 1` → growth at a reasonable price |
 | `shareholder_yield` | (dividends + net buybacks) / mkt cap | ~unbounded | higher · plus haut | — |
+| `mohanram_g` | Mohanram G (partial 6/8) | 0–6 | higher · plus haut | — (partial score, no published cutoff) |
 | `return_12_1` | 12-month return, last month skipped | ~unbounded | higher · plus haut | — |
 | `high_52w_proximity` | close / 52-week high | 0–1 | higher · plus haut | — |
 | `volatility_1y` | annualized σ of daily log returns | ≥ 0 | context | — |
@@ -505,6 +506,43 @@ aura rejoint celle du 6 mois.
 > reach rule — a short window would understate risk. · Les quatre exigent un historique réel
 > (la fenêtre publiée est de 400 jours) ; une base hors d'atteinte est `NaN`, jamais extrapolée.
 > La volatilité suit la même règle d'année pleine — une fenêtre courte sous-estimerait le risque.
+
+---
+
+## 17. Mohanram G-Score — `mohanram_g` (+ 6 signals) — **partial: 6 of 8**
+
+**Formula**
+
+```
+g1 = ROA (NI / avg TA)                > peer median          g4 = var(ROA)          < peer median
+g2 = CFO-ROA (OCF / avg TA)           > peer median          g5 = var(rev growth)   < peer median
+g3 = OCF > NI (per-symbol)                                   g6 = capex / beginning TA > peer median
+mohanram_g = Σ signals (0–6) — one undecidable signal nulls the score
+```
+
+**EN** — Mohanram (2005, *Separating Winners from Losers among Low Book-to-Market Stocks*)
+scores GROWTH stocks on fundamentals the way Piotroski scores value stocks: profitability and
+cash generation above the peer median, earnings and growth stability, and investment intensity
+(for growth firms, spending MORE than peers is the good sign — the inverse of a value screen).
+Peer group = region×sector (min 5 peers, else global) — the same machinery as the FR-015 ranks.
+**Two of the paper's eight signals are missing**: R&D intensity and advertising intensity have
+no canonical field (no keyless provider maps them). The score is explicitly 0–6, labeled
+"partial", and carries **no color verdict** — the published 6-of-8 cutoff does not transfer.
+
+**FR** — Mohanram (2005) note les valeurs de CROISSANCE sur les fondamentaux comme Piotroski
+note les valeurs décotées : rentabilité et génération de cash au-dessus de la médiane des pairs,
+stabilité des bénéfices et de la croissance, et intensité d'investissement (pour une valeur de
+croissance, investir PLUS que ses pairs est le bon signe — l'inverse d'un filtre value). Groupe
+de pairs = région×secteur (5 pairs minimum, sinon global) — la même mécanique que les ranks
+FR-015. **Deux des huit signaux du papier manquent** : les intensités R&D et publicité n'ont pas
+de champ canonique (aucun fournisseur keyless ne les publie). Le score est explicitement 0–6,
+étiqueté « partiel », et ne porte **aucun verdict couleur** — le seuil publié 6-sur-8 ne
+transfère pas.
+
+> **Caveat · Nuance** — Designed for low book-to-market stocks; on deep-value names read
+> Piotroski instead. Variability signals need ≥3 usable periods. · Conçu pour les faibles
+> book-to-market ; sur la deep value, lire Piotroski. Les signaux de variabilité exigent ≥3
+> périodes utilisables.
 
 ---
 
