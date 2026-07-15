@@ -1,0 +1,30 @@
+  ✓ build state is consistent with the plan and the SRD
+
+Requirement → test coverage:
+  ✓ FR-001 (must): tests/test_fr001_universe.py, tests/test_nfr008_benchmark.py
+  ✓ FR-002 (must): tests/test_fr002_ingest.py, tests/test_fr008_compose.py
+  ✓ FR-003 (must): tests/test_fr003_compute.py
+  ✓ FR-004 (must): tests/test_fr004_dsl.py, tests/test_nfr008_benchmark.py
+  ✓ FR-005 (must): tests/test_fr005_cli.py
+  ✓ FR-006 (must): tests/test_fr006_api.py, tests/test_nfr008_benchmark.py
+  ✓ FR-007 (must): tests/test_fr002_ingest.py, tests/test_fr006_api.py, tests/test_service.py, ui/src/__tests__/fr007.test.tsx
+  ✓ FR-008 (must): tests/test_fr008_compose.py, tests/test_nfr008_benchmark.py
+  ✓ FR-009 (should): tests/test_fr009_presets.py, tests/test_fr013_plugins.py, ui/src/__tests__/fr007.test.tsx
+  ✓ FR-010 (should): tests/test_fr005_cli.py, tests/test_fr010_esef.py
+  ✓ FR-011 (should): tests/test_fr004_dsl.py, tests/test_fr011_prices.py
+  ✓ FR-012 (should): tests/test_fr012_company_detail.py
+  ✓ FR-013 (could): tests/test_api_providers.py, tests/test_fr013_plugins.py
+  · FR-014 (could): no test references it
+  ✓ FR-015 (could): tests/test_fr011_prices.py, tests/test_fr015_ranks.py, tests/test_nfr008_benchmark.py, ui/src/__tests__/fr015.test.tsx
+  ✓ FR-016 (must): tests/test_fr016_edgar.py
+  ✓ FR-017 (should): tests/test_fsds.py
+  ✓ FR-018 (could): tests/test_fx.py
+  ✓ FR-019 (could): tests/test_companies_house.py
+  ✓ FR-020 (could): tests/test_edinet.py
+  ✓ FR-021 (should): tests/test_mirror.py
+  ✓ FR-022 (should): tests/test_fr003_compute.py
+
+Commands (--run-tests):
+  ✓ uv run pytest -q (exit 0)
+  ✓ npm --prefix ui run test -- --run (exit 0)
+  ✓ uv run pytest tests/test_fr015_ranks.py -q (exit 0)

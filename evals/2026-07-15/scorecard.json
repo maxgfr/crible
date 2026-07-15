@@ -1,0 +1,68 @@
+{
+  "overall": 83,
+  "maxScore": 100,
+  "meetsExpectations": true,
+  "bar": 80,
+  "dimensions": [
+    {
+      "id": "correctness",
+      "name": "Correctness",
+      "weight": 0.3,
+      "score": 4.33,
+      "spread": 0.1
+    },
+    {
+      "id": "tests",
+      "name": "Test quality",
+      "weight": 0.2,
+      "score": 4.18,
+      "spread": 0.15
+    },
+    {
+      "id": "security",
+      "name": "Security",
+      "weight": 0.2,
+      "score": 4,
+      "spread": 0
+    },
+    {
+      "id": "maintainability",
+      "name": "Maintainability",
+      "weight": 0.2,
+      "score": 3.9,
+      "spread": 0.2
+    },
+    {
+      "id": "performance",
+      "name": "Performance",
+      "weight": 0.1,
+      "score": 4.23,
+      "spread": 0.05
+    }
+  ],
+  "judges": 3,
+  "agreement": 0.98,
+  "reason": "no P0, judges agree, score 83 >= 80",
+  "sensitivity": {
+    "robust": true,
+    "flips": []
+  },
+  "judgesCalibrated": "3/3",
+  "judgesIndependent": true,
+  "provenance": {
+    "engineVersion": "1.9.0",
+    "protocolVersion": "2",
+    "rubricVersion": "1",
+    "createdAt": "2026-07-15T04:43:25.052Z",
+    "mode": "improve",
+    "kind": "codebase",
+    "category": "self-hosted fintech tool",
+    "dimensionsHash": "953323803265",
+    "targetGit": {
+      "commit": "0f9921b33f5ff8542b12272ba0c9e5c0000a330a",
+      "branch": "main",
+      "dirty": false
+    }
+  },
+  "scoredAt": "2026-07-15T05:06:10.532Z"
+}
