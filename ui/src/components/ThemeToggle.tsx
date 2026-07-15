@@ -1,15 +1,13 @@
-// T-016 — the header theme control cycles auto → explicit flip → auto:
-// from auto one click forces the opposite of the current theme (a visible
-// change), the next click hands control back to the OS. The Providers view
-// keeps the explicit three-way choice.
+// T-016 — the header theme control: a segmented three-way choice
+// (auto / light / dark). Every state is visible at once and one click
+// away — no blind cycling. The Status view keeps the verbose radios.
 
-import type { Theme, ThemePref } from "../theme";
-import { toggled } from "../theme";
+import type { ReactElement } from "react";
+import type { ThemePref } from "../theme";
 
 interface Props {
   pref: ThemePref;
-  theme: Theme;
-  onCycle: () => void;
+  onPref: (pref: ThemePref) => void;
 }
 
 function SunIcon() {
@@ -48,14 +46,26 @@ function AutoIcon() {
   );
 }
 
-export function ThemeToggle({ pref, theme, onCycle }: Props) {
-  const label =
-    pref === "auto"
-      ? `Switch to the ${toggled(theme)} theme`
-      : "Follow the system theme (auto)";
+const OPTIONS: { value: ThemePref; label: string; Icon: () => ReactElement }[] = [
+  { value: "auto", label: "Follow the system theme (auto)", Icon: AutoIcon },
+  { value: "light", label: "Light theme", Icon: SunIcon },
+  { value: "dark", label: "Dark theme", Icon: MoonIcon },
+];
+
+export function ThemeToggle({ pref, onPref }: Props) {
   return (
-    <button className="theme-toggle" aria-label={label} title={label} onClick={onCycle}>
-      {pref !== "auto" ? <AutoIcon /> : theme === "dark" ? <SunIcon /> : <MoonIcon />}
-    </button>
+    <div className="theme-toggle" role="group" aria-label="Theme">
+      {OPTIONS.map(({ value, label, Icon }) => (
+        <button
+          key={value}
+          aria-pressed={pref === value}
+          aria-label={label}
+          title={label}
+          onClick={() => onPref(value)}
+        >
+          <Icon />
+        </button>
+      ))}
+    </div>
   );
 }

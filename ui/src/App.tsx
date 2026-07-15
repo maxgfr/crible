@@ -36,7 +36,6 @@ import { pushQueryHistory } from "./query-history";
 import { hashFor, parseHash, useHashRoute } from "./router";
 import {
   applyTheme,
-  cycled,
   effectiveTheme,
   loadThemePref,
   prefersLight,
@@ -230,11 +229,7 @@ export default function App() {
           }
         />
         <span className="status-pill">{statusLine}</span>
-        <ThemeToggle
-          pref={themePref}
-          theme={theme}
-          onCycle={() => setThemePref(cycled(themePref, theme))}
-        />
+        <ThemeToggle pref={themePref} onPref={setThemePref} />
       </header>
 
       {STATIC_MODE && <CoverageBanner />}

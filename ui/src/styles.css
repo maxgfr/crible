@@ -307,12 +307,29 @@ table.results tr:hover td {
 .theme-toggle {
   display: inline-flex;
   align-items: center;
-  padding: var(--space-1) var(--space-2);
-  color: var(--color-muted);
+  border: 1px solid color-mix(in srgb, var(--color-muted) 40%, transparent);
+  border-radius: var(--radius-md);
+  padding: 1px;
 }
 
-.theme-toggle:hover {
+.theme-toggle button {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: none;
+  padding: var(--space-1) var(--space-2);
+  border-radius: calc(var(--radius-md) - 1px);
+  color: var(--color-muted);
+  transition: color var(--motion-fast), background-color var(--motion-fast);
+}
+
+.theme-toggle button:hover {
   color: var(--color-fg);
+}
+
+.theme-toggle button[aria-pressed="true"] {
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
 /* ————— restyle: sticky header, dropdown, drawer, selected row ————— */

@@ -2,7 +2,7 @@
 // persisted theme toggle, `/` focuses the DSL bar, teaching first-run
 // empty state (never a blank grid).
 
-import { fireEvent, render, screen as rtl, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen as rtl, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
 
@@ -57,15 +57,26 @@ describe("shell & navigation", () => {
     await waitFor(() => expect(rtl.getByRole("heading", { name: /status/i })).toBeInTheDocument());
   });
 
-  it("toggles and persists the theme, then hands back to auto", async () => {
+  it("offers all three theme states and persists the choice", async () => {
     mockApi();
     render(<App />);
-    const button = rtl.getByRole("button", { name: /light theme/i });
-    fireEvent.click(button);
+    const group = rtl.getByRole("group", { name: /theme/i });
+    const buttons = within(group).getAllByRole("button");
+    expect(buttons).toHaveLength(3);
+    // auto is the default — exactly one segment is pressed
+    expect(buttons.filter((b) => b.getAttribute("aria-pressed") === "true")).toHaveLength(1);
+    expect(within(group).getByRole("button", { name: /auto/i })).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(within(group).getByRole("button", { name: /light theme/i }));
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(window.localStorage.getItem("crible-theme")).toBe("light");
-    // second click: back to auto — the OS (no matchMedia in jsdom → dark)
-    fireEvent.click(rtl.getByRole("button", { name: /follow the system/i }));
+
+    fireEvent.click(within(group).getByRole("button", { name: /dark theme/i }));
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(window.localStorage.getItem("crible-theme")).toBe("dark");
+
+    // back to auto — the OS decides (no matchMedia in jsdom → dark)
+    fireEvent.click(within(group).getByRole("button", { name: /auto/i }));
     expect(window.localStorage.getItem("crible-theme")).toBe("auto");
     expect(document.documentElement.dataset.theme).toBe("dark");
   });
