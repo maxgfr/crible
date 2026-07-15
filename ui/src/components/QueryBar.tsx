@@ -75,7 +75,7 @@ export function QueryBar({ value, onChange, onRun, running, error, inputRef, fie
             aria-controls={SUGGEST_ID}
             aria-autocomplete="list"
             aria-activedescendant={active >= 0 ? `qb-suggestion-${active}` : undefined}
-            placeholder="e.g. roe > 15 AND piotroski_f >= 7 AND country IN ('FR','DE')"
+            placeholder="blank = every covered company · e.g. peg_ratio <= 1 AND country IN ('FR','DE')"
             value={value}
             onChange={(event) => {
               histPos.current = -1;

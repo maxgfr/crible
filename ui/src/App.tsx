@@ -51,7 +51,12 @@ export const DEFAULT_COLUMNS = [
 ];
 // a preset's curated columns REPLACE the visible set on top of this base
 export const IDENTITY_COLUMNS = ["symbol", "name", "country", "sector"];
-const DEFAULT_QUERY = "piotroski_f >= 7";
+// blank = the whole covered universe (q="" is a real, shareable screen);
+// the default sort is the engine's own published blend so the first paint
+// reads "every company, strongest composite first" — NULLS LAST sinks
+// symbols with missing pillars, and an explicit ?sort= in the URL wins
+const DEFAULT_QUERY = "";
+export const DEFAULT_SORT = "-composite_rank";
 export const PAGE_SIZE = 500;
 
 const VIEWS = [
@@ -90,7 +95,7 @@ export default function App() {
   const theme = effectiveTheme(themePref, systemLight);
   const [query, setQuery] = useState(() => route.q ?? DEFAULT_QUERY);
   const [ranQuery, setRanQuery] = useState<string | null>(null);
-  const [sort, setSort] = useState<string | null>(route.sort);
+  const [sort, setSort] = useState<string | null>(route.sort ?? DEFAULT_SORT);
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<ScreenResponse | null>(null);
   const [error, setError] = useState<DslErrorDetail | null>(null);
@@ -150,7 +155,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    runScreen(route.q ?? DEFAULT_QUERY, route.sort, 1);
+    runScreen(route.q ?? DEFAULT_QUERY, route.sort ?? DEFAULT_SORT, 1);
     fields()
       .then((fs) => setFieldInfos(fs.filter((f) => !isHiddenField(f.name))))
       .catch(() => {});

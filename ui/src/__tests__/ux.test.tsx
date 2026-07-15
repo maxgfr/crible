@@ -79,7 +79,16 @@ describe("screen permalinks", () => {
     mockApi();
     render(<App />);
     await waitFor(() => expect(rtl.getAllByText("AIR.PA").length).toBeGreaterThan(0));
-    await waitFor(() => expect(window.location.hash).toContain("q=piotroski_f"));
+    // blank default: q= is meaningful (full snapshot), default sort is explicit
+    await waitFor(() => expect(window.location.hash).toContain("q="));
+    expect(window.location.hash).toContain("sort=-composite_rank");
+  });
+
+  it("the blank default screens the full snapshot sorted by composite rank", async () => {
+    mockApi();
+    render(<App />);
+    await waitFor(() => expect(screenCalls.length).toBe(1));
+    expect(screenCalls[0]).toEqual({ query: "", sort: "-composite_rank", page: 1 });
   });
 });
 
@@ -91,7 +100,7 @@ describe("engine sort + pagination", () => {
 
     fireEvent.click(rtl.getByRole("button", { name: /^Piotroski F/ }));
     await waitFor(() => expect(screenCalls.length).toBe(2));
-    expect(screenCalls[1]).toEqual({ query: "piotroski_f >= 7", sort: "-piotroski_f", page: 1 });
+    expect(screenCalls[1]).toEqual({ query: "", sort: "-piotroski_f", page: 1 });
     await waitFor(() =>
       expect(document.querySelector('th[aria-sort="descending"]')).not.toBeNull());
 
@@ -118,7 +127,9 @@ describe("engine sort + pagination", () => {
     await waitFor(() => expect(rtl.getAllByText("AIR.PA").length).toBeGreaterThan(0));
     const link = rtl.getByRole("link", { name: "AIR.PA" }) as HTMLAnchorElement;
     expect(link.getAttribute("href")).toContain("#/company/AIR.PA");
-    expect(link.getAttribute("href")).toContain("q=piotroski_f");
+    // the blank screen travels too: q= (meaningful) + the explicit sort
+    expect(link.getAttribute("href")).toContain("q=");
+    expect(link.getAttribute("href")).toContain("sort=-composite_rank");
   });
 });
 
@@ -139,8 +150,13 @@ describe("query bar accelerators", () => {
   it("ArrowUp recalls the last ran query when no suggestions are open", async () => {
     mockApi();
     render(<App />);
-    await waitFor(() => expect(screenCalls.length).toBe(1)); // ran DEFAULT_QUERY
+    await waitFor(() => expect(screenCalls.length).toBe(1));
     const input = rtl.getByLabelText("DSL query") as HTMLInputElement;
+
+    // the blank default is never pushed to history — seed a real query first
+    fireEvent.change(input, { target: { value: "piotroski_f >= 7" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(screenCalls.length).toBe(2));
 
     fireEvent.change(input, { target: { value: "" } });
     fireEvent.keyDown(input, { key: "ArrowUp" });
