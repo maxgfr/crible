@@ -102,7 +102,9 @@ def test_export_site_presets_are_the_shipped_presets(data_dir, tmp_path_factory)
     export_site(data_dir, out, min_symbols=2)
     presets = json.loads((out / "presets.json").read_text())
     assert [p["id"] for p in presets] == list(PRESETS)
-    assert all(set(p) == {"id", "name", "description", "dsl"} for p in presets)
+    assert all(set(p) == {"id", "name", "description", "dsl", "columns"} for p in presets)
+    # every shipped preset publishes the columns it surfaces on pick
+    assert all(isinstance(p["columns"], list) and p["columns"] for p in presets)
 
 
 def test_export_site_providers_reflect_keyless_zero_env(data_dir, tmp_path_factory) -> None:

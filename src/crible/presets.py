@@ -16,6 +16,10 @@ class Preset:
     name: str
     description: str
     dsl: str
+    # grid columns the preset surfaces on pick (identity columns are the
+    # UI's own base) — every field the DSL filters on MUST be in here, so
+    # a screen never hides the metric it screened by
+    columns: tuple[str, ...] | None = None
 
 
 _PRESETS = [
@@ -24,108 +28,126 @@ _PRESETS = [
         name="Piotroski strong",
         description="Financially strengthening companies (F-Score at least 7 of 9)",
         dsl="piotroski_f >= 7",
+        columns=("piotroski_f", "altman_z", "return_on_equity", "net_profit_margin", "debt_to_equity_ratio"),
     ),
     Preset(
         id="altman-safe",
         name="Altman safe zone",
         description="Bankruptcy-safe zone under the classic Z-Score (Z > 2.99)",
         dsl="altman_z > 2.99",
+        columns=("altman_z", "piotroski_f", "current_ratio", "debt_to_equity_ratio", "interest_coverage_ratio"),
     ),
     Preset(
         id="beneish-red-flags",
         name="Beneish red flags",
         description="Possible earnings manipulation (M-Score above the -1.78 threshold)",
         dsl="beneish_m > -1.78",
+        columns=("beneish_m", "montier_c", "piotroski_f", "revenue_growth", "net_income_growth"),
     ),
     Preset(
         id="classic-value",
         name="Classic value",
         description="Cheap on earnings and book value",
         dsl="price_to_earnings_ratio < 12 AND price_to_book_ratio < 1.5",
+        columns=("price_to_earnings_ratio", "price_to_book_ratio", "earnings_yield", "weighted_dividend_yield", "market_cap"),
     ),
     Preset(
         id="quality",
         name="Quality",
         description="High return on equity with conservative leverage",
         dsl="return_on_equity > 0.15 AND debt_to_equity_ratio < 1",
+        columns=("return_on_equity", "debt_to_equity_ratio", "return_on_capital_employed", "net_profit_margin", "piotroski_f"),
     ),
     Preset(
         id="top-ranked",
         name="Top ranked",
         description="Top quintile of the composite quality/value/momentum rank",
         dsl="composite_rank >= 80",
+        columns=("composite_rank", "quality_rank", "value_rank", "momentum_rank", "piotroski_f", "altman_z"),
     ),
     Preset(
         id="magic-formula",
         name="Magic formula",
         description="Greenblatt's magic formula — top quintile blending earnings yield and return on capital",
         dsl="magic_formula_rank >= 80",
+        columns=("magic_formula_rank", "greenblatt_earnings_yield", "greenblatt_roc", "market_cap"),
     ),
     Preset(
         id="graham-net-net",
         name="Graham net-net",
         description="Deep value: market cap under two-thirds of net current asset value (NCAV)",
         dsl="ncav_to_market_cap >= 1.5",
+        columns=("ncav_to_market_cap", "ncav", "market_cap", "current_ratio", "price_to_book_ratio"),
     ),
     Preset(
         id="zmijewski-safe",
         name="Zmijewski safe",
         description="Under 50% modelled probability of financial distress (Zmijewski X < 0)",
         dsl="zmijewski_score < 0",
+        columns=("zmijewski_score", "altman_z", "ohlson_o", "debt_to_equity_ratio", "current_ratio"),
     ),
     Preset(
         id="ohlson-safe",
         name="Ohlson safe",
         description="Under 50% modelled probability of distress on the 9-variable O-Score (O < 0)",
         dsl="ohlson_o < 0",
+        columns=("ohlson_o", "zmijewski_score", "altman_z", "debt_to_equity_ratio"),
     ),
     Preset(
         id="montier-clean",
         name="Montier clean books",
         description="At most one of Montier's six accounting red flags (C-Score <= 1)",
         dsl="montier_c <= 1",
+        columns=("montier_c", "beneish_m", "piotroski_f", "fcf_conversion"),
     ),
     Preset(
         id="top-quality",
         name="Top quality",
         description="Top quintile of the quality pillar rank",
         dsl="quality_rank >= 80",
+        columns=("quality_rank", "piotroski_f", "altman_z", "composite_rank"),
     ),
     Preset(
         id="top-value",
         name="Top value",
         description="Top quintile of the value pillar rank",
         dsl="value_rank >= 80",
+        columns=("value_rank", "earnings_yield", "price_to_book_ratio", "composite_rank"),
     ),
     Preset(
         id="top-momentum",
         name="Top momentum",
         description="Top quintile of the momentum pillar rank",
         dsl="momentum_rank >= 80",
+        columns=("momentum_rank", "return_6m", "composite_rank"),
     ),
     Preset(
         id="greenblatt-factors",
         name="Greenblatt factors",
         description="Cheap and good in absolute terms: earnings yield (EBIT/EV) over 10% and return on capital over 20%",
         dsl="greenblatt_earnings_yield >= 0.1 AND greenblatt_roc >= 0.2",
+        columns=("greenblatt_earnings_yield", "greenblatt_roc", "magic_formula_rank", "market_cap"),
     ),
     Preset(
         id="graham-defensive",
         name="Graham margin of safety",
         description="Price below the Graham number — a positive defensive margin of safety",
         dsl="graham_margin_of_safety > 0",
+        columns=("graham_margin_of_safety", "graham_number", "price_to_earnings_ratio", "price_to_book_ratio"),
     ),
     Preset(
         id="cash-quality",
         name="Cash quality",
         description="Earnings backed by cash: EBITDA margin over 15%, FCF margin over 5%, FCF conversion above 1",
         dsl="ebitda_margin >= 0.15 AND fcf_margin >= 0.05 AND fcf_conversion >= 1",
+        columns=("ebitda_margin", "fcf_margin", "fcf_conversion", "free_cash_flow", "operating_cashflow"),
     ),
     Preset(
         id="dividend-safety",
         name="Dividend safety",
         description="Dividend covered at least twice by net income (non-payers are excluded)",
         dsl="dividend_coverage >= 2",
+        columns=("dividend_coverage", "weighted_dividend_yield", "fcf_margin", "net_income"),
     ),
     Preset(
         id="all-indicators",
@@ -142,6 +164,13 @@ _PRESETS = [
             " AND greenblatt_earnings_yield >= 0.1 AND greenblatt_roc >= 0.2"
             " AND graham_margin_of_safety > 0 AND ebitda_margin >= 0.15"
             " AND fcf_margin >= 0.05 AND fcf_conversion >= 1"
+        ),
+        columns=(
+            "piotroski_f", "altman_z", "beneish_m", "zmijewski_score", "ohlson_o",
+            "montier_c", "composite_rank", "quality_rank", "value_rank",
+            "momentum_rank", "magic_formula_rank", "greenblatt_earnings_yield",
+            "greenblatt_roc", "graham_margin_of_safety", "ebitda_margin",
+            "fcf_margin", "fcf_conversion",
         ),
     ),
 ]

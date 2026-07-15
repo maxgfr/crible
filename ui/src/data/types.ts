@@ -21,6 +21,9 @@ export interface Preset {
   name: string;
   description: string;
   dsl: string;
+  /** grid columns the preset surfaces on pick; optional — older published
+   *  presets.json (and custom presets) don't carry it */
+  columns?: string[] | null;
 }
 
 export interface CompanyDetail {

@@ -31,6 +31,7 @@ import { SearchBox } from "./components/SearchBox";
 import { StatusView } from "./components/StatusView";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { Wordmark } from "./components/Wordmark";
+import { fieldsInQuery } from "./dsl/fields";
 import { pushQueryHistory } from "./query-history";
 import { hashFor, parseHash, useHashRoute } from "./router";
 import {
@@ -47,6 +48,8 @@ export const DEFAULT_COLUMNS = [
   "composite_rank", "piotroski_f", "altman_z", "beneish_m",
   "return_on_equity", "net_profit_margin", "debt_to_equity_ratio",
 ];
+// a preset's curated columns REPLACE the visible set on top of this base
+export const IDENTITY_COLUMNS = ["symbol", "name", "country", "sector"];
 const DEFAULT_QUERY = "piotroski_f >= 7";
 export const PAGE_SIZE = 500;
 
@@ -117,6 +120,12 @@ export default function App() {
       setSort(sortNext);
       setPage(pageNext);
       pushQueryHistory(q);
+      // a screen always surfaces the fields it filtered on (union — never
+      // removes what the user picked; chains after a preset's replace)
+      setVisibleColumns((prev) => {
+        const extra = fieldsInQuery(q).filter((field) => !prev.includes(field));
+        return extra.length ? [...prev, ...extra] : prev;
+      });
       // sync the URL from the CURRENT hash (never a stale closure): keep the
       // open drawer, and never hijack the status/providers views
       const current = parseHash(window.location.hash);
@@ -254,9 +263,14 @@ export default function App() {
             <PresetsMenu
               currentQuery={query}
               activeDsl={ranQuery}
-              onPick={(dsl) => {
-                setQuery(dsl);
-                run(dsl);
+              onPick={(preset) => {
+                setQuery(preset.dsl);
+                // curated columns replace the visible set (identity stays);
+                // presets without one fall back to the DSL-union in runScreen
+                if (preset.columns?.length) {
+                  setVisibleColumns([...new Set([...IDENTITY_COLUMNS, ...preset.columns])]);
+                }
+                run(preset.dsl);
               }}
             />
             <ColumnPicker

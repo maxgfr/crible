@@ -15,7 +15,8 @@ import {
 } from "../presets-store";
 
 interface Props {
-  onPick: (dsl: string) => void;
+  /** the whole preset: the DSL to run + the columns it wants visible */
+  onPick: (preset: Preset) => void;
   currentQuery: string;
   /** the DSL of the last-run screen — names the active preset on the trigger */
   activeDsl?: string | null;
@@ -88,7 +89,7 @@ export function PresetsMenu({ onPick, currentQuery, activeDsl }: Props) {
                     className="preset-pick"
                     title={preset.description}
                     onClick={() => {
-                      onPick(preset.dsl);
+                      onPick(preset);
                       setOpen(false);
                     }}
                   >

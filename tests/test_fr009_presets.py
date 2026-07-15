@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from crible.presets import PRESETS
 
 
@@ -33,6 +35,24 @@ def test_fr009_every_indicator_has_a_preset() -> None:
     all_dsl = " ".join(p.dsl for p in PRESETS.values())
     missing = [key for key in indicator_keys if key not in all_dsl]
     assert not missing, f"indicators without a preset: {missing}"
+
+
+def test_fr009_every_preset_curates_its_columns() -> None:
+    """Picking a preset must surface the metrics it screens by: every
+    shipped preset carries a non-empty column set of legal identifiers, and
+    every field its DSL references is in the set — a screen never hides the
+    metric it filtered on."""
+    field_re = re.compile(r"[a-z_][a-z0-9_]*")
+    keywords = {"and", "or", "not", "in"}
+    for preset in PRESETS.values():
+        assert preset.columns, f"{preset.id} has no curated columns"
+        for column in preset.columns:
+            assert re.fullmatch(r"[a-z0-9_]+", column), f"{preset.id}: bad column {column!r}"
+        # string literals (none today) must never read as field names
+        dsl = re.sub(r"'[^']*'", " ", preset.dsl.lower())
+        referenced = {word for word in field_re.findall(dsl) if word not in keywords}
+        missing = referenced - set(preset.columns)
+        assert not missing, f"{preset.id}: DSL fields missing from columns: {missing}"
 
 
 def test_fr009_running_a_preset_is_byte_for_byte_its_dsl() -> None:

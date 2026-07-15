@@ -220,6 +220,44 @@ describe("search keyboard support", () => {
   });
 });
 
+// App-level mock where the screen rows carry the curated keys — the grid
+// only renders columns present in rows[0] (availableColumns)
+function mockPresetColumnsApi() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      const path = String(url).split("?")[0];
+      if (path === "/api/screen") {
+        return {
+          ok: true, status: 200,
+          json: async () => ({
+            rows: [{
+              symbol: "AIR.PA", name: "Airbus", country: "FR", sector: "Industrials",
+              composite_rank: 91, quality_rank: 88, piotroski_f: 8, fcf_margin: 0.12,
+            }],
+            total: 1, page: 1, tookMs: 1,
+          }),
+        };
+      }
+      if (path === "/api/presets") {
+        return {
+          ok: true, status: 200,
+          json: async () => [{
+            id: "top-ranked", name: "Top ranked", description: "d",
+            dsl: "composite_rank >= 80", columns: ["composite_rank", "quality_rank"],
+          }],
+        };
+      }
+      if (path === "/api/status") {
+        return { ok: true, status: 200, json: async () => ({ universe: 8, snapshot: true }) };
+      }
+      if (path === "/api/fields") return { ok: true, status: 200, json: async () => [] };
+      if (path === "/api/providers") return { ok: true, status: 200, json: async () => [] };
+      return { ok: false, status: 404, json: async () => ({}) };
+    }),
+  );
+}
+
 describe("presets popover", () => {
   it("groups presets, previews their DSL, and picks one", async () => {
     vi.stubGlobal(
@@ -246,7 +284,41 @@ describe("presets popover", () => {
     expect(rtl.getByText("composite_rank >= 80")).toBeInTheDocument(); // DSL visible, never hidden
 
     fireEvent.click(rtl.getByText("Top ranked"));
-    expect(onPick).toHaveBeenCalledWith("composite_rank >= 80");
+    // the whole preset travels: the DSL to run + the columns it wants visible
+    expect(onPick).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "top-ranked", dsl: "composite_rank >= 80" }),
+    );
+  });
+
+  it("picking a curated preset swaps the grid columns to its set", async () => {
+    mockPresetColumnsApi();
+    render(<App />);
+    await waitFor(() => expect(rtl.getAllByText("AIR.PA").length).toBeGreaterThan(0));
+    expect(rtl.getByRole("button", { name: /^Piotroski F/ })).toBeInTheDocument(); // a default
+
+    fireEvent.click(await rtl.findByRole("button", { name: "Presets" }));
+    fireEvent.click(rtl.getByText("Top ranked"));
+    await waitFor(() =>
+      expect(rtl.getByRole("button", { name: /^Quality rank/ })).toBeInTheDocument());
+    expect(rtl.getByRole("button", { name: /^Composite rank/ })).toBeInTheDocument();
+    // curated columns REPLACE the defaults; identity stays
+    expect(rtl.queryByRole("button", { name: /^Piotroski F/ })).not.toBeInTheDocument();
+    expect(rtl.getByRole("button", { name: /^Name/ })).toBeInTheDocument();
+  });
+
+  it("a hand-typed query surfaces the fields it references (union)", async () => {
+    mockPresetColumnsApi();
+    render(<App />);
+    await waitFor(() => expect(rtl.getAllByText("AIR.PA").length).toBeGreaterThan(0));
+    expect(rtl.queryByRole("button", { name: /^FCF margin/ })).not.toBeInTheDocument();
+
+    const input = rtl.getByLabelText("DSL query") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "fcf_margin >= 0.05" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(rtl.getByRole("button", { name: /^FCF margin/ })).toBeInTheDocument());
+    // union path: never removes what was already visible
+    expect(rtl.getByRole("button", { name: /^Piotroski F/ })).toBeInTheDocument();
   });
 
   it("saves and deletes a custom preset inline", async () => {
