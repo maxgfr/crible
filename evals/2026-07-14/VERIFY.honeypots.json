@@ -1,8 +1,0 @@
-{
-  "note": "ground truth for planted honeypot pairs — never paste this file into a skeptic prompt",
-  "claimIds": [
-    "F14",
-    "F15",
-    "F16"
-  ]
-}
