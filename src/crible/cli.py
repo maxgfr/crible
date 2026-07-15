@@ -301,6 +301,18 @@ def refresh(
     typer.echo(json.dumps(result, indent=2, default=str))
 
 
+@app.command("mcp")
+def mcp_cmd() -> None:
+    """Serve the read-only MCP tool surface over stdio (for agents).
+
+    Same data contract as everything else: --data-dir / CRIBLE_DATA_DIR
+    points at the dataset `crible bootstrap` pulled.
+    """
+    from crible.mcp_server import serve
+
+    serve()
+
+
 @app.command("export-site")
 def export_site_cmd(
     out: Path = typer.Option(..., "--out", help="Directory to write the static site artifacts to"),
