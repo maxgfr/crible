@@ -393,6 +393,21 @@ def test_fr010_index_sweep_enriches_known_filers_and_skips_the_rest(tmp_path, mo
     assert again["enriched"] == []
 
 
+def test_fr010_index_sweep_stops_on_time_budget(tmp_path, monkeypatch) -> None:
+    """A zero wall-clock budget (run_refresh --max-minutes reserve) stops the
+    sweep before any document fetch; freshness state resumes it next run."""
+    from crible.ingest.service import run_esef_sweep
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+    client = FakeIndexClient()
+    outcome = run_esef_sweep(
+        limit=10, client=client, mapping={"NL0011540547": LEI_ABN}, time_budget_seconds=0,
+    )
+    assert outcome["stopped"] == "budget"
+    assert outcome["enriched"] == []
+    assert client.json_fetches == 0
+
+
 def test_fr010_index_sweep_outage_records_and_resumes(tmp_path, monkeypatch) -> None:
     from crible.ingest.service import run_esef_sweep
 

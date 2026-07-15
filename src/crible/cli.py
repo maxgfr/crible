@@ -264,7 +264,12 @@ def stooq_download_cmd(
 
 @app.command("refresh")
 def refresh(
-    deadline: float = typer.Option(9000.0, "--deadline", help="Wall-clock budget in seconds"),
+    deadline: float = typer.Option(9000.0, "--deadline", help="Crawl-loop budget in seconds"),
+    max_minutes: float = typer.Option(
+        0.0, "--max-minutes",
+        help="WHOLE-RUN wall-clock guard: enrichment stages stop early so"
+        " compute+publish always run (0 = unbounded, the self-hosted default)",
+    ),
     esef_limit: int = typer.Option(25, "--esef-limit", help="Max ESEF enrichments this run"),
     edgar_limit: int = typer.Option(25, "--edgar-limit", help="Max EDGAR enrichments this run"),
     edgar_bulk: bool = typer.Option(
@@ -291,6 +296,7 @@ def refresh(
         deadline_seconds=deadline, esef_limit=esef_limit, edgar_limit=edgar_limit,
         edgar_bulk=edgar_bulk, fsds_quarters=fsds_quarters,
         fetch_gleif=fetch_gleif, fetch_fx=fetch_fx,
+        max_seconds=max_minutes * 60 if max_minutes > 0 else None,
     )
     typer.echo(json.dumps(result, indent=2, default=str))
 

@@ -171,6 +171,25 @@ def test_run_refresh_crawls_computes_and_publishes(refresh_env) -> None:
     assert heartbeat["last_refresh"]["fetched"] == 8
 
 
+def test_run_refresh_max_seconds_reserves_time_for_compute(refresh_env) -> None:
+    """--max-minutes semantics: inside the compute reserve the crawl window
+    collapses, enrichment stages yield, the price refresh is skipped — but
+    prune + compute still run, so the night always publishes something."""
+    result = run_refresh(
+        deadline_seconds=60,
+        fetch_universe=fixture_frame,
+        provider=FakeYfProvider(),
+        price_provider=FakePriceProvider(),
+        edgar_client=FakeEdgarDirectory(),
+        max_seconds=1.0,  # far below ENRICH_RESERVE_SECONDS
+    )
+    assert result["fetched"] == 0  # the crawl window was consumed by the reserve
+    # the sweep either stopped on budget or self-skipped (no GLEIF mapping here)
+    assert result["esef"].get("stopped") == "budget" or result["esef"].get("skipped")
+    assert result["prices"] == {"skipped": "time budget"}
+    assert "snapshot_rows" in result  # compute always runs
+
+
 def test_run_refresh_falls_back_to_last_good_universe(refresh_env) -> None:
     # a previous successful run left a universe.parquet behind
     seed = duckdb.connect()

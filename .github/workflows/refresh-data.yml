@@ -71,7 +71,10 @@ jobs:
         # raised — filings.xbrl.org is not budget-bound like Yahoo. --fetch-gleif
         # and --fetch-fx default on (audited-EU mapping + ECB *_eur columns);
         # --fsds-quarters backfills deep 'as-filed' US history (public domain).
-        run: uv run crible refresh --deadline 7200 --esef-limit 100 --edgar-bulk --fsds-quarters 2
+        # --max-minutes 240 is the whole-run guard: enrichment stages yield
+        # early so prune+compute+publish always fit before the 300-min job
+        # timeout — a slow night ships a partial-but-published dataset.
+        run: uv run crible refresh --deadline 7200 --max-minutes 240 --esef-limit 100 --edgar-bulk --fsds-quarters 2
 
       - name: Export the static site artifacts (min-symbols gate)
         run: uv run crible export-site --out site-data --min-symbols 50

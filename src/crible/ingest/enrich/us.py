@@ -94,6 +94,7 @@ def run_edgar_cycle(limit: int = 5, client=None, ticker_map: dict[str, int] | No
 def run_edgar_bulk(
     zip_path=None, client=None, ticker_map: dict[str, int] | None = None,
     download: bool = True, limit: int | None = None,
+    time_budget_seconds: float | None = None,
 ) -> dict:
     """FR-016 / ADR-0005 scale-up — the bulk variant: ONE companyfacts.zip
     gives the audited layer for EVERY resolved US listing (~10k issuers),
@@ -106,7 +107,16 @@ def run_edgar_bulk(
     from crible.providers.edgar import facts_to_frames, iter_bulk_companyfacts, resolve_ciks
 
     data = config.data_dir()
-    outcome: dict = {"enriched": 0, "unmatched": 0, "outage": None, "skipped": None}
+    outcome: dict = {"enriched": 0, "unmatched": 0, "outage": None, "skipped": None, "stopped": None}
+    # wall-clock budget (run_refresh --max-minutes): per-symbol granularity is
+    # safe — edgar_tasks stamps and raw writes are per-symbol, so a partial
+    # pass resumes cleanly (idempotent writes skip the already-ingested)
+    stage_deadline = (
+        None if time_budget_seconds is None else time.monotonic() + time_budget_seconds
+    )
+
+    def out_of_time() -> bool:
+        return stage_deadline is not None and time.monotonic() >= stage_deadline
 
     con = _connect()
     try:
@@ -119,6 +129,9 @@ def run_edgar_bulk(
         ]
         if not companies:
             outcome["skipped"] = "no US companies in the universe yet"
+            return outcome
+        if out_of_time():
+            outcome["stopped"] = "budget"
             return outcome
         if ticker_map is None or (download and zip_path is None):
             if client is None:
@@ -152,6 +165,9 @@ def run_edgar_bulk(
         by_cik = {cik: symbol for symbol, cik in resolved.items()}
         fetched_at = time.time()
         for cik, facts in iter_bulk_companyfacts(archive, set(by_cik)):
+            if out_of_time():
+                outcome["stopped"] = "budget"
+                break
             frames = facts_to_frames(facts)
             if not frames:
                 continue
@@ -178,6 +194,7 @@ def run_edgar_bulk(
 def run_fsds(
     quarters, client=None, ticker_map: dict[str, int] | None = None, http=None,
     limit: int | None = None,
+    time_budget_seconds: float | None = None,
 ) -> dict:
     """SEC FSDS depth cycle: for each (year, quarter), mirror the archive and
     write provider='edgar-fsds' raw for resolved US issuers. companyfacts
@@ -189,7 +206,14 @@ def run_fsds(
     from crible.providers.edgar_fsds import iter_fsds, quarter_url
 
     data = config.data_dir()
-    outcome: dict = {"enriched": 0, "quarters": [], "unmatched": 0, "outage": None, "skipped": None}
+    outcome: dict = {
+        "enriched": 0, "quarters": [], "unmatched": 0, "outage": None, "skipped": None,
+        "stopped": None,
+    }
+    # wall-clock budget, per-quarter granularity (one archive = one unit)
+    stage_deadline = (
+        None if time_budget_seconds is None else time.monotonic() + time_budget_seconds
+    )
 
     con = _connect()
     try:
@@ -219,6 +243,9 @@ def run_fsds(
         headers = {"User-Agent": config.sec_user_agent()}
         fetched_at = time.time()
         for year, quarter in quarters:
+            if stage_deadline is not None and time.monotonic() >= stage_deadline:
+                outcome["stopped"] = "budget"
+                break
             try:
                 result = fetch_if_stale(
                     data, "edgar-fsds", f"{year}q{quarter}.zip", quarter_url(year, quarter),

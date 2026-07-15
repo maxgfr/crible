@@ -108,6 +108,7 @@ def _esef_due(con: duckdb.DuckDBPyConnection, symbol: str, cutoff: float) -> boo
 def run_esef_sweep(
     limit: int = 100, client=None, mapping: dict[str, str] | None = None,
     page_size: int = 100, max_pages: int = 300,
+    time_budget_seconds: float | None = None,
 ) -> dict:
     """FR-010 at index scale: walk filings.xbrl.org's FULL index (newest
     first) instead of querying one LEI at a time — every request lands on a
@@ -119,7 +120,17 @@ def run_esef_sweep(
     from crible.providers.gleif import load_mapping
 
     data = config.data_dir()
-    outcome: dict = {"enriched": [], "skipped_unknown": 0, "outage": None, "skipped": None}
+    outcome: dict = {
+        "enriched": [], "skipped_unknown": 0, "outage": None, "skipped": None, "stopped": None,
+    }
+    # wall-clock budget (run_refresh --max-minutes): a partial sweep is fine —
+    # freshness state makes the next run resume where this one stopped
+    stage_deadline = (
+        None if time_budget_seconds is None else time.monotonic() + time_budget_seconds
+    )
+
+    def out_of_time() -> bool:
+        return stage_deadline is not None and time.monotonic() >= stage_deadline
 
     if mapping is None:
         mapping, skipped, outage = load_mapping(data)
@@ -158,6 +169,9 @@ def run_esef_sweep(
         seen_leis: set[str] = set()
         page = 1
         while len(outcome["enriched"]) < limit and page <= max_pages:
+            if out_of_time():
+                outcome["stopped"] = "budget"
+                break
             try:
                 filings, _total = client.filings_index(page_size=page_size, page_number=page)
             except Exception as exc:  # noqa: BLE001 — outage: record, resume next run
@@ -168,6 +182,9 @@ def run_esef_sweep(
                 break
             page += 1
             for filing in filings:
+                if out_of_time():
+                    outcome["stopped"] = "budget"
+                    break
                 lei = filing_lei(filing)
                 if not lei or lei in seen_leis:
                     continue  # newest-first: only the latest filing per filer
@@ -204,9 +221,12 @@ def run_esef_sweep(
                         outcome["enriched"].append(symbol)
                 if len(outcome["enriched"]) >= limit:
                     break
+            if outcome["stopped"]:
+                break
         if outcome["enriched"]:
-            log.info("esef sweep: enriched %d listings (%d filers outside the universe)",
-                     len(outcome["enriched"]), outcome["skipped_unknown"])
+            log.info("esef sweep: enriched %d listings (%d filers outside the universe)%s",
+                     len(outcome["enriched"]), outcome["skipped_unknown"],
+                     " — stopped on time budget" if outcome["stopped"] else "")
         return outcome
     finally:
         con.close()

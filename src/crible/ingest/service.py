@@ -278,6 +278,11 @@ def run_compute() -> int:
     return len(snapshot)
 
 
+# --max-minutes keeps this much wall-clock back for prune + compute + publish;
+# the crawl and every enrichment stage yield before eating into it
+ENRICH_RESERVE_SECONDS = 1800.0
+
+
 def run_refresh(
     deadline_seconds: float = 9000.0,
     esef_limit: int = 25,
@@ -292,6 +297,7 @@ def run_refresh(
     price_provider=None,
     edgar_client=None,
     cycle_limit: int = 10,
+    max_seconds: float | None = None,
 ) -> dict:
     """One bounded, resumable refresh pass — the nightly dataset run.
 
@@ -300,6 +306,13 @@ def run_refresh(
     until the queue drains or the deadline passes (repeated ``ingest --once``
     calls would each get a fresh bucket and bust the hourly budget) → ESEF +
     EDGAR enrichment → price refresh → prune the raw layer → compute + publish.
+
+    ``deadline_seconds`` bounds the CRAWL loop only (historical semantics).
+    ``max_seconds`` is the WHOLE-RUN wall-clock guard: the crawl and every
+    enrichment stage (ESEF sweep, EDGAR bulk, FSDS) stop at
+    ``max_seconds − ENRICH_RESERVE_SECONDS`` so prune + compute + publish
+    always get their reserve — a slow night ships a partial-but-published
+    dataset instead of being killed by the CI job timeout with nothing.
     """
     from crible.ingest.raw import prune_raw
     from crible.universe import (
@@ -309,7 +322,17 @@ def run_refresh(
     )
 
     started = time.monotonic()
+    hard_deadline = started + max_seconds if max_seconds else None
     deadline = started + deadline_seconds
+    if hard_deadline is not None:
+        deadline = min(deadline, hard_deadline - ENRICH_RESERVE_SECONDS)
+
+    def stage_budget() -> float | None:
+        """Seconds left for enrichment before the compute reserve — None = unbounded."""
+        if hard_deadline is None:
+            return None
+        return max(0.0, (hard_deadline - ENRICH_RESERVE_SECONDS) - time.monotonic())
+
     data = config.data_dir()
     result: dict = {"universe_restored": False}
 
@@ -373,7 +396,7 @@ def run_refresh(
     try:
         # index sweep, not per-LEI polling: every request lands on a real
         # filing, so the nightly covers actual EU filers at full speed
-        result["esef"] = run_esef_sweep(limit=esef_limit)
+        result["esef"] = run_esef_sweep(limit=esef_limit, time_budget_seconds=stage_budget())
     except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
         log.warning("esef sweep failed: %s", exc)
         result["esef"] = {"outage": str(exc)}
@@ -381,7 +404,9 @@ def run_refresh(
         if edgar_bulk:
             # the bulk sweep marks every issuer fetched, so the per-CIK
             # cycle below finds nothing due — no double work
-            result["edgar_bulk"] = run_edgar_bulk(client=edgar_client)
+            result["edgar_bulk"] = run_edgar_bulk(
+                client=edgar_client, time_budget_seconds=stage_budget()
+            )
         result["edgar"] = run_edgar_cycle(limit=edgar_limit, client=edgar_client)
     except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
         log.warning("edgar cycle failed: %s", exc)
@@ -390,15 +415,23 @@ def run_refresh(
         try:
             from crible.providers.edgar_fsds import recent_quarters
 
-            result["fsds"] = run_fsds(recent_quarters(fsds_quarters), client=edgar_client)
+            result["fsds"] = run_fsds(
+                recent_quarters(fsds_quarters), client=edgar_client,
+                time_budget_seconds=stage_budget(),
+            )
         except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
             log.warning("fsds cycle failed: %s", exc)
             result["fsds"] = {"outage": str(exc)}
-    try:
-        result["prices"] = run_price_refresh(crawler.budget, provider=price_provider)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("price refresh failed: %s", exc)
-        result["prices"] = {"error": str(exc)}
+    budget_left = stage_budget()
+    if budget_left is not None and budget_left <= 0:
+        # inside the compute reserve — prices are an enrichment, never a gate
+        result["prices"] = {"skipped": "time budget"}
+    else:
+        try:
+            result["prices"] = run_price_refresh(crawler.budget, provider=price_provider)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("price refresh failed: %s", exc)
+            result["prices"] = {"error": str(exc)}
 
     result["pruned"] = prune_raw(data)
     result["snapshot_rows"] = run_compute()
