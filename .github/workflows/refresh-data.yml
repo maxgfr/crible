@@ -74,7 +74,12 @@ jobs:
         # --max-minutes 240 is the whole-run guard: enrichment stages yield
         # early so prune+compute+publish always fit before the 300-min job
         # timeout — a slow night ships a partial-but-published dataset.
-        run: uv run crible refresh --deadline 7200 --max-minutes 240 --esef-limit 100 --edgar-bulk --fsds-quarters 2
+        # --esef-limit 1500: filings.xbrl.org is not budget-bound like Yahoo
+        # (~1,000-1,500 xbrl-json docs/hour); with freshness re-seeded from
+        # raw, the sweep covers the ~8,850 matched EU listings in a handful
+        # of nightlies, then settles to new-filings-only. The wall-clock
+        # guard, not this count, is the real bound.
+        run: uv run crible refresh --deadline 7200 --max-minutes 240 --esef-limit 1500 --edgar-bulk --fsds-quarters 2
 
       - name: Export the static site artifacts (min-symbols gate)
         run: uv run crible export-site --out site-data --min-symbols 50
