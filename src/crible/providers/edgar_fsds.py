@@ -70,6 +70,11 @@ def _accumulate(wanted: dict[str, int], num_reader) -> dict[int, dict[tuple[str,
         cik = wanted.get(row.get("adsh"))
         if cik is None:
             continue
+        if row.get("segments"):
+            continue  # a disaggregated (by segment/geography) value, NOT the
+            # consolidated total — only whole-entity facts (segments empty) are
+            # the reported figure (real-data: GOOGL revenue $56.8B AsiaPacific
+            # vs $350B consolidated). Mirrors ESEF's dimensional-fact skip.
         if row.get("coreg"):
             continue  # co-registrant, not the consolidated entity (F10)
         tag = row.get("tag")

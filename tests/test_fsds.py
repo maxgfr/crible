@@ -51,6 +51,27 @@ def test_frames_from_fsds_maps_full_year_facts_and_drops_interims() -> None:
     assert 999999 not in frames
 
 
+def test_frames_from_fsds_drops_segmented_rows() -> None:
+    """Real FSDS num.txt carries a `segments` column; only whole-entity facts
+    (segments empty) are the consolidated total. A segmented row (by geography /
+    business) must NEVER be booked as the total — caught by real-data validation
+    where GOOGL revenue came out $56.8B (AsiaPacific) instead of $350B. The
+    segmented row is listed first to defeat first-writer-wins."""
+    sub = _tsv([
+        ["adsh", "cik", "name", "form", "period", "fy", "fp"],
+        ["A1", "1652044", "ALPHABET", "10-K", "20241231", "2024", "FY"],
+    ])
+    num = _tsv([
+        ["adsh", "tag", "version", "ddate", "qtrs", "uom", "segments", "coreg", "value", "footnote"],
+        ["A1", "RevenueFromContractWithCustomerExcludingAssessedTax", "us-gaap/2024",
+         "20241231", "4", "USD", "Geographical=AsiaPacific;", "", "56815000000", ""],
+        ["A1", "RevenueFromContractWithCustomerExcludingAssessedTax", "us-gaap/2024",
+         "20241231", "4", "USD", "", "", "350018000000", ""],
+    ])
+    income = frames_from_fsds(sub, num, {1652044})[1652044][("income", "annual")].set_index("period")
+    assert income.loc["2024-12-31", "TotalRevenue"] == 350018000000.0  # consolidated, not a segment
+
+
 def test_frames_from_fsds_drops_co_registrant_rows() -> None:
     """F10 — a co-registrant (coreg non-empty) value must never be booked as the
     consolidated figure; the coreg row is listed first to defeat first-writer-wins."""
