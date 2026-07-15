@@ -677,6 +677,226 @@
       "interfaces": [],
       "nfrs": [],
       "unresolved": []
+    },
+    {
+      "id": "FR-016",
+      "title": "Audited US layer from SEC EDGAR companyfacts",
+      "description": "US issuers whose ticker resolves in the SEC directory (company_tickers.json) get audited XBRL fundamentals from companyfacts — keyless, public domain — mapped through a conservative us-gaap CONCEPT_MAP onto the canonical vocabulary and written as provider='edgar' raw that outranks scraped values at reconciliation (align_periods bridges year vs dated labels). A nightly companyfacts.zip bulk sweep (run_edgar_bulk) covers the whole US market; SEC fair-access is honoured with a declared User-Agent and a dedicated 5 req/s budget. Shipped: src/crible/providers/edgar.py, ingest/enrich/us.py.",
+      "priority": "must",
+      "acceptance": [
+        {
+          "given": "a US listing whose ticker resolves to a CIK",
+          "when": "the EDGAR cycle runs",
+          "then": "its annual (10-K/20-F/40-F, fp=FY, full-year) figures are written as provider='edgar' raw and, at reconciliation, override the scraped value where they differ, recording audited_fields provenance"
+        },
+        {
+          "given": "a US listing whose ticker is not in the SEC directory",
+          "when": "the cycle runs",
+          "then": "it is counted as unmatched, never errored, and the crawl continues"
+        },
+        {
+          "given": "the nightly bulk sweep runs",
+          "when": "companyfacts.zip is processed member-by-member",
+          "then": "every resolved US issuer gets its audited layer in one pass, history bounded to 8 fiscal years, the archive never committed"
+        }
+      ],
+      "rationaleEvidence": [
+        "S2",
+        "S58"
+      ],
+      "entities": [],
+      "interfaces": [],
+      "nfrs": [],
+      "unresolved": []
+    },
+    {
+      "id": "FR-017",
+      "title": "Deep US history from SEC Financial Statement Data Sets (FSDS)",
+      "description": "The quarterly FSDS ZIPs (sub.txt+num.txt) backfill the pre-8-year 'as-filed' US history companyfacts drops. num.txt (100s of MB) is streamed; only whole-entity facts are kept — rows with a non-empty segments (disaggregated by geography/business) or coreg (co-registrant) are dropped, only full-year durations (qtrs=4) / instants (qtrs=0). Written as provider='edgar-fsds'; merge_audited lets companyfacts win recent periods while FSDS backfills depth. Public domain — fully redistributable. Opt-in via `crible refresh --fsds-quarters N`. Shipped: src/crible/providers/edgar_fsds.py.",
+      "priority": "should",
+      "acceptance": [
+        {
+          "given": "a real FSDS quarter with segmented and consolidated rows for one issuer",
+          "when": "frames_from_fsds parses it",
+          "then": "only the consolidated (segments empty, coreg empty) full-year value is booked as the reported figure — never a segment"
+        },
+        {
+          "given": "companyfacts and FSDS both cover a US symbol",
+          "when": "the snapshot is built",
+          "then": "companyfacts wins the recent overlapping periods and FSDS adds the deeper history, chronologically ordered"
+        },
+        {
+          "given": "a 530 MB num.txt",
+          "when": "iter_fsds runs on a small host",
+          "then": "it streams row-by-row without loading the file whole into memory"
+        }
+      ],
+      "rationaleEvidence": [
+        "S46",
+        "S23",
+        "S24"
+      ],
+      "entities": [],
+      "interfaces": [],
+      "nfrs": [],
+      "unresolved": []
+    },
+    {
+      "id": "FR-018",
+      "title": "Cross-currency normalization from ECB reference rates (keyless FX)",
+      "description": "Ratios are currency-neutral but absolute magnitudes are per-currency, so cross-currency size screens are impossible. crible mirrors the ECB daily reference rates (Frankfurter, open source, redistributable) and adds companion *_eur columns (revenue_eur, net_income_eur, total_assets_eur, stockholders_equity_eur) — never imputed, and only for the latest period per symbol (only the spot rate is mirrored). Auto-filterable via the dynamic DSL whitelist. Shipped: src/crible/providers/fx.py.",
+      "priority": "could",
+      "acceptance": [
+        {
+          "given": "a snapshot row in USD and mirrored ECB rates",
+          "when": "attach_fx runs",
+          "then": "the latest-period *_eur companions are the value divided by the currency's rate; an unknown currency or missing rate leaves the column NULL"
+        },
+        {
+          "given": "a company's historical periods",
+          "when": "*_eur is attached",
+          "then": "only the latest period is normalized; older periods stay NULL rather than get today's rate applied to a five-year-old figure"
+        },
+        {
+          "given": "no ECB rates are mirrored",
+          "when": "the snapshot is built",
+          "then": "the build is a no-op for *_eur and ships unchanged (offline-safe)"
+        }
+      ],
+      "rationaleEvidence": [
+        "S72",
+        "S71",
+        "S26"
+      ],
+      "entities": [],
+      "interfaces": [],
+      "nfrs": [],
+      "unresolved": []
+    },
+    {
+      "id": "FR-019",
+      "title": "Audited UK layer from Companies House accounts (assumed-risk tier)",
+      "description": "The free Accounts Data Product (a ZIP of iXBRL accounts named by company number) fills the audited UK gap ESEF leaves post-Brexit. A dependency-free stdlib iXBRL parser (html.parser) extracts the FRC-taxonomy concepts crible maps to canonical fields, keeping only full-year figures, written as provider='companies-house' raw. Redistribution is an assumed risk (no explicit licence) so it lives in the assumed-risk dataset tier; resolution is operator-provided (data/uk-company-numbers.csv). Shipped: src/crible/providers/companies_house.py.",
+      "priority": "could",
+      "acceptance": [
+        {
+          "given": "a real Accounts Data Product ZIP whose members are Prod<batch>_<seq>_<number>_<date>.html",
+          "when": "iter_accounts runs",
+          "then": "the 8-char company number is extracted (not the trailing filing date) and the mapped FRS-102/105 balance/income figures are written as provider='companies-house' raw"
+        },
+        {
+          "given": "a small UK company that files a balance sheet only",
+          "when": "its accounts are parsed",
+          "then": "the balance-sheet figures are captured and the missing P&L is simply absent, never fabricated"
+        },
+        {
+          "given": "a broken iXBRL member",
+          "when": "the sweep runs",
+          "then": "it is skipped, never fatal"
+        }
+      ],
+      "rationaleEvidence": [
+        "S13",
+        "S17"
+      ],
+      "entities": [],
+      "interfaces": [],
+      "nfrs": [],
+      "unresolved": []
+    },
+    {
+      "id": "FR-020",
+      "title": "Audited Japan layer from EDINET (free-key opt-in)",
+      "description": "EDINET (API-only, free Subscription-Key) provides audited JP filings. It is OFF by default so the core and published dataset stay keyless (NFR-009). The XBRL instance parser (stdlib etree) maps jppfs concepts to canonical fields, prefers the consolidated (連結) value over non-consolidated (単体), rejects interim/quarter contexts, and only annual securities reports (docTypeCode 120) are ingested. PDL1.0 → redistributable with attribution. Resolution is clean (7203.T → securities code 72030). Shipped: src/crible/providers/edinet.py, ingest/enrich/jp.py.",
+      "priority": "could",
+      "acceptance": [
+        {
+          "given": "CRIBLE_EDINET_KEY is unset",
+          "when": "the provider inventory and the cycle run",
+          "then": "EDINET reports disabled and ingests nothing — the dataset stays keyless"
+        },
+        {
+          "given": "an annual report whose XBRL carries both consolidated and non-consolidated values",
+          "when": "the instance is parsed",
+          "then": "the consolidated value wins deterministically and a quarter-end balance instant is never booked as annual"
+        },
+        {
+          "given": "a JP listing 7203.T in the universe with a key set",
+          "when": "run_edinet lists documents",
+          "then": "only the annual securities report (docTypeCode 120) is fetched and written as provider='edinet' raw"
+        }
+      ],
+      "rationaleEvidence": [
+        "S28",
+        "S56"
+      ],
+      "entities": [],
+      "interfaces": [],
+      "nfrs": [],
+      "unresolved": []
+    },
+    {
+      "id": "FR-021",
+      "title": "Local-first bulk mirror with a last-good guarantee",
+      "description": "Every bulk source (EDGAR/FSDS, GLEIF, Companies House, ECB FX) is fetched once into data/mirror/<source>/, kept as last-good, and re-fetched only when stale (ETag/If-None-Match), size-capped (4 GiB), meta written atomically. In steady state the ingestion reads the local mirror, never a live per-record API; on a network failure it serves the last-good copy so coverage never regresses, and a whole refresh can run offline. The mirror persists in the Docker /data volume and is never committed to the published dataset. Shipped: src/crible/ingest/mirror.py.",
+      "priority": "should",
+      "acceptance": [
+        {
+          "given": "a bulk archive already mirrored and fresh",
+          "when": "fetch_if_stale is called",
+          "then": "it serves the cached local copy with no network request"
+        },
+        {
+          "given": "the mirror is stale but the network is down",
+          "when": "fetch_if_stale is called",
+          "then": "it returns the last-good copy (coverage never regresses); it only errors when there is no copy at all"
+        },
+        {
+          "given": "a pathological oversized response",
+          "when": "the mirror streams it",
+          "then": "the download aborts past the size ceiling and leaves no partial file behind"
+        }
+      ],
+      "rationaleEvidence": [
+        "S2",
+        "S24"
+      ],
+      "entities": [
+        "MirrorArchive"
+      ],
+      "interfaces": [],
+      "nfrs": [],
+      "unresolved": []
+    },
+    {
+      "id": "FR-022",
+      "title": "Incremental snapshot compute",
+      "description": "The snapshot build is split into an expensive per-symbol stage (build_symbol_rows) and a cheap cross-sectional finalize (universe + FX + peer-group ranks). A base.parquet caches the pre-finalize rows; only symbols whose raw changed since the last build are recomputed (plus all symbols when the price distillate refreshes), then everything is re-finalized (ranks are cross-sectional). Returns nothing to publish when nothing changed. This keeps the build tractable at 20k+ issuers. Shipped: src/crible/compute/snapshot.py::build_snapshot_incremental.",
+      "priority": "should",
+      "acceptance": [
+        {
+          "given": "a base cache and one symbol whose raw changed",
+          "when": "the incremental compute runs",
+          "then": "only that symbol's rows are rebuilt, the rest are reused from the base, and the whole set is re-finalized for cross-sectional ranks"
+        },
+        {
+          "given": "no raw changed since the last build",
+          "when": "the incremental compute runs",
+          "then": "it returns nothing to publish and the snapshot is left unchanged"
+        },
+        {
+          "given": "a refreshed price distillate",
+          "when": "the incremental compute runs",
+          "then": "every symbol is rebuilt so no stale price_quote/return_6m is served"
+        }
+      ],
+      "rationaleEvidence": [
+        "S25"
+      ],
+      "entities": [],
+      "interfaces": [],
+      "nfrs": [],
+      "unresolved": []
     }
   ],
   "nonFunctional": [
@@ -1076,6 +1296,50 @@
           "FR-013",
           "FR-014"
         ]
+      },
+      {
+        "name": "FxRate",
+        "attributes": [
+          {
+            "name": "currency",
+            "type": "identifier (ISO-4217, PK with as_of)"
+          },
+          {
+            "name": "as_of",
+            "type": "date (ECB publication date)"
+          },
+          {
+            "name": "units_per_eur",
+            "type": "number (ECB reference rate)"
+          }
+        ],
+        "referencedByFRs": [
+          "FR-018"
+        ]
+      },
+      {
+        "name": "MirrorArchive",
+        "attributes": [
+          {
+            "name": "source",
+            "type": "identifier (edgar|edgar-fsds|gleif|companies-house|fx, PK with name)"
+          },
+          {
+            "name": "name",
+            "type": "string (archive filename)"
+          },
+          {
+            "name": "etag",
+            "type": "string (nullable, for conditional refresh)"
+          },
+          {
+            "name": "fetched_at",
+            "type": "number (epoch seconds, last-good stamp)"
+          }
+        ],
+        "referencedByFRs": [
+          "FR-021"
+        ]
       }
     ],
     "interfaces": [
@@ -1204,6 +1468,46 @@
           "E113",
           "E114"
         ]
+      },
+      {
+        "id": "0005",
+        "title": "Audited US layer: SEC EDGAR companyfacts (keyless, public domain)",
+        "status": "accepted",
+        "context": "The 2026-07-13 data-sources research (`docs/research/2026-07-13-data-sources/`, 81 cited sources) identified SEC EDGAR as the single biggest keyless opportunity: every US issuer's XBRL facts are public domain, served without a key from `data.sec.gov/api/xbrl/companyfacts/CIK##########.json` (plus a nightly 1.39 GB `companyfacts.zip` bulk). The same research confirmed Yahoo-scraped data is contractually non-redistributable (personal-use ToS) and Google Finance is permanently closed — so EDGAR is the only path to *audited, redistributable* US fundamentals. Separately, implementation review found the audited-outranks-scraped reconciliation (FR-010) silently no-oped: ESEF labels fiscal periods by year (\"2024\") while yfinance labels them by end date (\"2024-12-31\"), and `reconcile()` skips audited periods absent from the scraped index — zero snapshot rows carried `audited_fields`.",
+        "decision": "A `provider='edgar'` layer mirroring the ESEF pattern (FR-016): `company_tickers.json` resolves universe tickers to CIKs (dash-form tickers match FinanceDatabase symbols; unmatched are counted, never errored); per-CIK companyfacts JSON is parsed through a conservative us-gaap `CONCEPT_MAP` onto the canonical (yfinance-vocabulary) columns — annual forms only (10-K/20-F/40-F, fp=FY), full-year durations, latest-filed wins, capex sign negated to the yfinance convention; frames land in the immutable raw layer and outrank scraped values at reconciliation. A new `align_periods` step maps audited period labels onto the scraped label of the same fiscal year, fixing the dormant ESEF reconciliation for free. SEC fair-access compliance: a declared User-Agent (`CRIBLE_SEC_USER_AGENT`, default names the repo) and a dedicated 5 req/s token bucket — never the Yahoo budget. The `edgar_tasks` cycle refreshes each symbol every 90 days.",
+        "consequences": "US symbols in the crawl (20 mega-caps in the bootstrap sample, all US listings at scale) gain audited statements; discrepancies vs scraped values are logged with provenance. EDGAR accepts datacenter IPs (unlike Yahoo), so the nightly GitHub Actions refresh enriches US symbols reliably. Prices still come from yfinance — no redistributable OHLCV source exists anywhere (exchanges monetize it) — so valuation ratios remain scrape-dependent. **Update (2026-07-13): the 1.39 GB `companyfacts.zip` bulk path is implemented** (`run_edgar_bulk`, `refresh --edgar-bulk`, on in the nightly): every resolved US listing (~10k issuers) gets its audited layer in one sweep, history bounded to 8 fiscal years to keep the published snapshot under GitHub's file limits. Priceless issuers carry price-free scores (Piotroski, Beneish, margins, growth) with NULL valuation ratios — never imputed.",
+        "alternatives": "edgartools as a dependency — rejected: a heavy library for the narrow slice needed; the thin ESEF-style client is ~150 lines and fully fixture-testable. Bulk `companyfacts.zip` now — deferred: 1.39 GB per nightly run outweighs the ~100-symbol demo need. SEC quarterly Financial Statement Data Sets — deferred: quarterly cadence and heavier parsing for no additional benefit at this scale.",
+        "evidence": []
+      },
+      {
+        "id": "0006",
+        "title": "Dataset distribution: demo-data branch + rolling data-latest release + bootstrap",
+        "status": "accepted",
+        "context": "Self-hosters previously started from an empty `data/` and waited hours for the first crawl to land rows. Meanwhile the nightly `refresh-data` workflow already publishes the full open dataset (raw layer + universe + snapshot + site artifacts) as one orphan commit on the `demo-data` branch, with a never-publish-empty gate and a last-good guarantee. GitHub constraints shape the options: files >100 MiB are blocked from normal git, Git LFS objects are not served by Pages, release assets go up to 2 GB, and committing data to `main` would bloat its history nightly (the Flat Data pattern's cost).",
+        "decision": "The `demo-data` orphan branch stays canonical (atomic publish, Pages source, last-good guarantee). The nightly workflow additionally uploads `crible-data.tar.gz` (raw + universe + snapshot) and the two site parquets as assets on a rolling `data-latest` GitHub Release (`--latest=false` so it never shadows versioned application releases; `--clobber` updates in place). A new `crible bootstrap` command initializes a local `data/` by trying the release asset first, then the codeload tarball of the `demo-data` branch; it refuses a non-empty dataset without `--force` and extracts defensively (only the `data/` layer, no links, no path escapes, staging-then-move).",
+        "consequences": "A fresh install screens within seconds of `crible bootstrap` — zero crawl, zero keys — and the normal ingest loop extends the dataset from there. The dataset gains a stable download URL usable outside crible. Costs: one more nightly workflow step and the standing caveat that scheduled workflows auto-disable after 60 days of repository inactivity (any push resets the clock). The published dataset inherits the documented yfinance redistribution caveat for its small scraped sample; the audited EDGAR/ESEF and universe layers are cleanly redistributable.",
+        "alternatives": "Committing `data/` to `main` on a cron (Flat Data / git-scraping) — rejected: permanent history bloat on the code repo for every nightly refresh. One versioned release per night — rejected: hundreds of tag/release entries add noise without value; the branch already provides history. Git LFS — rejected: not served by GitHub Pages and quota-bound. Bootstrap-from-Pages (fetch the site parquets only) — rejected as the primary path: it lacks the raw layer, which is what lets a self-host recompute and extend snapshots.",
+        "evidence": []
+      },
+      {
+        "id": "0007",
+        "title": "The hosted site is the product; publish the OHLCV price series",
+        "status": "accepted",
+        "context": "The GitHub Pages build was framed as a \"demo\" — a limited preview of the self-hosted screener — but it is not limited: it runs the same DSL (golden-locked TS port), the same DuckDB queries and the same CSV export as the API, over the same published dataset. The \"demo\" label was naming, a UI banner, and one real data exclusion: price **series** were withheld. `crible import-prices` distilled every dump to one derived row per symbol (last close, as-of, 6-month return) and the crawled yfinance OHLCV bars, though present in the raw layer on the published branch/release, were never exported to the browser. The exclusion was a licensing stance (Yahoo/HuggingFace/Stooq series are not open data), not a size constraint — the full 1-year series for the crawled sample is ~1.8 MB, orders of magnitude under GitHub's 100 MB file / 1 GB Pages / 2 GB release limits.",
+        "decision": "Drop the \"demo\" concept everywhere: the hosted site is the product, the published dataset is the dataset. Concretely:\n- Rename the distribution branch `demo-data` → `data`; rename `crible demo-refresh` → `crible refresh`, the publish/seed scripts, the UI `DemoBanner` → `CoverageBanner` (a neutral coverage line, no upsell), and the `DemoManifest` type → `SiteManifest`.\n- Publish the daily OHLCV **series**, accepting the redistribution risk explicitly. `import-prices` now persists the windowed series (last 400 days) to `data/prices/<source>.parquet` in addition to the distillate; `crible export-site` assembles every symbol's series (crawled yfinance bars + imported dumps, one whole source winning per symbol — bases never mixed) into symbol-sorted, size-bounded Parquet shards `site-data/prices-*.parquet`, listed in `manifest.json` (`schema: 2`, a `prices` block). The UI serves a per-symbol daily close chart in the company drawer via a new `prices(symbol)` seam (DuckDB range-query in static mode, `/api/prices/{symbol}` in API mode).\n- Keep the guards that are not \"demo\" logic: the `export-site --min-symbols` floor (never publish an empty/undersized dataset), the nightly bounds (`--deadline`, ESEF/EDGAR caps, token-bucket budget), and the distillate (`prices-latest.parquet`) as the snapshot's price fallback for EDGAR-only issuers.",
+        "consequences": "The browser now shows real price history, and the published dataset is the full publishable set. The redistribution risk on the price series is assumed and dated here (2026-07-13) — the same standing caveat that already applied to the scraped fundamentals sample, now extended to the series. Size is bounded defensively: each shard is asserted under 95 MB (below the 100 MB git wall) and the total is watched via the manifest `prices.bytes`; the only scenario that approaches the Pages 1 GB ceiling is a full-universe daily series (~2.8 GB), which the current ~100-symbol yfinance crawl and universe-filtered dumps are far from. A shrinking shard count can leave a stale `prices-NN.parquet` release asset (`--clobber` replaces, never deletes) — the tarball and manifest stay authoritative.",
+        "alternatives": "Distillate-only (the ADR-0006 status quo) — rejected: it withheld real, publishable data behind a naming distinction and gave the browser no price history. Publishing series as one unbounded file — rejected: a Stooq worldwide import can leap past the 100 MB git wall in a single nightly; sharding is required. Per-region shards — rejected: uneven and drifting, and region is not a column on a price row; symbol-sorted disjoint shards let DuckDB prune on zone maps and leave the door open to registering only the covering shard later. Adding a chart library — rejected: a ~60-line hand-rolled SVG matches the existing no-chart-lib style (StatusView) and adds no dependency.",
+        "evidence": []
+      },
+      {
+        "id": "0008",
+        "title": "Bulk-first, local-first data plane with a last-good guarantee and two licence tiers",
+        "status": "accepted",
+        "context": "The 2026-07-14 improve cycle (docs/improve/2026-07-14/, market dossier docs/market/2026-07-14/) targeted the fragile per-symbol Yahoo scrape and the US-only ceiling of free feeds. SEC EDGAR/FSDS are public domain and redistributable; Companies House and the price dumps carry no explicit reuse licence; EDINET is PDL1.0 (attribution) behind a free key. Live per-record APIs are also a self-hosting liability.",
+        "decision": "Shrink Yahoo to a resilient fallback and grow an audited, redistributable BULK layer behind one AuditedBulkProvider seam (providers/audited.py). Every bulk archive is fetched once into a local mirror (ingest/mirror.py, data/mirror/<source>/) kept as last-good, re-fetched only when stale (ETag), size-capped; ingestion reads the mirror so a refresh can run offline and coverage never regresses. The published dataset is split into a FULLY-FREE tier (EDGAR+FSDS, ESEF, GLEIF, ECB/Frankfurter FX, FinanceDatabase) and an ASSUMED-RISK tier (Yahoo prices, Stooq/HuggingFace dumps, Companies House); EDINET stays off by default so the core and CI contract remain keyless (NFR-009/013).",
+        "consequences": "US audited coverage deepens (FSDS backfills pre-8-year history; segmented rows excluded), EU audited is on out-of-the-box (GLEIF auto-fetch), UK/JP are reachable, and cross-currency size screens work (*_eur, latest period only — only the spot rate is mirrored). The mirror persists in the Docker volume. Prices remain the one non-redistributable, non-open gap.",
+        "alternatives": "Keep Yahoo primary — rejected: fragile, rate-limited, non-redistributable. Mirror upstream files into the published dataset — rejected: the 1.4 GB companyfacts bulk must never be committed (publish-data.sh allowlist). Ship EDINET on by default — rejected: it needs a key and would break the keyless contract.",
+        "evidence": []
       }
     ]
   },
@@ -1401,6 +1705,23 @@
       "risks": [
         "EODHD paid quotas/pricing recorded at planning time must be re-validated with the free key before any purchase decision [E111][E112].",
         "FinancialReports.eu MCP OAuth flow may not suit headless ingestion — evaluate during the plugin spike before committing."
+      ]
+    },
+    {
+      "title": "M4 — Bulk-first / local-first data plane (2026-07-14/15)",
+      "outcome": "Audited redistributable bulk (US deep + EU/UK/JP), keyless FX, a local-first mirror with last-good, and incremental compute — Yahoo demoted to a resilient fallback.",
+      "frIds": [
+        "FR-016",
+        "FR-017",
+        "FR-018",
+        "FR-019",
+        "FR-020",
+        "FR-021",
+        "FR-022"
+      ],
+      "risks": [
+        "No open redistributable OHLCV source exists — prices stay Yahoo/dumps (assumed-risk).",
+        "Real-corpus parser edge cases (FSDS segments, iXBRL taxonomy variety, EDINET consolidation) — mitigated by real-data validation, not just fixtures."
       ]
     }
   ],
@@ -1753,6 +2074,99 @@
         "0001"
       ],
       "entities": [],
+      "interfaces": [],
+      "components": [],
+      "screens": []
+    },
+    {
+      "fr": "FR-016",
+      "nfrs": [],
+      "adrs": [
+        "0005"
+      ],
+      "entities": [
+        "RawStatement"
+      ],
+      "interfaces": [],
+      "components": [],
+      "screens": []
+    },
+    {
+      "fr": "FR-017",
+      "nfrs": [],
+      "adrs": [
+        "0008"
+      ],
+      "entities": [
+        "RawStatement"
+      ],
+      "interfaces": [],
+      "components": [],
+      "screens": []
+    },
+    {
+      "fr": "FR-018",
+      "nfrs": [],
+      "adrs": [
+        "0008"
+      ],
+      "entities": [
+        "FxRate",
+        "SnapshotRow"
+      ],
+      "interfaces": [],
+      "components": [],
+      "screens": []
+    },
+    {
+      "fr": "FR-019",
+      "nfrs": [],
+      "adrs": [
+        "0008"
+      ],
+      "entities": [
+        "RawStatement"
+      ],
+      "interfaces": [],
+      "components": [],
+      "screens": []
+    },
+    {
+      "fr": "FR-020",
+      "nfrs": [],
+      "adrs": [
+        "0008"
+      ],
+      "entities": [
+        "RawStatement",
+        "Provider"
+      ],
+      "interfaces": [],
+      "components": [],
+      "screens": []
+    },
+    {
+      "fr": "FR-021",
+      "nfrs": [],
+      "adrs": [
+        "0008"
+      ],
+      "entities": [
+        "MirrorArchive"
+      ],
+      "interfaces": [],
+      "components": [],
+      "screens": []
+    },
+    {
+      "fr": "FR-022",
+      "nfrs": [],
+      "adrs": [
+        "0003"
+      ],
+      "entities": [
+        "SnapshotRow"
+      ],
       "interfaces": [],
       "components": [],
       "screens": []
