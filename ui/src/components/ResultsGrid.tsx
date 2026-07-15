@@ -10,6 +10,7 @@ import {
 } from "@tanstack/react-table";
 import { useMemo } from "react";
 import { fieldLabel } from "../data/field-catalog";
+import { formatCell } from "../format";
 
 type Row = Record<string, unknown>;
 
@@ -23,39 +24,6 @@ interface Props {
   onSort?: (column: string) => void;
   /** permalink for a symbol's drawer (keeps the current screen in the URL) */
   hrefFor?: (symbol: string) => string;
-}
-
-// score coloring is never color-only (DESIGN.md): each verdict carries a
-// glyph — ✓ pass, ✗ fail, ! warning — and growth carries its sign
-const FLAGS = { good: " ✓", bad: " ✗", warn: " !" } as const;
-
-function verdict(text: string, kind: keyof typeof FLAGS | ""): { text: string; className: string; flag: string } {
-  return { text, className: kind ? `num-${kind}` : "", flag: kind ? FLAGS[kind] : "" };
-}
-
-function formatCell(column: string, value: unknown): { text: string; className: string; flag: string } {
-  if (value === null || value === undefined) return { text: "—", className: "", flag: "" };
-  if (typeof value === "number") {
-    const text = Math.abs(value) >= 1e9
-      ? `${(value / 1e9).toFixed(2)}B`
-      : Math.abs(value) >= 1e6
-        ? `${(value / 1e6).toFixed(1)}M`
-        : Number.isInteger(value)
-          ? String(value)
-          : value.toFixed(3);
-    if (column === "piotroski_f") return verdict(text, value >= 7 ? "good" : value <= 3 ? "bad" : "");
-    if (column === "altman_z") return verdict(text, value > 2.99 ? "good" : value < 1.81 ? "bad" : "");
-    if (column === "beneish_m") return verdict(text, value > -1.78 ? "warn" : "good");
-    // distress models read like Altman: safe (green) below 0, distress (red) above
-    if (column === "zmijewski_score" || column === "ohlson_o")
-      return verdict(text, value < 0 ? "good" : value > 0 ? "bad" : "");
-    // Montier reads like Beneish: 5–6 raised flags warns, 0–1 is clean
-    if (column === "montier_c") return verdict(text, value >= 5 ? "warn" : value <= 1 ? "good" : "");
-    if (column.endsWith("_growth"))
-      return { text: value > 0 ? `+${text}` : text, className: value > 0 ? "num-good" : value < 0 ? "num-bad" : "", flag: "" };
-    return { text, className: "", flag: "" };
-  }
-  return { text: String(value), className: "", flag: "" };
 }
 
 function ariaSort(sort: string | null | undefined, column: string): "ascending" | "descending" | undefined {

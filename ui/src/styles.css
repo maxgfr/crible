@@ -168,6 +168,13 @@ table.results tr:hover td {
 .num-bad { color: var(--color-loss); }
 .num-warn { color: var(--color-warn); }
 
+/* the non-color half of a verdict: ✓ / ✗ / ! after the number */
+.cell-flag {
+  font-size: 0.85em;
+  opacity: 0.8;
+  margin-left: 2px;
+}
+
 .toolbar {
   display: flex;
   gap: var(--space-2);

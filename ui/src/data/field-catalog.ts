@@ -59,6 +59,7 @@ const CATALOG: Record<string, CatalogEntry> = {
   current_ratio: { label: "Current ratio", group: "Health" },
   quick_ratio: { label: "Quick ratio", group: "Health" },
   interest_coverage_ratio: { label: "Interest coverage", group: "Health" },
+  net_debt_to_ebitda_ratio: { label: "Net debt / EBITDA", group: "Health" },
   dividend_coverage: { label: "Dividend cover", group: "Health" },
   // growth (every fundamental has a _growth companion; these two are curated)
   revenue_growth: { label: "Revenue growth (YoY)", group: "Growth (YoY)" },

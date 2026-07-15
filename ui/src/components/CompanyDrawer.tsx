@@ -4,6 +4,8 @@
 
 import { Fragment, useEffect, useRef, useState } from "react";
 import { company, type CompanyDetail } from "../data";
+import { fieldLabel } from "../data/field-catalog";
+import { formatCell, formatNumber } from "../format";
 import { PriceChart } from "./PriceChart";
 
 interface Props {
@@ -46,6 +48,23 @@ const STATEMENT_FIELDS = [
   "revenue", "gross_profit", "operating_income", "net_income",
   "total_assets", "total_equity", "total_debt", "operating_cashflow", "free_cash_flow",
 ];
+// earnings backed by cash — the cash-quality preset's inputs
+const CASH_QUALITY = ["ebitda_margin", "fcf_margin", "fcf_conversion", "dividend_coverage"];
+// the classic ratio families, grouped the way an analyst scans them
+const KEY_RATIOS: [string, string[]][] = [
+  ["Valuation", [
+    "price_to_earnings_ratio", "price_to_book_ratio", "ev_to_ebitda_ratio",
+    "earnings_yield", "free_cash_flow_yield", "weighted_dividend_yield",
+  ]],
+  ["Profitability", [
+    "gross_margin", "operating_margin", "net_profit_margin",
+    "return_on_assets", "return_on_equity", "return_on_capital_employed",
+  ]],
+  ["Balance", [
+    "current_ratio", "quick_ratio", "debt_to_equity_ratio",
+    "net_debt_to_ebitda_ratio", "interest_coverage_ratio",
+  ]],
+];
 
 // provenance ends at the SOURCE, not at a provider string: link the place
 // the numbers actually come from (the audited filings when the layer is
@@ -71,13 +90,22 @@ const PROVENANCE_LINKS: Record<string, (symbol: string) => { href: string; label
 
 function num(value: unknown): string {
   if (value === null || value === undefined) return "—";
-  if (typeof value === "number") {
-    if (Math.abs(value) >= 1e9) return `${(value / 1e9).toFixed(2)}B`;
-    if (Math.abs(value) >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
-    return Number.isInteger(value) ? String(value) : value.toFixed(3);
-  }
+  if (typeof value === "number") return formatNumber(value);
   if (typeof value === "boolean") return value ? "✓" : "✗";
   return String(value);
+}
+
+// a value with its verdict color + glyph (shared thresholds with the grid);
+// booleans keep the plain ✓/✗ path
+function Val({ column, value }: { column: string; value: unknown }) {
+  if (typeof value === "boolean") return <>{value ? "✓" : "✗"}</>;
+  const { text, className, flag } = formatCell(column, value);
+  return (
+    <span className={className || undefined}>
+      {text}
+      {flag && <span className="cell-flag">{flag}</span>}
+    </span>
+  );
 }
 
 export function CompanyDrawer({ symbol, onClose }: Props) {
@@ -139,13 +167,54 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                   ))}
                 </tbody>
               </table>
+              <h3>Cash quality</h3>
+              <table>
+                <tbody>
+                  {CASH_QUALITY.map((field) => (
+                    <tr key={field}>
+                      <td>{fieldLabel(field)}</td>
+                      {detail.periods.map((p) => (
+                        <td key={String(p.period)}>
+                          <Val column={field} value={p[field]} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <h3>Key ratios</h3>
+              <table>
+                <tbody>
+                  {KEY_RATIOS.map(([group, fields]) => (
+                    <Fragment key={group}>
+                      <tr>
+                        <td className="meta" colSpan={detail.periods.length + 1}>
+                          {group}
+                        </td>
+                      </tr>
+                      {fields.map((field) => (
+                        <tr key={field}>
+                          <td>{fieldLabel(field)}</td>
+                          {detail.periods.map((p) => (
+                            <td key={String(p.period)}>
+                              <Val column={field} value={p[field]} />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
               <h3>Scores — full breakdown</h3>
               <table>
                 <tbody>
                   <tr>
                     <td>Piotroski F</td>
                     {detail.periods.map((p) => (
-                      <td key={String(p.period)}>{num(p.piotroski_f)}</td>
+                      <td key={String(p.period)}>
+                        <Val column="piotroski_f" value={p.piotroski_f} />
+                      </td>
                     ))}
                   </tr>
                   {PIOTROSKI.map((criterion) => (
@@ -159,7 +228,9 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                   <tr>
                     <td>Altman Z</td>
                     {detail.periods.map((p) => (
-                      <td key={String(p.period)}>{num(p.altman_z)}</td>
+                      <td key={String(p.period)}>
+                        <Val column="altman_z" value={p.altman_z} />
+                      </td>
                     ))}
                   </tr>
                   {ALTMAN.map((input) => (
@@ -173,7 +244,9 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                   <tr>
                     <td>Beneish M</td>
                     {detail.periods.map((p) => (
-                      <td key={String(p.period)}>{num(p.beneish_m)}</td>
+                      <td key={String(p.period)}>
+                        <Val column="beneish_m" value={p.beneish_m} />
+                      </td>
                     ))}
                   </tr>
                   {BENEISH.map((component) => (
@@ -187,19 +260,25 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                   <tr>
                     <td>Zmijewski</td>
                     {detail.periods.map((p) => (
-                      <td key={String(p.period)}>{num(p.zmijewski_score)}</td>
+                      <td key={String(p.period)}>
+                        <Val column="zmijewski_score" value={p.zmijewski_score} />
+                      </td>
                     ))}
                   </tr>
                   <tr>
                     <td>Ohlson O</td>
                     {detail.periods.map((p) => (
-                      <td key={String(p.period)}>{num(p.ohlson_o)}</td>
+                      <td key={String(p.period)}>
+                        <Val column="ohlson_o" value={p.ohlson_o} />
+                      </td>
                     ))}
                   </tr>
                   <tr>
                     <td>Montier C</td>
                     {detail.periods.map((p) => (
-                      <td key={String(p.period)}>{num(p.montier_c)}</td>
+                      <td key={String(p.period)}>
+                        <Val column="montier_c" value={p.montier_c} />
+                      </td>
                     ))}
                   </tr>
                   {MONTIER.map((flag) => (
@@ -220,18 +299,24 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                       <tbody>
                         <tr>
                           <td>Composite</td>
-                          <td>{num(detail.periods[0].composite_rank)}</td>
+                          <td>
+                            <Val column="composite_rank" value={detail.periods[0].composite_rank} />
+                          </td>
                         </tr>
                         {RANK_PILLARS.map(([label, column, components]) => (
                           <Fragment key={column}>
                             <tr>
                               <td>{label}</td>
-                              <td>{num(detail.periods[0][column])}</td>
+                              <td>
+                                <Val column={column} value={detail.periods[0][column]} />
+                              </td>
                             </tr>
                             {components.map((component) => (
                               <tr key={component}>
                                 <td className="meta">· {component}</td>
-                                <td>{num(detail.periods[0][component])}</td>
+                                <td>
+                                  <Val column={component} value={detail.periods[0][component]} />
+                                </td>
                               </tr>
                             ))}
                           </Fragment>
@@ -255,7 +340,9 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                       {VALUE_ROWS.map(([label, column]) => (
                         <tr key={column}>
                           <td className={label.startsWith("·") ? "meta" : undefined}>{label}</td>
-                          <td>{num(detail.periods[0][column])}</td>
+                          <td>
+                            <Val column={column} value={detail.periods[0][column]} />
+                          </td>
                         </tr>
                       ))}
                     </tbody>

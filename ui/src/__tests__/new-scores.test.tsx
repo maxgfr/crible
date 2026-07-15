@@ -21,6 +21,8 @@ vi.mock("../data", () => ({
         graham_number: 14.2, graham_margin_of_safety: 0.42, ncav: 100,
         ncav_to_market_cap: 0.1, magic_formula_rank: 80,
         greenblatt_earnings_yield: 0.13, greenblatt_roc: 0.21,
+        ebitda_margin: 0.22, fcf_margin: 0.08, fcf_conversion: 0.4, dividend_coverage: 2.5,
+        price_to_earnings_ratio: 11.4, return_on_equity: 0.18, current_ratio: 1.9,
         provider: "yfinance", computed_at: 1700000000,
       },
     ],
@@ -87,5 +89,36 @@ describe("new scores — drawer breakdown", () => {
     expect(rtl.getByText("Value — Greenblatt & Graham")).toBeInTheDocument();
     expect(rtl.getByText("Magic Formula rank")).toBeInTheDocument();
     expect(rtl.getByText("Graham number")).toBeInTheDocument();
+  });
+
+  it("colors drawer values with the shared verdict grammar (never color-only)", async () => {
+    const { CompanyDrawer } = await import("../components/CompanyDrawer");
+    render(<CompanyDrawer symbol="ACME" onClose={() => {}} />);
+    await waitFor(() => expect(rtl.getByText("Zmijewski")).toBeInTheDocument());
+    // headline scores carry class + glyph
+    expect(rtl.getByText("-2.400").className).toBe("num-good");
+    expect(rtl.getByText("-2.400").querySelector(".cell-flag")?.textContent).toContain("✓");
+    // value toolkit thresholds reach the drawer too
+    expect(rtl.getByText("0.420").className).toBe("num-good");
+  });
+
+  it("renders the Cash quality and Key ratios sections", async () => {
+    const { CompanyDrawer } = await import("../components/CompanyDrawer");
+    render(<CompanyDrawer symbol="ACME" onClose={() => {}} />);
+    await waitFor(() => expect(rtl.getByText("Cash quality")).toBeInTheDocument());
+    expect(rtl.getByText("Key ratios")).toBeInTheDocument();
+    // cash-quality rows are labeled via the catalog and colored where thresholded
+    expect(rtl.getByText("FCF conversion")).toBeInTheDocument();
+    const conversion = rtl.getByText("0.400");
+    expect(conversion.className).toBe("num-warn");
+    expect(conversion.querySelector(".cell-flag")?.textContent).toContain("!");
+    expect(rtl.getByText("Dividend cover")).toBeInTheDocument();
+    // key-ratio groups and a valuation row from the catalog
+    expect(rtl.getByText("Valuation")).toBeInTheDocument();
+    expect(rtl.getByText("Profitability")).toBeInTheDocument();
+    expect(rtl.getByText("P/E")).toBeInTheDocument();
+    expect(rtl.getByText("11.400")).toBeInTheDocument();
+    // un-thresholded ratios stay neutral
+    expect(rtl.getByText("0.180").className).toBe("");
   });
 });
