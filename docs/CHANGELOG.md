@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased — 2026-07-15 (v2: indicators, pipeline hardening, coverage)
+
+- **Six quick-win indicators** — cash conversion cycle + operating cycle
+  (reflection-wired from the published DIO/DSO/DPO), dividend payout, ROIC,
+  Rule of 40, Sloan accruals, PEG (3y CAGR), shareholder yield. Presets:
+  rule-of-40, garp, shareholder-yield, low-accruals.
+- **Momentum trio behind ONE rule** — `compute/momentum.py` is now the single
+  implementation of every price feature (the TODO's triple-duplicated 6-month
+  rule is dead, parity golden at 1e-12): new `return_12_1` (Jegadeesh-Titman),
+  `high_52w_proximity`, `volatility_1y`. `momentum_rank` deliberately stays on
+  `return_6m` this release (documented).
+- **Two new scores** — Mohanram G (explicitly partial 6/8 — no R&D/advertising
+  in the canonical vocabulary; peer-median machinery shared with FR-015) and
+  Dechow F (2011 Model 1 accounting core; published cutoffs F ≥ 1 / ≥ 1.85).
+- **TTM v1** — the crawled quarterly statements finally feed something: last
+  four clean quarters (240–300-day span guard) summed onto the latest row +
+  P/E·P/S·FCF-yield (TTM). EDGAR 10-Q extraction is the named v2.
+- **Coverage unlocked** — the ESEF sweep was amnesiac (its freshness table
+  never traveled in the published dataset) and re-fetched the same newest ~100
+  filings every night: freshness now re-seeds from the raw layer, the sweep
+  limit rises to 1,500/night (the ~8,850 matched EU listings land in days).
+  Idempotent raw writes keep incremental compute O(changed) under the nightly
+  EDGAR bulk; the Yahoo crawl goes cap-class-first within each region.
+- **Release pipeline hardened** — import-prices gets its own concurrency group
+  (a queued dispatch silently evicted the pending nightly on 2026-07-15);
+  post-publish single-generation verification + orphan-shard prune; failure
+  beacon (labeled GitHub issue); `crible refresh --max-minutes` whole-run
+  guard (enrichment yields, compute+publish always run); nightly at 23:47 UTC;
+  per-region coverage in the manifest and the banner.
+- **Blank default query** — the first paint screens the whole covered
+  universe sorted by `-composite_rank` instead of a hidden Piotroski filter.
+- Engine schema version now guards the restored base cache (new columns force
+  exactly one full rebuild). Snapshot: 285 columns.
+
 ## Unreleased — 2026-07-15 (UI pass: presets → columns, drawer, shell)
 
 - **A preset pick surfaces its indicators** — every shipped preset carries a
