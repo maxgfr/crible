@@ -413,6 +413,54 @@ def test_fr003_raw_layer_round_trip_builds_snapshot(tmp_path) -> None:
     assert snapshot.loc[snapshot["period"] == "2025", "piotroski_f"].iloc[0] == 9
 
 
+def test_fr003_price_ratio_growths_and_ncav_duplicate_are_not_emitted() -> None:
+    """Price-based ratios exist for the latest fiscal period only, so their
+    YoY growth can never resolve — the snapshot no longer emits those
+    always-NaN columns, nor net_current_asset_value (≡ extras.ncav)."""
+    frames = {(s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()}
+    snapshot = build_symbol_snapshot(
+        "P.PA", frames, computed_at=1.0, price_quote=(10.0, "2025-12-31")
+    )
+
+    assert "price_to_earnings_ratio" in snapshot.columns  # the ratio itself stays
+    assert "price_to_earnings_ratio_growth" not in snapshot.columns
+    assert "market_cap_growth" not in snapshot.columns
+    assert "revenue_growth" in snapshot.columns  # real growths stay
+    # net_debt only resolves when a price is passed, but its VALUES are a
+    # full series — the growth is real and must survive
+    assert "net_debt_to_ebitda_ratio_growth" in snapshot.columns
+    assert "ncav" in snapshot.columns
+    assert "net_current_asset_value" not in snapshot.columns
+
+
+def test_fr003_price_dependent_ratio_columns_reflect_the_wiring() -> None:
+    from crible.compute.ratios import price_dependent_ratio_columns
+
+    cols = price_dependent_ratio_columns()
+    assert "price_to_earnings_ratio" in cols
+    assert "market_cap" in cols
+    assert "net_profit_margin" not in cols  # price-free ratio
+    assert "net_debt_to_ebitda_ratio" not in cols  # price-gated but full-series
+
+
+def test_fr003_stale_base_cache_columns_are_scrubbed() -> None:
+    """The nightly restores base.parquet from the last release: retired
+    columns must not resurrect through the kept (non-dirty) rows."""
+    from crible.compute.snapshot import _scrub_retired_columns
+
+    stale = pd.DataFrame(
+        {
+            "symbol": ["A"],
+            "revenue_growth": [0.1],
+            "market_cap_growth": [float("nan")],
+            "net_current_asset_value": [1.0],
+            "net_current_asset_value_growth": [float("nan")],
+        }
+    )
+    clean = _scrub_retired_columns(stale)
+    assert list(clean.columns) == ["symbol", "revenue_growth"]
+
+
 def test_fr003_null_cells_carry_a_note_naming_the_missing_inputs() -> None:
     """FR-003 AC-2: the snapshot names the canonical inputs the provider did
     not supply — every NULL ratio is explainable."""

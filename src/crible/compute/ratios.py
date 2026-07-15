@@ -10,6 +10,7 @@ missing column).
 
 from __future__ import annotations
 
+import functools
 import inspect
 
 import pandas as pd
@@ -22,6 +23,9 @@ from financetoolkit.ratios import (
 )
 
 RATIO_MODULES = [profitability_model, liquidity_model, solvency_model, efficiency_model, valuation_model]
+
+# resolvable but never emitted: net_current_asset_value duplicates extras.ncav
+RATIO_DENYLIST = frozenset({"net_current_asset_value"})
 
 
 def _avg(series: pd.Series) -> pd.Series:
@@ -114,7 +118,7 @@ def compute_ratios(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
             if not name.startswith("get_"):
                 continue
             column = name[4:]
-            if column in out or column in canonical.columns:
+            if column in out or column in canonical.columns or column in RATIO_DENYLIST:
                 continue
             params = inspect.signature(fn).parameters
             required = [p for p in params.values() if p.default is inspect.Parameter.empty]
@@ -127,3 +131,26 @@ def compute_ratios(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
             if isinstance(result, pd.Series):
                 out[column] = result
     return pd.DataFrame(out, index=canonical.index)
+
+
+@functools.lru_cache(maxsize=1)
+def price_dependent_ratio_columns() -> frozenset[str]:
+    """Ratio columns whose values price-derive and therefore exist for the
+    LATEST fiscal period only (the price series is NaN elsewhere): their
+    year-over-year growth can never resolve, so the snapshot must not
+    generate those columns. Determined by running the real wiring on a
+    synthetic 3-period company with a latest-only price — a column counts
+    when every period but the last is NaN. Presence-only reflection would
+    over-count: net_debt resolves ONLY when a price is passed yet its values
+    are a full series, so net_debt_to_ebitda_ratio_growth is real."""
+    from crible.compute.canonical import CANONICAL_FIELDS
+
+    periods = pd.Index(["p1", "p2", "p3"])
+    # distinct values per field so synthetic denominators never hit 0/0
+    canonical = pd.DataFrame(
+        {field: [i + 2.0, i + 3.0, i + 4.0] for i, field in enumerate(CANONICAL_FIELDS)},
+        index=periods,
+    )
+    price = pd.Series([float("nan"), float("nan"), 5.0], index=periods)
+    ratios = compute_ratios(canonical, price)
+    return frozenset(ratios.columns[ratios.iloc[:-1].isna().all()])

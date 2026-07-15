@@ -16,7 +16,7 @@ import pandas as pd
 from crible.compute.canonical import CANONICAL_FIELDS, build_canonical
 from crible.compute.extras import compute_extras
 from crible.compute.ranks import attach_ranks, price_return
-from crible.compute.ratios import compute_ratios
+from crible.compute.ratios import RATIO_DENYLIST, compute_ratios, price_dependent_ratio_columns
 from crible.compute.scores import all_scores
 from crible.ingest.raw import iter_raw_files
 from crible.providers.audited import merge_audited
@@ -84,7 +84,12 @@ def build_symbol_snapshot(
     extras = compute_extras(canonical, price)
     growth = canonical[CANONICAL_FIELDS].pct_change(fill_method=None)
     growth.columns = [f"{col}_growth" for col in growth.columns]
-    ratio_growth = ratios.pct_change(fill_method=None)
+    # price-based ratios exist for the latest period only, so their YoY
+    # growth can never resolve — don't emit those always-NaN columns
+    price_cols = price_dependent_ratio_columns()
+    ratio_growth = ratios.drop(columns=[c for c in ratios.columns if c in price_cols]).pct_change(
+        fill_method=None
+    )
     ratio_growth.columns = [f"{col}_growth" for col in ratio_growth.columns]
 
     out = pd.concat([canonical, ratios, growth, ratio_growth, scores, extras], axis=1)
@@ -273,7 +278,9 @@ def build_snapshot_incremental(data_dir: Path | str) -> pd.DataFrame | None:
         dirty = list(symbols)
     else:
         dirty = [s for s in symbols if _newest_raw_stamp(data_dir, s) > base_mtime]
-    prev = pd.read_parquet(base_path)
+    # the base cache may predate the schema (the nightly restores it from the
+    # last release): scrub retired columns so kept rows can't resurrect them
+    prev = _scrub_retired_columns(pd.read_parquet(base_path))
     known = set(prev["symbol"]) if "symbol" in prev.columns else set()
     # a symbol vanishing from the raw layer is also a change (drop its rows)
     dropped = known - set(symbols)
@@ -285,6 +292,14 @@ def build_snapshot_incremental(data_dir: Path | str) -> pd.DataFrame | None:
     rows = pd.concat([kept, fresh], ignore_index=True) if not fresh.empty else kept.reset_index(drop=True)
     _publish_base(rows, data_dir)
     return finalize_snapshot(rows, data_dir)
+
+
+def _scrub_retired_columns(rows: pd.DataFrame) -> pd.DataFrame:
+    """Columns the engine no longer emits: the always-NaN price-ratio growth
+    companions and the RATIO_DENYLIST duplicates (plus their growths)."""
+    retired = {f"{c}_growth" for c in price_dependent_ratio_columns()}
+    retired |= set(RATIO_DENYLIST) | {f"{c}_growth" for c in RATIO_DENYLIST}
+    return rows.drop(columns=[c for c in rows.columns if c in retired])
 
 
 def _publish_base(rows: pd.DataFrame, data_dir: Path | str) -> None:
