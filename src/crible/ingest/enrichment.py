@@ -441,6 +441,7 @@ def run_edinet(days, key: str | None = None, client=None, http=None, limit: int 
     provider='edinet' raw. PDL1.0 → redistributable with attribution."""
     from crible.providers.audited import write_audited_frames
     from crible.providers.edinet import (
+        ANNUAL_DOC_TYPES,
         KEY_ENV_VAR,
         EdinetClient,
         frames_from_document_zip,
@@ -481,6 +482,8 @@ def run_edinet(days, key: str | None = None, client=None, http=None, limit: int 
                 symbol = by_seccode.get(str(doc.get("secCode") or ""))
                 if not symbol:
                     continue
+                if str(doc.get("docTypeCode") or "") not in ANNUAL_DOC_TYPES:
+                    continue  # only annual securities reports (120), not interim
                 try:
                     frames = frames_from_document_zip(client.fetch_document(doc["docID"]))
                 except Exception as exc:  # noqa: BLE001

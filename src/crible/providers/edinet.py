@@ -21,6 +21,9 @@ log = logging.getLogger("crible.providers.edinet")
 API_BASE = "https://api.edinet-fsa.go.jp/api/v2"
 KEY_ENV_VAR = "CRIBLE_EDINET_KEY"
 FULL_YEAR_DAYS = (320, 400)
+# 120 = 有価証券報告書 (Annual Securities Report); other doc types (quarterly 140,
+# semi-annual 160…) carry interim figures we must not book as annual.
+ANNUAL_DOC_TYPES = {"120"}
 
 # jppfs concept local-name (lowercased) → (canonical column, statement)
 CONCEPT_MAP: dict[str, tuple[str, str]] = {
@@ -54,8 +57,8 @@ def _full_year(start: str, end: str) -> bool:
 
 
 def _period(ctx: dict | None, statement: str) -> str | None:
-    if not ctx:
-        return None
+    if not ctx or ctx.get("interim"):
+        return None  # a quarter/interim context is never an annual figure
     instant = ctx.get("instant")
     if statement == "balance":
         if not instant:
@@ -84,16 +87,25 @@ def parse_xbrl_instance(xml) -> dict[tuple[str, str], pd.DataFrame]:
         cid = ctx.get("id")
         if not cid:
             continue
-        info: dict[str, str] = {}
+        info: dict = {}
+        # EDINET marks 単体 (non-consolidated) via an explicitMember on the
+        # ConsolidatedOrNonConsolidatedAxis (or the context id); the group (連結)
+        # figure carries no such member and is the one to report.
+        nonconsolidated = "nonconsolidated" in cid.lower()
         for elem in ctx.iter():
             local = _local(elem.tag)
             field = {"startdate": "start", "enddate": "end", "instant": "instant"}.get(local)
             if field and elem.text:
                 info[field] = elem.text.strip()
+            elif local == "explicitmember" and elem.text and "nonconsolidated" in elem.text.lower():
+                nonconsolidated = True
+        info["nonconsolidated"] = nonconsolidated
+        info["interim"] = any(k in cid.lower() for k in ("quarter", "interim", "semiannual"))
         contexts[cid] = info
 
     values: dict[str, dict[str, float]] = {}
-    claimed: dict[tuple[str, str], int] = {}
+    # (period, column) → (winning concept rank, was-non-consolidated)
+    claimed: dict[tuple[str, str], tuple[int, bool]] = {}
     for elem in root.iter():
         ctxref = elem.get("contextRef")
         if not ctxref:
@@ -104,19 +116,28 @@ def parse_xbrl_instance(xml) -> dict[tuple[str, str], pd.DataFrame]:
         if (elem.get("unitRef") or "").upper() not in ("JPY", ""):
             continue  # monetary facts only
         column, statement = mapped
-        period = _period(contexts.get(ctxref), statement)
+        ctx = contexts.get(ctxref)
+        period = _period(ctx, statement)
         if period is None:
             continue
         try:
             value = float(elem.text)
         except (TypeError, ValueError):
             continue
+        nonconsol = bool(ctx.get("nonconsolidated")) if ctx else False
         rank = CONCEPT_RANK[_local(elem.tag)]
         key = (period, column)
-        if key in claimed and claimed[key] <= rank:
-            continue
+        prev = claimed.get(key)
+        if prev is not None:
+            prev_rank, prev_nonconsol = prev
+            if prev_nonconsol and not nonconsol:
+                pass  # consolidated always beats a stored non-consolidated value
+            elif nonconsol and not prev_nonconsol:
+                continue  # keep the stored consolidated value
+            elif prev_rank <= rank:
+                continue  # same consolidation level: the earlier-declared concept wins
         values.setdefault(period, {})[column] = value
-        claimed[key] = rank
+        claimed[key] = (rank, nonconsol)
 
     frames: dict[tuple[str, str], pd.DataFrame] = {}
     for statement in ("income", "balance", "cashflow"):
