@@ -10,7 +10,7 @@ you need.
    Python job runs with no secrets configured. A change that makes a core flow
    require a key will not be merged. Third-party keyed provider plugins must
    stay optional and off by default. New data sources must clear
-   the public-data audit in [docs/DATA-SOURCES.md](docs/DATA-SOURCES.md) —
+   the public-data audit in [DATA-SOURCES.md](DATA-SOURCES.md) —
    public, keyless, ToS-respecting — and be added to that table.
 2. **The DSL has two implementations that may never drift.** The Python
    compiler (`src/crible/dsl/`) and the TypeScript port (`ui/src/dsl/`) are

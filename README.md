@@ -10,8 +10,9 @@
 **[Open the screener →](https://maxgfr.github.io/crible/)** — the real screener running entirely in your browser (DuckDB-WASM, open data, no backend).
 
 Screen a worldwide universe of ~150k equities (Europe-depth priority) on real fundamentals —
-Piotroski F, Altman Z, Beneish M, 150+ transparent ratios — with every number traceable back
-to its source. No account, no data vendor, no monthly bill. `docker compose up` and it's yours.
+Piotroski F, Altman Z, Ohlson O, Zmijewski, Beneish M, Montier C, Greenblatt magic formula,
+Graham number / NCAV and 150+ transparent ratios — with every number traceable back to its
+source. No account, no data vendor, no monthly bill. `docker compose up` and it's yours.
 
 ![crible screener](docs/img/screener-dark.png)
 <details><summary>More screens (status, providers, light theme)</summary>
@@ -24,6 +25,7 @@ to its source. No account, no data vendor, no monthly bill. `docker compose up` 
 ```bash
 # same filter DSL in CLI, API and UI — results in milliseconds
 crible screen "return_on_equity > 0.15 AND piotroski_f >= 7 AND country IN ('FR','DE')"
+crible screen "magic_formula_rank >= 80 AND zmijewski_score < 0 AND montier_c <= 1"
 ```
 
 ## Why crible
@@ -137,7 +139,11 @@ straight onto a Synology NAS, Unraid, or any Docker host:
   run fully offline. See [`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md) for the two dataset tiers
   (fully-free vs assumed-risk).
 - **Ratios & scores**: [financetoolkit](https://github.com/JerBouma/FinanceToolkit) (150+ ratios,
-  Piotroski F, Altman Z) + in-house Beneish M-Score (tested against published examples).
+  Piotroski F, Altman Z) + in-house **distress** models (Ohlson O, Zmijewski), **earnings-quality**
+  flags (Beneish M, Montier C) and a **value** toolkit (Greenblatt magic-formula rank, Graham number
+  & NCAV net-net, EBITDA / FCF quality) — each tested against hand-computed examples and decomposed
+  in the company drawer. Every formula, interpretation and caveat is written up (EN/FR) in
+  [`docs/INDICATORS.md`](docs/INDICATORS.md).
 - **Engine**: DuckDB over Parquet — full-universe screens in milliseconds.
 
 The full public-data audit — every source, its access mode and license terms, plus the
@@ -160,6 +166,10 @@ Unlike proprietary StockRanks, every rank decomposes in the company drawer down
 to its component values. Ranks are computed at snapshot build time: after
 upgrading, run `crible compute` (or wait for the next crawl cycle) to get the
 columns.
+
+A standalone **`magic_formula_rank`** (Greenblatt) is published alongside — the same
+peer-group percentile blend, over earnings yield (EBIT/EV) and return on capital — but
+kept out of `composite_rank` so the quality/value/momentum blend stays stable.
 
 ## The hosted screener — how it works
 
@@ -195,6 +205,13 @@ Built test-first: every behavior is proven by an FR-tagged test (`tests/test_fr0
 proves FR-004, and so on), and the DSL compiler is locked to its TypeScript port by shared
 golden vectors. The keyless data-sourcing approach and the two dataset tiers are written up in
 [`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md).
+
+## Documentation
+
+All docs live in [`docs/`](docs/) ([index](docs/README.md)) — the
+[indicators & scores reference](docs/INDICATORS.md) (formulas + interpretation, EN/FR), the
+[public-data audit](docs/DATA-SOURCES.md), plus [contributing](docs/CONTRIBUTING.md),
+[security](docs/SECURITY.md) and the [changelog](docs/CHANGELOG.md).
 
 ## Development
 
