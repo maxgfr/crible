@@ -18,6 +18,14 @@ def _avg(series: pd.Series) -> pd.Series:
     return (series + series.shift(1)) / 2
 
 
+def _cagr_3y(series: pd.Series) -> pd.Series:
+    """3-year compound annual growth rate, defined only when both endpoints
+    are positive — fractional powers of negatives are undefined, and a
+    sign-flipped growth rate would be worse than a missing one."""
+    growth = (series / series.shift(3)) ** (1 / 3) - 1
+    return growth.where((series > 0) & (series.shift(3) > 0))
+
+
 def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> pd.DataFrame:
     c = canonical
     ebit = c["earnings_before_interest_and_taxes"]
@@ -37,6 +45,10 @@ def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
     # Sloan (1996) accruals: (NI − OCF) / AVERAGE total assets — deliberately
     # averaged per the paper, unlike beneish_tata which deflates by ending TA
     out["sloan_accruals"] = (c["net_income"] - c["operating_cashflow"]) / _avg(c["total_assets"])
+    # 3-year trajectory as first-class, filterable columns (needs 4 periods —
+    # EDGAR's 8-year depth qualifies); peg_ratio divides by EXACTLY this CAGR
+    out["revenue_cagr_3y"] = _cagr_3y(c["revenue"])
+    out["net_income_cagr_3y"] = _cagr_3y(c["net_income"])
 
     # Greenblatt magic-formula: return on capital = EBIT / (NWC + net fixed assets).
     # Non-positive invested capital would sign-flip the ratio (negative EBIT over a
@@ -63,11 +75,11 @@ def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
         # non-positive enterprise value sign-flips the yield → undefined (NaN)
         out["greenblatt_earnings_yield"] = ebit / enterprise_value.where(enterprise_value > 0)
         # PEG (Lynch): P/E over the 3-year earnings CAGR expressed in percent
-        # (PEG 1 ⇔ P/E equals the growth rate). Needs 4 periods and positive
-        # earnings at both endpoints; a shrinking company has no PEG.
+        # (PEG 1 ⇔ P/E equals the growth rate) — the SAME published
+        # net_income_cagr_3y column, one definition. A shrinking company has
+        # no PEG.
         pe = market_cap / c["net_income"].where(c["net_income"] > 0)
-        ni_cagr = (c["net_income"] / c["net_income"].shift(3)) ** (1 / 3) - 1
-        ni_cagr = ni_cagr.where((c["net_income"] > 0) & (c["net_income"].shift(3) > 0))
+        ni_cagr = out["net_income_cagr_3y"]
         out["peg_ratio"] = pe / (ni_cagr * 100).where(ni_cagr > 0)
         # total shareholder yield: dividends + net buybacks over market cap.
         # Buybacks are proxied by the share-count decline valued at the current

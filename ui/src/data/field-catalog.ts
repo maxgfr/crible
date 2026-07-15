@@ -93,6 +93,8 @@ const CATALOG: Record<string, CatalogEntry> = {
   operating_cashflow_growth: { label: "OCF growth (YoY)", group: "Growth (YoY)" },
   free_cash_flow_growth: { label: "FCF growth (YoY)", group: "Growth (YoY)" },
   total_debt_growth: { label: "Debt growth (YoY)", group: "Growth (YoY)" },
+  revenue_cagr_3y: { label: "Revenue CAGR (3y)", group: "Growth (3y)" },
+  net_income_cagr_3y: { label: "Earnings CAGR (3y)", group: "Growth (3y)" },
   // scores
   piotroski_f: { label: "Piotroski F", group: "Scores" },
   altman_z: { label: "Altman Z", group: "Scores" },
@@ -125,7 +127,7 @@ const CATALOG: Record<string, CatalogEntry> = {
 // display order for the field select's optgroups; unknown groups append after
 export const GROUP_ORDER = [
   "Identity", "Scores", "Ranks", "Value", "Valuation", "Profitability", "Health",
-  "Efficiency", "Fundamentals", "Growth (YoY)", "Other",
+  "Efficiency", "Fundamentals", "Growth (YoY)", "Growth (3y)", "Other",
 ];
 
 // enumerated string fields get a value dropdown instead of free text
@@ -158,6 +160,7 @@ export const STARTER_FILTERS: StarterFilter[] = [
   { field: "debt_to_equity_ratio", op: "<=", value: "1" },
   { field: "net_profit_margin", op: ">=", value: "0.1" },
   { field: "revenue_growth", op: ">=", value: "0.1" },
+  { field: "revenue_cagr_3y", op: ">=", value: "0.1" },
   { field: "peg_ratio", op: "<=", value: "1" },
   { field: "rule_of_40", op: ">=", value: "0.4" },
   { field: "piotroski_f", op: ">=", value: "7" },

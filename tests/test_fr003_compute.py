@@ -494,6 +494,14 @@ def test_fr003_quick_win_extras_are_analytically_exact() -> None:
     assert out["peg_ratio"] == pytest.approx((1000.0 / 133.1) / 10.0)
     # shareholder yield = (dividends + buyback value) / market cap
     assert out["shareholder_yield"] == pytest.approx((52.0 + 10.0 * 10.0) / 1000.0)
+    # 3y CAGR columns: the fixture grows exactly 10%/y — and PEG divides by
+    # EXACTLY the published earnings CAGR (one definition, never two)
+    assert out["revenue_cagr_3y"] == pytest.approx(0.1)
+    assert out["net_income_cagr_3y"] == pytest.approx(0.1)
+    assert out["peg_ratio"] == pytest.approx(
+        (1000.0 / 133.1) / (out["net_income_cagr_3y"] * 100)
+    )
+    assert pd.isna(compute_extras(_quickwin_canonical(), price).loc["2024", "revenue_cagr_3y"])
 
     # price applies to the LATEST period only — older rows stay NaN
     earlier = compute_extras(canonical, price).loc["2024"]
@@ -507,7 +515,10 @@ def test_fr003_peg_undefined_for_shrinking_or_negative_earnings() -> None:
     assert pd.isna(compute_extras(canonical, price).loc["2025", "peg_ratio"])
 
     canonical["net_income"] = [-50.0, -40.0, -30.0, -20.0]  # negative → no PEG
-    assert pd.isna(compute_extras(canonical, price).loc["2025", "peg_ratio"])
+    out = compute_extras(canonical, price).loc["2025"]
+    assert pd.isna(out["peg_ratio"])
+    # the shared CAGR is undefined on negative endpoints too — never sign-flipped
+    assert pd.isna(out["net_income_cagr_3y"])
 
 
 def test_fr003_reflection_wires_cycle_payout_and_roic() -> None:

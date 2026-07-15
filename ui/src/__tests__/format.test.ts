@@ -88,6 +88,15 @@ describe("formatCell — the verdict table", () => {
     expect(formatCell("revenue_growth", -0.05).className).toBe("num-bad");
   });
 
+  it("signs and colors the 3y CAGR columns like growth", () => {
+    expect(formatCell("revenue_cagr_3y", 0.12)).toEqual({
+      text: "+0.120",
+      className: "num-good",
+      flag: "",
+    });
+    expect(formatCell("net_income_cagr_3y", -0.05).className).toBe("num-bad");
+  });
+
   it("reads debt growth inverted: piling on debt is never green", () => {
     expect(formatCell("total_debt_growth", 0.15).className).toBe("num-bad");
     expect(formatCell("total_debt_growth", 0.15).text).toBe("+0.150");

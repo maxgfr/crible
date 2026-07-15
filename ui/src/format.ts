@@ -89,7 +89,7 @@ export function formatCell(column: string, value: unknown): FormattedCell {
     if (VERDICT_COLUMNS.includes(column as (typeof VERDICT_COLUMNS)[number])) {
       return { text, className: "", flag: "" }; // mid-band: neutral, no glyph
     }
-    if (column.endsWith("_growth")) {
+    if (column.endsWith("_growth") || column.endsWith("_cagr_3y")) {
       const goodWhenUp = !INVERTED_GROWTH.has(column);
       return {
         text: value > 0 ? `+${text}` : text,

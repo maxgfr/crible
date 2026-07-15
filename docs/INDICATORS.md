@@ -44,6 +44,7 @@ imputée** ; la colonne `missing_inputs` du snapshot nomme les champs absents.
 | `high_52w_proximity` | close / 52-week high | 0–1 | higher · plus haut | — |
 | `volatility_1y` | annualized σ of daily log returns | ≥ 0 | context | — |
 | `ttm_*` / `price_to_earnings_ttm` / `price_to_sales_ttm` / `ttm_fcf_yield` | trailing 12 months | — | — | crawled tier only |
+| `revenue_cagr_3y` / `net_income_cagr_3y` | 3-year compound growth | ~unbounded | higher · plus haut | — |
 
 Direction reminder: distress and manipulation scores are **risk** measures (lower is
 safer); value and quality metrics are **opportunity** measures (higher is better).
@@ -621,6 +622,29 @@ l'extension 10-Q d'EDGAR est la v2 nommée.
 > **Caveat · Nuance** — Provider restatements can make a TTM sum drift from the annual figure;
 > the two are never reconciled — both are shown. · Les retraitements peuvent faire diverger la
 > somme TTM du chiffre annuel ; jamais réconciliés — les deux sont affichés.
+
+---
+
+## 20. 3-year CAGR — `revenue_cagr_3y`, `net_income_cagr_3y`
+
+**Formula**
+
+```
+cagr_3y = (x_t / x_{t−3})^(1/3) − 1        defined only when both endpoints > 0
+```
+
+**EN** — The 3-year compound trajectory as first-class, filterable columns (needs 4 annual
+periods — EDGAR's 8-year depth qualifies broadly). One YoY print is noisy; the 3-year CAGR is
+the smoothed view. **`peg_ratio` divides P/E by exactly `net_income_cagr_3y`** — one shared
+definition, never two. Negative or zero endpoints → `NaN` (a fractional power of a negative is
+undefined, and a sign-flipped growth rate would be worse than a missing one).
+
+**FR** — La trajectoire composée sur 3 ans en colonnes filtrables de premier rang (4 exercices
+requis — la profondeur EDGAR de 8 ans suffit largement). Une variation annuelle est bruitée ;
+le CAGR 3 ans est la vue lissée. **`peg_ratio` divise le P/E par exactement
+`net_income_cagr_3y`** — une seule définition partagée, jamais deux. Extrémités négatives ou
+nulles → `NaN` (puissance fractionnaire d'un négatif indéfinie, et un taux au signe inversé
+serait pire qu'un taux manquant).
 
 ---
 

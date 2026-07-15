@@ -99,6 +99,7 @@ const KEY_RATIOS: [string, string[]][] = [
 const GROWTH_FIELDS = [
   "revenue_growth", "net_income_growth", "operating_cashflow_growth",
   "free_cash_flow_growth", "total_debt_growth",
+  "revenue_cagr_3y", "net_income_cagr_3y",
 ];
 // price-derived, latest period only (never back-dated) — one shared rule
 const MOMENTUM_FIELDS = ["return_6m", "return_12_1", "high_52w_proximity", "volatility_1y"];
