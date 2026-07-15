@@ -88,6 +88,8 @@ const GROWTH_FIELDS = [
   "revenue_growth", "net_income_growth", "operating_cashflow_growth",
   "free_cash_flow_growth", "total_debt_growth",
 ];
+// price-derived, latest period only (never back-dated) — one shared rule
+const MOMENTUM_FIELDS = ["return_6m", "return_12_1", "high_52w_proximity", "volatility_1y"];
 
 // provenance ends at the SOURCE, not at a provider string: link the place
 // the numbers actually come from (the audited filings when the layer is
@@ -327,6 +329,19 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                           <Val column={field} value={p[field]} />
                         </td>
                       ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <h3>Momentum</h3>
+              <table>
+                <tbody>
+                  {MOMENTUM_FIELDS.map((field) => (
+                    <tr key={field}>
+                      <td>{fieldLabel(field)}</td>
+                      <td>
+                        <Val column={field} value={detail.periods[0][field]} />
+                      </td>
                     </tr>
                   ))}
                 </tbody>

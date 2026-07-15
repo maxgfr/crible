@@ -150,6 +150,13 @@ _PRESETS = [
         columns=("dividend_coverage", "weighted_dividend_yield", "fcf_margin", "net_income"),
     ),
     Preset(
+        id="momentum-12-1",
+        name="Momentum 12-1",
+        description="Classic Jegadeesh-Titman momentum: 12-month return skipping the last month, over 20%",
+        dsl="return_12_1 >= 0.2",
+        columns=("return_12_1", "return_6m", "momentum_rank", "high_52w_proximity", "volatility_1y"),
+    ),
+    Preset(
         id="rule-of-40",
         name="Rule of 40",
         description="Growth + FCF margin over 40% — the SaaS heuristic, cash-based variant",

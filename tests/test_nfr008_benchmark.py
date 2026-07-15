@@ -64,6 +64,7 @@ def con(tmp_path_factory) -> duckdb.DuckDBPyConnection:
                 random() * 3 AS peg_ratio,
                 random() * 0.15 - 0.03 AS shareholder_yield,
                 random() * 0.3 - 0.15 AS sloan_accruals,
+                random() * 1.2 - 0.4 AS return_12_1,
                 {fillers}
             FROM range({ROWS}) t(i)
         ) TO '{path.as_posix()}' (FORMAT parquet)

@@ -15,7 +15,9 @@ import pandas as pd
 
 from crible.compute.canonical import CANONICAL_FIELDS, build_canonical
 from crible.compute.extras import compute_extras
-from crible.compute.ranks import attach_ranks, price_return
+from crible.compute.momentum import FEATURE_COLUMNS as MOMENTUM_COLUMNS
+from crible.compute.momentum import bars_features
+from crible.compute.ranks import attach_ranks
 from crible.compute.ratios import RATIO_DENYLIST, compute_ratios, price_dependent_ratio_columns
 from crible.compute.scores import all_scores
 from crible.ingest.raw import iter_raw_files
@@ -48,7 +50,7 @@ def build_symbol_snapshot(
     computed_at: float | None = None,
     audited_frames: dict[tuple[str, str], pd.DataFrame] | None = None,
     price_quote: tuple[float, str] | None = None,
-    momentum_6m: float | None = None,
+    quote_features: dict | None = None,
 ) -> pd.DataFrame:
     canonical = build_canonical(frames)
     audited_fields: dict[str, list[str]] = {}
@@ -93,14 +95,19 @@ def build_symbol_snapshot(
     ratio_growth.columns = [f"{col}_growth" for col in ratio_growth.columns]
 
     out = pd.concat([canonical, ratios, growth, ratio_growth, scores, extras], axis=1)
-    # FR-015 momentum input: trailing 6-month price return, latest period only
-    # (cross-sectional like the price itself); NaN when history is too short.
-    out["return_6m"] = float("nan")
+    # price-derived momentum features (return_6m feeds momentum_rank; plus
+    # 12-1, 52-week-high proximity, 1y volatility), latest period only —
+    # cross-sectional like the price itself; NaN when history is too short.
+    # Crawled bars win; the imported-dump distillate fills per feature.
+    for col in MOMENTUM_COLUMNS:
+        out[col] = float("nan")
     if len(out):
-        momentum = price_return(frames.get(("prices", "daily")))
-        if pd.isna(momentum) and momentum_6m is not None:
-            momentum = momentum_6m  # distilled from the imported dump
-        out.iloc[-1, out.columns.get_loc("return_6m")] = momentum
+        features = bars_features(frames.get(("prices", "daily")))
+        for col in MOMENTUM_COLUMNS:
+            value = features.get(col, float("nan"))
+            if pd.isna(value) and quote_features is not None:
+                value = quote_features.get(col, float("nan"))
+            out.iloc[-1, out.columns.get_loc(col)] = value
     out.insert(0, "symbol", symbol)
     out.insert(1, "period", out.index.astype(str))
     out["provider"] = provider
@@ -165,16 +172,30 @@ def _frames_provider(frames: dict[tuple[str, str], pd.DataFrame], default: str) 
     return default
 
 
-def _price_quotes(data_dir: Path | str) -> dict[str, tuple[float, str, float]]:
-    """symbol → (close, asof, return_6m) from the imported dump distillate."""
+def _price_quotes(data_dir: Path | str) -> dict[str, dict]:
+    """symbol → {close, price_asof, <momentum features>} from the imported
+    dump distillate (load_prices_latest backfills feature columns missing
+    from a pre-momentum file as NaN)."""
     from crible.ingest.price_import import load_prices_latest
 
     table = load_prices_latest(data_dir)
-    return {
-        str(row.symbol): (float(row.close), str(row.price_asof), float(row.return_6m))
-        for row in table.itertuples()
-        if pd.notna(row.close)
-    }
+
+    def _num(value) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return float("nan")
+
+    quotes: dict[str, dict] = {}
+    for row in table.itertuples():
+        if pd.isna(row.close):
+            continue
+        quotes[str(row.symbol)] = {
+            "close": float(row.close),
+            "price_asof": str(row.price_asof),
+            **{col: _num(getattr(row, col, None)) for col in MOMENTUM_COLUMNS},
+        }
+    return quotes
 
 
 def build_symbol_rows(data_dir: Path | str, symbols: list[str]) -> pd.DataFrame:
@@ -208,8 +229,8 @@ def build_symbol_rows(data_dir: Path | str, symbols: list[str]) -> pd.DataFrame:
             scraped,
             provider="yfinance" if scraped else _frames_provider(audited, "esef"),
             audited_frames=audited or None,
-            price_quote=(quote[0], quote[1]) if quote else None,
-            momentum_6m=quote[2] if quote else None,
+            price_quote=(quote["close"], quote["price_asof"]) if quote else None,
+            quote_features=quote,
         )
         if not part.empty:
             parts.append(part)
@@ -243,7 +264,8 @@ BASE_SCHEMA_NAME = "base-schema.json"
 # unchanged symbol until its raw happens to change.
 # 2: quick-win indicators (CCC/operating cycle, payout, ROIC, rule of 40,
 #    Sloan accruals, PEG, shareholder yield)
-ENGINE_SCHEMA_VERSION = 2
+# 3: momentum trio (return_12_1, high_52w_proximity, volatility_1y)
+ENGINE_SCHEMA_VERSION = 3
 
 
 def _newest_raw_stamp(data_dir: Path | str, symbol: str) -> float:

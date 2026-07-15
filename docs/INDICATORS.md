@@ -38,6 +38,9 @@ imputée** ; la colonne `missing_inputs` du snapshot nomme les champs absents.
 | `sloan_accruals` | (NI − OCF) / avg assets | ~unbounded | lower · plus bas | — |
 | `peg_ratio` | P/E ÷ 3y EPS CAGR (%) | > 0 | lower · plus bas | `<= 1` → growth at a reasonable price |
 | `shareholder_yield` | (dividends + net buybacks) / mkt cap | ~unbounded | higher · plus haut | — |
+| `return_12_1` | 12-month return, last month skipped | ~unbounded | higher · plus haut | — |
+| `high_52w_proximity` | close / 52-week high | 0–1 | higher · plus haut | — |
+| `volatility_1y` | annualized σ of daily log returns | ≥ 0 | context | — |
 
 Direction reminder: distress and manipulation scores are **risk** measures (lower is
 safer); value and quality metrics are **opportunity** measures (higher is better).
@@ -460,6 +463,48 @@ la capitalisation. Les rachats sont approximés par la baisse du nombre d'action
 prix courant — une émission compte NÉGATIVEMENT, donc les dilueurs en série affichent un frein,
 pas un bonus. `common_stock_issuance` (34,6 % renseigné) est volontairement écarté ; le nombre
 d'actions (83 %) est le signal le plus fiable.
+
+---
+
+## 16. Price momentum — `return_6m`, `return_12_1`, `high_52w_proximity`, `volatility_1y`
+
+**Formula**
+
+```
+return_6m          = close / close(asof − 182d) − 1
+return_12_1        = close(asof − 30d) / close(asof − 365d) − 1
+high_52w_proximity = close / max(close over 365d)
+volatility_1y      = std(daily log returns over 365d) × √252
+```
+
+**EN** — Cross-sectional price factors, latest fiscal row only (prices are never back-dated).
+`return_12_1` is the academic classic (Jegadeesh & Titman, 1993): the last month is skipped
+because it mean-reverts. `high_52w_proximity` at 1.0 means the stock sits at its 52-week high —
+a documented momentum signal in its own right. The ONE implementation lives in
+`compute/momentum.py`; the crawl path, the dump distillates and `momentum_rank`'s input all
+call it (a parity test locks the three paths together). **`momentum_rank` deliberately stays on
+`return_6m` this release**: switching its input to 12-1 would NULL the rank for every symbol
+with 6–12.5 months of price history while coverage is scaling 10×, and would churn
+`composite_rank` at the same time as the default sort. The pillar swap is a separate, explicit
+decision once 12-1 coverage catches up.
+
+**FR** — Facteurs de prix cross-sectionnels, dernière ligne fiscale uniquement (les prix ne
+sont jamais rétro-datés). `return_12_1` est le classique académique (Jegadeesh & Titman, 1993) :
+le dernier mois est exclu car il tend à revenir à la moyenne. `high_52w_proximity` à 1,0
+signifie que le titre est à son plus-haut sur 52 semaines — un signal de momentum documenté en
+soi. L'implémentation UNIQUE vit dans `compute/momentum.py` ; le chemin crawl, les distillats
+de dumps et l'entrée de `momentum_rank` l'appellent tous (un test de parité verrouille les
+trois chemins). **`momentum_rank` reste volontairement sur `return_6m` cette version** : basculer
+sur le 12-1 annulerait le rank pour tout titre ayant 6 à 12,5 mois d'historique en pleine
+multiplication par 10 de la couverture, et ferait churner `composite_rank` en même temps que le
+tri par défaut. La bascule est une décision séparée et explicite quand la couverture du 12-1
+aura rejoint celle du 6 mois.
+
+> **Caveat · Nuance** — All four need real history (the published window is 400 days); a base
+> the history does not reach is `NaN`, never extrapolated. Volatility uses the same full-year
+> reach rule — a short window would understate risk. · Les quatre exigent un historique réel
+> (la fenêtre publiée est de 400 jours) ; une base hors d'atteinte est `NaN`, jamais extrapolée.
+> La volatilité suit la même règle d'année pleine — une fenêtre courte sous-estimerait le risque.
 
 ---
 

@@ -11,13 +11,15 @@ le screener aujourd'hui — c'est de la dette de qualité et des extensions.
 
 ## P1 — Quick wins qualité (dette test / maintenabilité)
 
-- [ ] **Parité de la règle « return 6 mois ».** La même règle est réimplémentée à
-  trois endroits (`compute/ranks.py`, `ingest/price_import.py` ×2), synchronisée
-  seulement par des commentaires. Ajouter un test golden de parité qui casse si
-  les trois divergent.
+- [x] **Parité de la règle « return 6 mois ».** ~~Réimplémentée à trois endroits~~ —
+  résolu : la règle vit dans `compute/momentum.py` (unique implémentation),
+  `ranks.price_return` et les distillats délèguent, et un golden de parité
+  (`tests/test_momentum.py`) casse si un chemin diverge.
 - [ ] **Tester `compute_ratios` directement.** Le plus gros producteur de colonnes
   est câblé par réflexion sous un `except Exception` global (`compute/ratios.py`),
   sans test direct — un mapping cassé passe en silence. Test de caractérisation.
+  (Entamé : les alias cycle/dividendes ont des vecteurs main-calculés,
+  `tests/test_fr003_compute.py`.)
 - [ ] **Dé-dupliquer `run_loop` / `run_refresh`** (`ingest/service.py`) : l'entrypoint
   Docker (`# pragma: no cover`) réimplémente la séquence de `run_refresh`. Extraire
   la logique commune et la tester offline.

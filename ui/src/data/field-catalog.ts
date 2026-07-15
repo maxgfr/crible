@@ -100,6 +100,9 @@ const CATALOG: Record<string, CatalogEntry> = {
   momentum_rank: { label: "Momentum rank", group: "Ranks" },
   rank_peer_group: { label: "Rank peer group", group: "Ranks" },
   return_6m: { label: "6-month return", group: "Ranks" },
+  return_12_1: { label: "12-1 momentum", group: "Ranks" },
+  high_52w_proximity: { label: "52-week high proximity", group: "Ranks" },
+  volatility_1y: { label: "Volatility (1y)", group: "Ranks" },
   // value toolkit (Greenblatt magic formula, Graham number & net-net)
   magic_formula_rank: { label: "Magic Formula rank", group: "Value" },
   greenblatt_earnings_yield: { label: "Earnings yield (EBIT/EV)", group: "Value" },

@@ -12,9 +12,11 @@ dataset carries the price series; neither dump has an open license and the
 redistribution risk is explicitly assumed, see docs/DATA-SOURCES.md):
 - the windowed OHLCV series in data/prices/<source>.parquet (lean schema,
   whole-file replace) — exported to the site as prices-*.parquet shards;
-- the one-row-per-symbol distillate (last close, as-of date, trailing
-  6-month return) in data/prices-latest.parquet — what the snapshot consumes
-  for valuation/momentum when the crawl has no bars.
+- the one-row-per-symbol distillate (last close, as-of date, and the
+  momentum features: return_6m, return_12_1, high_52w_proximity,
+  volatility_1y) in data/prices-latest.parquet — what the snapshot consumes
+  for valuation/momentum when the crawl has no bars. The feature math lives
+  in ONE place: crible.compute.momentum.
 """
 
 from __future__ import annotations
@@ -30,12 +32,12 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
+from crible.compute.momentum import FEATURE_COLUMNS, momentum_features
 from crible.price_series import SERIES_WINDOW_DAYS, write_series
 
 log = logging.getLogger("crible.ingest.price_import")
 
 PRICES_LATEST = "prices-latest.parquet"
-RETURN_WINDOW_DAYS = 182  # mirrors compute.ranks.price_return
 
 HF_DATASET = "paperswithbacktest/Stocks-Daily-Price"
 HF_SHARDS = [
@@ -72,9 +74,14 @@ def load_prices_latest(data_dir: Path | str) -> pd.DataFrame:
     path = prices_latest_path(data_dir)
     if not path.exists():
         return pd.DataFrame(
-            columns=["symbol", "close", "price_asof", "return_6m", "source", "imported_at"]
+            columns=["symbol", "close", "price_asof", *FEATURE_COLUMNS, "source", "imported_at"]
         )
-    return pd.read_parquet(path)
+    table = pd.read_parquet(path)
+    # a pre-momentum file lacks the newer feature columns — backfill as NaN
+    for col in FEATURE_COLUMNS:
+        if col not in table.columns:
+            table[col] = float("nan")
+    return table
 
 
 def latest_import_age_days(data_dir: Path | str) -> float | None:
@@ -109,22 +116,10 @@ def _merge_and_publish(data_dir: Path | str, fresh: pd.DataFrame) -> None:
     tmp.rename(path)
 
 
-def _distill(bars: pd.DataFrame) -> tuple[float, str, float] | None:
-    """(close, asof, return_6m) from a Date/Close frame — price_return rules:
-    the base is the last close at or before asof − 182 days, never
-    extrapolated."""
-    frame = bars.dropna(subset=["close"]).sort_values("date")
-    if frame.empty:
-        return None
-    close = float(frame["close"].iloc[-1])
-    asof = str(frame["date"].iloc[-1])[:10]
-    dates = pd.to_datetime(frame["date"])
-    cutoff = dates.iloc[-1] - pd.Timedelta(days=RETURN_WINDOW_DAYS)
-    base_rows = frame[dates <= cutoff]
-    return_6m = (
-        close / float(base_rows["close"].iloc[-1]) - 1.0 if len(base_rows) else float("nan")
-    )
-    return close, asof, return_6m
+def _distill(bars: pd.DataFrame) -> dict | None:
+    """One symbol's distillate row fields from a date/close frame — a thin
+    delegate to the shared momentum rule (never a re-implementation)."""
+    return momentum_features(bars["date"], bars["close"])
 
 
 def import_huggingface(
@@ -152,46 +147,27 @@ def import_huggingface(
             """,
             list(shards),
         ).fetchdf()
-        rows = con.execute(
-            f"""
-            WITH bars AS (
-                SELECT symbol, date, adj_close AS close
-                FROM read_parquet([{placeholders}])
-                WHERE adj_close IS NOT NULL AND adj_close > 0
-                  AND date >= strftime(current_date - INTERVAL {SERIES_WINDOW_DAYS} DAY, '%Y-%m-%d')
-            ),
-            latest AS (
-                SELECT symbol, arg_max(close, date) AS close, max(date) AS price_asof
-                FROM bars GROUP BY symbol
-            ),
-            base AS (
-                SELECT b.symbol, arg_max(b.close, b.date) AS base_close
-                FROM bars b
-                JOIN latest l USING (symbol)
-                WHERE CAST(b.date AS DATE) <= CAST(l.price_asof AS DATE) - INTERVAL {RETURN_WINDOW_DAYS} DAY
-                GROUP BY b.symbol
-            )
-            SELECT l.symbol, l.close, l.price_asof,
-                   CASE WHEN b.base_close IS NULL THEN NULL
-                        ELSE l.close / b.base_close - 1.0 END AS return_6m
-            FROM latest l LEFT JOIN base b USING (symbol)
-            """,
-            list(shards),
-        ).fetchall()
     finally:
         con.close()
 
+    # the distillate runs the SHARED momentum rule over the same windowed
+    # series frame — the old DuckDB re-implementation (drift risk, TODO) died
     now = time.time()
-    fresh = pd.DataFrame(
-        [
-            {"symbol": s, "close": float(c), "price_asof": str(asof)[:10],
-             "return_6m": (float(r) if r is not None else float("nan")),
-             "source": "huggingface", "imported_at": now}
-            for s, c, asof, r in rows
-            if s in known
-        ]
-    )
-    skipped = len(rows) - len(fresh)
+    adjusted = series.dropna(subset=["adj_close"])
+    adjusted = adjusted[adjusted["adj_close"] > 0]
+    total_symbols = adjusted["symbol"].nunique()
+    records: list[dict] = []
+    for symbol, group in adjusted.groupby("symbol", sort=False):
+        if symbol not in known:
+            continue
+        features = momentum_features(group["date"], group["adj_close"])
+        if features is None:
+            continue
+        records.append(
+            {"symbol": symbol, **features, "source": "huggingface", "imported_at": now}
+        )
+    fresh = pd.DataFrame(records)
+    skipped = total_symbols - len(fresh)
     if not fresh.empty:
         _merge_and_publish(data_dir, fresh)
     series = series[series["symbol"].isin(known)]
@@ -269,10 +245,8 @@ def import_stooq(data_dir: Path | str, archive: Path | str) -> ImportReport:
             distilled = _distill(pd.DataFrame(rows))
             if distilled is None:
                 continue
-            close, asof, return_6m = distilled
             records.append(
-                {"symbol": symbol, "close": close, "price_asof": asof,
-                 "return_6m": return_6m, "source": "stooq", "imported_at": now}
+                {"symbol": symbol, **distilled, "source": "stooq", "imported_at": now}
             )
             bars = pd.DataFrame(rows).assign(date=lambda f: pd.to_datetime(f["date"]))
             cutoff = bars["date"].max() - pd.Timedelta(days=SERIES_WINDOW_DAYS)

@@ -42,28 +42,18 @@ def price_return(bars: pd.DataFrame, days: int = 182) -> float:
     """Trailing price return over ``days`` calendar days from daily bars.
 
     NaN when the history does not reach back to the cutoff — never
-    extrapolated (same never-impute rule as every other computed field).
+    extrapolated. Thin delegate: compute.momentum owns the ONE trailing-return
+    rule shared with the dump distillates (docs/TODO.md drift fix).
     """
+    from crible.compute.momentum import trailing_return
+
     if bars is None or not len(bars):
         return float("nan")
     close_col = next((c for c in ("Close", "close", "Adj Close") if c in bars.columns), None)
     date_col = next((c for c in ("Date", "date", "Datetime") if c in bars.columns), None)
     if close_col is None or date_col is None:
         return float("nan")
-    frame = bars[[date_col, close_col]].dropna()
-    if not len(frame):
-        return float("nan")
-    dates = pd.to_datetime(frame[date_col])
-    last_date = dates.iloc[-1]
-    cutoff = last_date - pd.Timedelta(days=days)
-    base_rows = frame[dates <= cutoff]
-    if not len(base_rows):
-        return float("nan")
-    base = float(base_rows[close_col].iloc[-1])
-    last = float(frame[close_col].iloc[-1])
-    if base == 0:
-        return float("nan")
-    return last / base - 1
+    return trailing_return(bars[date_col], bars[close_col], days)
 
 
 def _pct(series: pd.Series, direction: int) -> pd.Series:
