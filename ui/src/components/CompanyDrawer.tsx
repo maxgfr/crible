@@ -2,7 +2,7 @@
 // breakdowns (9 Piotroski criteria, 8 Beneish components, Altman inputs),
 // provenance (provider + computed_at). Deep enough to explain every number.
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { company, type CompanyDetail } from "../data";
 import { PriceChart } from "./PriceChart";
 
@@ -60,15 +60,23 @@ function num(value: unknown): string {
 
 export function CompanyDrawer({ symbol, onClose }: Props) {
   const [detail, setDetail] = useState<CompanyDetail | null | "loading">("loading");
+  const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setDetail("loading");
     company(symbol).then(setDetail);
   }, [symbol]);
 
+  // dialog semantics: focus moves in on open and back out on close
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    return () => opener?.focus?.();
+  }, []);
+
   return (
-    <aside className="drawer" aria-label={`${symbol} details`}>
-      <button onClick={onClose} style={{ float: "right" }}>
+    <aside className="drawer" role="dialog" aria-modal="true" aria-label={`${symbol} details`}>
+      <button ref={closeRef} className="drawer-close" onClick={onClose}>
         Close
       </button>
       {detail === "loading" && <p className="meta">Loading {symbol}…</p>}

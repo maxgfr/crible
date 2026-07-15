@@ -130,9 +130,20 @@ table.results th {
   padding: var(--space-1) var(--space-2);
   font-size: var(--scale-small);
   color: var(--color-muted);
-  cursor: pointer;
   white-space: nowrap;
   border-bottom: 1px solid color-mix(in srgb, var(--color-muted) 30%, transparent);
+}
+
+/* sorting is a real button (keyboard + aria-sort), visually the header itself */
+table.results th .th-sort {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 table.results th:first-child,
@@ -223,7 +234,7 @@ table.results tr:hover td {
   position: absolute;
   top: 110%;
   left: 0;
-  z-index: 10;
+  z-index: var(--z-dropdown);
   background: var(--color-bg-raised);
   border: 1px solid color-mix(in srgb, var(--color-muted) 40%, transparent);
   border-radius: var(--radius-md);
@@ -579,7 +590,7 @@ table.inventory td.note {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
-  z-index: 30;
+  z-index: var(--z-dropdown);
   min-width: 280px;
   max-height: 320px;
   overflow-y: auto;
@@ -599,7 +610,8 @@ table.inventory td.note {
   cursor: pointer;
 }
 
-.searchbox-results li:hover {
+.searchbox-results li:hover,
+.searchbox-results li.active {
   background: color-mix(in srgb, var(--color-primary) 14%, transparent);
 }
 
@@ -729,4 +741,112 @@ table.inventory td.note {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 40ch;
+}
+
+/* ------------------------------------------------- grid symbol links + pager */
+
+table.results .symlink {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+table.results .symlink:hover {
+  text-decoration: underline;
+}
+
+.pager {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.pager button {
+  padding: 0 var(--space-2);
+}
+
+/* ------------------------------------------------- pickers (shared) */
+
+.picker-filter {
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.drawer-close {
+  float: right;
+}
+
+/* ------------------------------------------------- presets popover */
+
+.presets-menu {
+  min-width: 360px;
+  max-height: 440px;
+}
+
+.preset-group-name {
+  padding: var(--space-1) var(--space-1) 2px;
+  font-size: var(--scale-small);
+  color: var(--color-muted);
+}
+
+.preset-item {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+}
+
+.preset-item.active {
+  /* selection = full 1px amber border (never a side-stripe) */
+  border-color: var(--color-primary);
+}
+
+.preset-pick {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: var(--space-1);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.preset-pick:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.preset-name {
+  display: block;
+}
+
+.preset-dsl {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--scale-small);
+  color: var(--color-muted);
+}
+
+.preset-delete {
+  align-self: center;
+  padding: 0 var(--space-1);
+}
+
+.preset-save {
+  display: flex;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid color-mix(in srgb, var(--color-muted) 25%, transparent);
+}
+
+.preset-save input {
+  flex: 1;
+  min-width: 0;
 }

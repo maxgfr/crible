@@ -41,7 +41,7 @@ describe("FR-007 results grid", () => {
     render(<App />);
     await waitFor(() => expect(rtl.getByText("AIR.PA")).toBeInTheDocument());
     expect(rtl.getByText("SAP.DE")).toBeInTheDocument();
-    expect(rtl.getByText(/2 of 2 rows/)).toBeInTheDocument();
+    expect(rtl.getByText(/rows 1–2 of 2/)).toBeInTheDocument();
   });
 
   it("FR-007: a DSL error shows inline with hint and previous results stay visible", async () => {

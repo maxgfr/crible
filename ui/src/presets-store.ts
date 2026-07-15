@@ -15,15 +15,25 @@ export function loadCustomPresets(): Preset[] {
   }
 }
 
+export function customPresetId(name: string): string {
+  return `custom-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+}
+
 export function saveCustomPreset(name: string, dsl: string): Preset[] {
   const preset: Preset = {
-    id: `custom-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`,
+    id: customPresetId(name),
     name,
     description: "custom preset",
     dsl,
   };
   const others = loadCustomPresets().filter((p) => p.id !== preset.id);
   const next = [...others, preset];
+  localStorage.setItem(KEY, JSON.stringify(next));
+  return next;
+}
+
+export function deleteCustomPreset(id: string): Preset[] {
+  const next = loadCustomPresets().filter((p) => p.id !== id);
   localStorage.setItem(KEY, JSON.stringify(next));
   return next;
 }

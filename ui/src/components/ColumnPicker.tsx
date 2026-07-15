@@ -1,6 +1,6 @@
 // FR-007 — searchable column picker over the snapshot's ~200 columns.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 interface Props {
   available: string[];
@@ -11,13 +11,29 @@ interface Props {
 export function ColumnPicker({ available, visible, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
   const shown = useMemo(
     () => available.filter((c) => c.toLowerCase().includes(filter.toLowerCase())),
     [available, filter],
   );
 
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
+
   return (
-    <div className="picker">
+    <div
+      className="picker"
+      ref={rootRef}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") setOpen(false);
+      }}
+    >
       <button onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         Columns ({visible.length})
       </button>
@@ -25,10 +41,11 @@ export function ColumnPicker({ available, visible, onChange }: Props) {
         <div className="picker-menu">
           <input
             aria-label="Filter columns"
+            className="picker-filter"
             placeholder="filter…"
+            autoFocus
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
-            style={{ width: "100%", marginBottom: 6 }}
           />
           {shown.map((column) => (
             <label key={column}>

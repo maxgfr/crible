@@ -29,9 +29,10 @@ export function CoverageBanner() {
     : "";
   return (
     <div className="coverage-banner" role="note">
-      Fundamentals cover {data.snapshot_symbols.toLocaleString("en-US")} of {universe}{" "}
-      listings{priceCoverage} · refreshed nightly ({refreshed}) · runs entirely in your
-      browser (DuckDB-WASM).
+      Fundamentals for {data.snapshot_symbols.toLocaleString("en-US")} companies — audited
+      filings (SEC · ESEF) plus a polite crawl, growing nightly{priceCoverage} · all{" "}
+      {universe} listings searchable · refreshed {refreshed} · runs entirely in your browser
+      (DuckDB-WASM) · <a href="#/status">why not everything?</a>
     </div>
   );
 }

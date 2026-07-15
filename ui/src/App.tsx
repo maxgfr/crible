@@ -1,8 +1,11 @@
 // FR-007 / T-016 — the one-window shell: wordmark · view pills · status
 // pill · theme toggle, over the active view (screener / status / providers).
-// The company drawer is deep-linked at #/company/:symbol over the screener.
-// Errors keep the previous results visible; export downloads the FULL
-// result set of the current query (all pages) via /api/screen.csv.
+// The company drawer is deep-linked at #/company/:symbol over the screener,
+// and the screen itself is a permalink (#/?q=…&sort=…): refresh, bookmark
+// and share restore the exact query and engine sort. Sorting and paging run
+// in the engine — never a client-side sort of one fetched page. Errors keep
+// the previous results visible; export downloads the FULL result set of the
+// current query (all pages) via /api/screen.csv.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -29,7 +32,7 @@ import { SearchBox } from "./components/SearchBox";
 import { StatusView } from "./components/StatusView";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { Wordmark } from "./components/Wordmark";
-import { useHashRoute } from "./router";
+import { hashFor, parseHash, useHashRoute } from "./router";
 import {
   applyTheme,
   cycled,
@@ -46,6 +49,7 @@ export const DEFAULT_COLUMNS = [
   "return_on_equity", "net_profit_margin", "debt_to_equity_ratio",
 ];
 const DEFAULT_QUERY = "piotroski_f >= 7";
+export const PAGE_SIZE = 500;
 
 const VIEWS = [
   { view: "screener" as const, label: "Screener", hash: "#/" },
@@ -82,8 +86,10 @@ export default function App() {
   const [themePref, setThemePref] = useState(() => loadThemePref());
   const [systemLight, setSystemLight] = useState(() => prefersLight());
   const theme = effectiveTheme(themePref, systemLight);
-  const [query, setQuery] = useState(DEFAULT_QUERY);
+  const [query, setQuery] = useState(() => route.q ?? DEFAULT_QUERY);
   const [ranQuery, setRanQuery] = useState<string | null>(null);
+  const [sort, setSort] = useState<string | null>(route.sort);
+  const [page, setPage] = useState(1);
   const [result, setResult] = useState<ScreenResponse | null>(null);
   const [error, setError] = useState<DslErrorDetail | null>(null);
   const [running, setRunning] = useState(false);
@@ -100,14 +106,23 @@ export default function App() {
     saveThemePref(themePref);
   }, [theme, themePref]);
 
-  const run = async (dsl?: string) => {
-    const q = dsl ?? query;
+  // The single screening entry point: runs the query in the engine and makes
+  // the URL remember the screen (replace — a run is not a history entry).
+  const runScreen = async (q: string, sortNext: string | null, pageNext: number) => {
     setRunning(true);
     setError(null);
     try {
-      const response = await screen(q, null, 1, 500);
+      const response = await screen(q, sortNext, pageNext, PAGE_SIZE);
       setResult(response);
       setRanQuery(q);
+      setSort(sortNext);
+      setPage(pageNext);
+      // sync the URL from the CURRENT hash (never a stale closure): keep the
+      // open drawer, and never hijack the status/providers views
+      const current = parseHash(window.location.hash);
+      if (current.view === "screener") {
+        navigate({ ...current, q, sort: sortNext }, { replace: true });
+      }
     } catch (err) {
       if (err instanceof DslApiError) setError(err.detail);
       else setError({ error: String(err), position: null, hint: "is the API reachable?" });
@@ -117,8 +132,15 @@ export default function App() {
     }
   };
 
+  const run = (dsl?: string) => runScreen(dsl ?? query, sort, 1);
+
+  const toggleSort = (column: string) => {
+    const next = sort === `-${column}` ? column : sort === column ? null : `-${column}`;
+    runScreen(ranQuery ?? query, next, 1);
+  };
+
   useEffect(() => {
-    run(DEFAULT_QUERY);
+    runScreen(route.q ?? DEFAULT_QUERY, route.sort, 1);
     fields()
       .then(setFieldInfos)
       .catch(() => {});
@@ -133,6 +155,17 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A hand-edited or history-navigated URL re-runs its screen (the guard on
+  // ranQuery breaks the loop: runScreen writes the same q back via replace).
+  useEffect(() => {
+    if (route.view !== "screener" || route.q === null || running) return;
+    if (ranQuery !== null && route.q !== ranQuery) {
+      setQuery(route.q);
+      runScreen(route.q, route.sort, 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.q]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -145,7 +178,7 @@ export default function App() {
         queryInputRef.current?.focus();
       }
       if (event.key === "Escape" && route.company) {
-        navigate({ view: route.view, company: null });
+        navigate({ ...route, company: null });
       }
     };
     window.addEventListener("keydown", onKey);
@@ -157,10 +190,19 @@ export default function App() {
     () => (result?.rows.length ? Object.keys(result.rows[0]) : DEFAULT_COLUMNS),
     [result],
   );
-  const columns = visibleColumns.filter((c) => availableColumns.includes(c));
+  // symbol is the row's identity (and its keyboard path into the drawer) —
+  // it stays visible no matter what the picker says
+  const columns = [
+    "symbol",
+    ...visibleColumns.filter((c) => c !== "symbol" && availableColumns.includes(c)),
+  ];
 
   const firstRun =
     statusData?.snapshot === false && !(result && result.total > 0);
+
+  const totalPages = result ? Math.max(1, Math.ceil(result.total / PAGE_SIZE)) : 1;
+  const firstRow = result ? (page - 1) * PAGE_SIZE + 1 : 0;
+  const lastRow = result ? Math.min(page * PAGE_SIZE, result.total) : 0;
 
   return (
     <div className="app">
@@ -180,7 +222,11 @@ export default function App() {
           ))}
         </nav>
         <span className="spacer" />
-        <SearchBox onPick={(symbol) => navigate({ view: route.view, company: symbol })} />
+        <SearchBox
+          onPick={(symbol) =>
+            navigate({ view: route.view, company: symbol, q: route.q, sort: route.sort })
+          }
+        />
         <span className="status-pill">{statusLine}</span>
         <ThemeToggle
           pref={themePref}
@@ -211,6 +257,7 @@ export default function App() {
           <div className="toolbar">
             <PresetsMenu
               currentQuery={query}
+              activeDsl={ranQuery}
               onPick={(dsl) => {
                 setQuery(dsl);
                 run(dsl);
@@ -224,15 +271,40 @@ export default function App() {
             <span className="spacer" />
             {result && !firstRun && (
               <span className="meta">
-                {result.rows.length} of {result.total} rows · {result.tookMs} ms
+                {result.total === 0
+                  ? "0 rows"
+                  : `rows ${firstRow.toLocaleString("en-US")}–${lastRow.toLocaleString("en-US")} of ${result.total.toLocaleString("en-US")}`}
+                {" · "}
+                {result.tookMs} ms
                 {result.hint ? ` · ${result.hint}` : ""}
+              </span>
+            )}
+            {result && !firstRun && totalPages > 1 && (
+              <span className="pager" role="group" aria-label="Result pages">
+                <button
+                  aria-label="Previous page"
+                  disabled={running || page <= 1}
+                  onClick={() => runScreen(ranQuery ?? query, sort, page - 1)}
+                >
+                  ‹
+                </button>
+                <span className="meta">
+                  page {page} / {totalPages}
+                </span>
+                <button
+                  aria-label="Next page"
+                  disabled={running || page >= totalPages}
+                  onClick={() => runScreen(ranQuery ?? query, sort, page + 1)}
+                >
+                  ›
+                </button>
               </span>
             )}
             <button
               disabled={!ranQuery || !result?.total}
               onClick={async () => {
-                if (!ranQuery) return;
-                const csv = await exportCsv(ranQuery, null, columns);
+                if (ranQuery === null) return;
+                const csv = await exportCsv(ranQuery, sort, columns);
                 if ("url" in csv) {
                   window.location.assign(csv.url);
                 } else {
@@ -253,9 +325,16 @@ export default function App() {
           ) : (
             <ResultsGrid
               rows={result?.rows ?? []}
-              columns={columns.length ? columns : ["symbol"]}
+              columns={columns}
               selected={route.company}
-              onSelect={(symbol) => navigate({ view: "screener", company: symbol })}
+              onSelect={(symbol) =>
+                navigate({ view: "screener", company: symbol, q: ranQuery, sort })
+              }
+              sort={sort}
+              onSort={toggleSort}
+              hrefFor={(symbol) =>
+                hashFor({ view: "screener", company: symbol, q: ranQuery, sort })
+              }
             />
           )}
         </>
@@ -267,7 +346,7 @@ export default function App() {
       {route.company && (
         <CompanyDrawer
           symbol={route.company}
-          onClose={() => navigate({ view: route.view, company: null })}
+          onClose={() => navigate({ ...route, company: null })}
         />
       )}
     </div>
