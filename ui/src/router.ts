@@ -1,4 +1,4 @@
-// T-016 — minimal hash router (no lib): #/ · #/status · #/providers ·
+// T-016 — minimal hash router (no lib): #/ · #/status ·
 // #/company/:symbol (deep-linkable drawer over the screener). The screener's
 // state travels in the hash query string (#/?q=…&sort=…) so every screen is
 // a permalink; #/company/:symbol carries it too, so refreshing or closing
@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from "react";
 
-export type View = "screener" | "status" | "providers";
+export type View = "screener" | "status";
 
 export interface Route {
   view: View;
@@ -21,8 +21,8 @@ export function parseHash(hash: string): Route {
   const params = new URLSearchParams(search);
   const q = params.get("q");
   const sort = params.get("sort");
-  if (path === "/status") return { view: "status", company: null, q, sort };
-  if (path === "/providers") return { view: "providers", company: null, q, sort };
+  // /providers merged into /status — old permalinks keep landing somewhere
+  if (path === "/status" || path === "/providers") return { view: "status", company: null, q, sort };
   const company = path.match(/^\/company\/(.+)$/);
   if (company) {
     return { view: "screener", company: decodeURIComponent(company[1]), q, sort };
@@ -38,7 +38,6 @@ export function hashFor(route: Route): string {
   const search = params.size ? `?${params.toString()}` : "";
   if (route.company) return `#/company/${encodeURIComponent(route.company)}${search}`;
   if (route.view === "status") return "#/status";
-  if (route.view === "providers") return "#/providers";
   return `#/${search}`;
 }
 

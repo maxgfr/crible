@@ -37,22 +37,24 @@ beforeEach(() => {
 });
 
 describe("shell & navigation", () => {
-  it("renders the wordmark and the three view pills", async () => {
+  it("renders the wordmark and the two view pills", async () => {
     mockApi();
     render(<App />);
     expect(rtl.getByRole("heading", { name: /crible/i })).toBeInTheDocument();
     const nav = rtl.getByRole("navigation", { name: /views/i });
     expect(nav).toHaveTextContent("Screener");
     expect(nav).toHaveTextContent("Status");
-    expect(nav).toHaveTextContent("Providers");
+    expect(nav).not.toHaveTextContent("Providers");
     await waitFor(() => expect(rtl.getByText("AIR.PA")).toBeInTheDocument());
   });
 
-  it("switches views on hash change", async () => {
+  it("switches views on hash change — #/providers lands on the merged Status page", async () => {
     mockApi({ "/api/providers": [] });
     render(<App />);
     window.location.hash = "#/providers";
-    await waitFor(() => expect(rtl.getByRole("heading", { name: /providers/i })).toBeInTheDocument());
+    await waitFor(() => expect(rtl.getByRole("heading", { name: /status/i })).toBeInTheDocument());
+    // the merged page carries the Providers section (old permalinks keep working)
+    expect(rtl.getByRole("heading", { name: /providers/i })).toBeInTheDocument();
     window.location.hash = "#/status";
     await waitFor(() => expect(rtl.getByRole("heading", { name: /status/i })).toBeInTheDocument());
   });

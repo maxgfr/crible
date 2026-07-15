@@ -1,5 +1,5 @@
-// T-016 — hash router: #/ (screener), #/status, #/providers, and the
-// deep-linkable company drawer #/company/:symbol (drawer over the screener).
+// T-016 — hash router: #/ (screener), #/status (absorbs the old
+// #/providers), and the deep-linkable company drawer #/company/:symbol.
 // The screener's state travels in the hash query string (#/?q=…&sort=…):
 // every screen is a permalink.
 
@@ -13,9 +13,9 @@ describe("parseHash", () => {
     expect(parseHash("#garbage")).toEqual({ view: "screener", company: null, q: null, sort: null });
   });
 
-  it("routes the status and providers views", () => {
+  it("routes the status view — old #/providers permalinks land there too", () => {
     expect(parseHash("#/status")).toEqual({ view: "status", company: null, q: null, sort: null });
-    expect(parseHash("#/providers")).toEqual({ view: "providers", company: null, q: null, sort: null });
+    expect(parseHash("#/providers")).toEqual({ view: "status", company: null, q: null, sort: null });
   });
 
   it("deep-links a company drawer over the screener", () => {
@@ -49,7 +49,6 @@ describe("hashFor", () => {
       expect(parseHash(hashFor(route))).toEqual(route);
     expect(hashFor({ view: "screener", company: null, q: null, sort: null })).toBe("#/");
     expect(hashFor({ view: "status", company: null, q: null, sort: null })).toBe("#/status");
-    expect(hashFor({ view: "providers", company: null, q: null, sort: null })).toBe("#/providers");
     roundtrip({ view: "screener", company: "BRK/B", q: null, sort: null });
     roundtrip({ view: "screener", company: null, q: "piotroski_f >= 7 AND country IN ('FR','DE')", sort: "-roe" });
     roundtrip({ view: "screener", company: "AIR.PA", q: "altman_z > 2.99", sort: "altman_z" });

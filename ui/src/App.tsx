@@ -1,5 +1,5 @@
 // FR-007 / T-016 — the one-window shell: wordmark · view pills · status
-// pill · theme toggle, over the active view (screener / status / providers).
+// pill · theme toggle, over the active view (screener / status).
 // The company drawer is deep-linked at #/company/:symbol over the screener,
 // and the screen itself is a permalink (#/?q=…&sort=…): refresh, bookmark
 // and share restore the exact query and engine sort. Sorting and paging run
@@ -25,7 +25,6 @@ import { CompanyDrawer } from "./components/CompanyDrawer";
 import { CoverageBanner } from "./components/CoverageBanner";
 import { PresetsMenu } from "./components/PresetsMenu";
 import { QueryBuilder } from "./components/QueryBuilder";
-import { ProvidersView } from "./components/ProvidersView";
 import { QueryBar } from "./components/QueryBar";
 import { ResultsGrid } from "./components/ResultsGrid";
 import { SearchBox } from "./components/SearchBox";
@@ -54,7 +53,6 @@ export const PAGE_SIZE = 500;
 const VIEWS = [
   { view: "screener" as const, label: "Screener", hash: "#/" },
   { view: "status" as const, label: "Status", hash: "#/status" },
-  { view: "providers" as const, label: "Providers", hash: "#/providers" },
 ];
 
 function FirstRun({ statusData }: { statusData: StatusResponse }) {
@@ -355,8 +353,7 @@ export default function App() {
         </>
       )}
 
-      {route.view === "status" && <StatusView />}
-      {route.view === "providers" && <ProvidersView pref={themePref} onPref={setThemePref} />}
+      {route.view === "status" && <StatusView pref={themePref} onPref={setThemePref} />}
 
       {route.company && (
         <CompanyDrawer

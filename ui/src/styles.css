@@ -361,7 +361,7 @@ table.results tr.selected td:last-child {
   border-right: 1px solid var(--color-primary);
 }
 
-/* ————— views (status, providers), teach & skeleton ————— */
+/* ————— views (status incl. providers section), teach & skeleton ————— */
 
 .view {
   flex: 1;
@@ -372,6 +372,11 @@ table.results tr.selected td:last-child {
 .view h2 {
   font-size: var(--scale-h1);
   margin: var(--space-2) 0 var(--space-4);
+}
+
+/* a second h2 opens a major section of the same page (Providers) */
+.view h2:not(:first-child) {
+  margin-top: var(--space-8);
 }
 
 .view h3 {

@@ -1,6 +1,6 @@
-// T-020 — providers & settings: read-only inventory (keyless built-ins +
-// any plugin providers), and the theme preference. The table is the hero
-// here too. The shipped catalog is keyless-only (open-data cleanup).
+// T-020 — providers & settings, rendered as a section of the Status view:
+// read-only inventory (keyless built-ins + any plugin providers), and the
+// theme preference. The shipped catalog is keyless-only (open-data cleanup).
 
 import { useEffect, useState } from "react";
 import { providers, type ProviderInfo } from "../data";
@@ -25,7 +25,7 @@ function StatePill({ provider }: { provider: ProviderInfo }) {
   return <span className="pill pill-muted">off — no key</span>;
 }
 
-export function ProvidersView({ pref, onPref }: Props) {
+export function ProvidersSection({ pref, onPref }: Props) {
   const [plugins, setPlugins] = useState<ProviderInfo[] | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -34,7 +34,7 @@ export function ProvidersView({ pref, onPref }: Props) {
   }, []);
 
   return (
-    <section className="view">
+    <>
       <h2>Providers</h2>
       <div className="view-body">
         <table className="inventory">
@@ -118,6 +118,6 @@ export function ProvidersView({ pref, onPref }: Props) {
           </label>
         </fieldset>
       </div>
-    </section>
+    </>
   );
 }

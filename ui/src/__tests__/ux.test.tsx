@@ -159,7 +159,11 @@ describe("status observatory", () => {
     let calls = 0;
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => {
+      vi.fn(async (url: string) => {
+        // the merged page also fetches /api/providers — only count status polls
+        if (String(url) === "/api/providers") {
+          return { ok: true, status: 200, json: async () => [] };
+        }
         calls += 1;
         return {
           ok: true, status: 200,
@@ -172,7 +176,7 @@ describe("status observatory", () => {
     );
     vi.useFakeTimers();
     try {
-      render(<StatusView />);
+      render(<StatusView pref="dark" onPref={() => {}} />);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0); // flush the initial load
       });

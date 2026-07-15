@@ -1,10 +1,19 @@
 // T-019 — the crawl observatory: coverage %, freshness histogram, req/h
 // vs budget gauge, provider health, last-cycle failures, ESEF matching.
 // Hand-rolled SVG on tokens (no chart lib); skeletons while loading;
-// the no-heartbeat state teaches instead of showing nothing.
+// the no-heartbeat state teaches instead of showing nothing. The page
+// also hosts the Providers section (inventory + appearance) — whatever
+// state the crawl is in, that section never disappears.
 
 import { useEffect, useState } from "react";
 import { status, type StatusResponse } from "../data";
+import type { ThemePref } from "../theme";
+import { ProvidersSection } from "./ProvidersSection";
+
+interface Props {
+  pref: ThemePref;
+  onPref: (pref: ThemePref) => void;
+}
 
 const FRESHNESS_ORDER = ["<7d", "<30d", "<90d", "stale", "never"];
 
@@ -47,7 +56,7 @@ function Skeleton() {
 
 const REFRESH_MS = 30_000;
 
-export function StatusView() {
+export function StatusView({ pref, onPref }: Props) {
   const [data, setData] = useState<StatusResponse | null>(null);
   const [failed, setFailed] = useState(false);
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
@@ -75,30 +84,16 @@ export function StatusView() {
     };
   }, []);
 
-  if (failed) {
-    return (
-      <section className="view">
-        <h2>Status</h2>
+  return (
+    <section className="view">
+      <h2>Status</h2>
+      {failed ? (
         <div className="error-banner" role="alert">
           API unreachable — is the api service running on :8000?
         </div>
-      </section>
-    );
-  }
-  if (!data) {
-    return (
-      <section className="view">
-        <h2>Status</h2>
+      ) : !data ? (
         <Skeleton />
-      </section>
-    );
-  }
-
-  const ingest = data.ingest;
-  if (!ingest || Object.keys(ingest).length === 0) {
-    return (
-      <section className="view">
-        <h2>Status</h2>
+      ) : !data.ingest || Object.keys(data.ingest).length === 0 ? (
         <div className="teach">
           <p>
             No crawl heartbeat yet. The ingest service writes{" "}
@@ -109,10 +104,16 @@ export function StatusView() {
             bootstraps first, then the Europe-first crawl begins.
           </p>
         </div>
-      </section>
-    );
-  }
+      ) : (
+        <Observatory data={data} fetchedAt={fetchedAt} />
+      )}
+      <ProvidersSection pref={pref} onPref={onPref} />
+    </section>
+  );
+}
 
+function Observatory({ data, fetchedAt }: { data: StatusResponse; fetchedAt: number | null }) {
+  const ingest = data.ingest ?? {};
   const freshness = FRESHNESS_ORDER.filter((b) => ingest.freshness?.[b] !== undefined).map(
     (b) => ({ label: b, value: ingest.freshness?.[b] ?? 0, warn: b === "stale" }),
   );
@@ -121,8 +122,7 @@ export function StatusView() {
   const budgetPct = budget > 0 ? Math.min(100, (100 * used) / budget) : 0;
 
   return (
-    <section className="view">
-      <h2>Status</h2>
+    <>
       <p className="meta">
         {ingest.ts
           ? `crawl heartbeat ${new Date(Number(ingest.ts) * 1000).toISOString().replace("T", " ").slice(0, 19)} UTC · `
@@ -172,7 +172,7 @@ export function StatusView() {
             <rect className="gauge-fill" x="0" y="1" width={`${budgetPct}%`} height="8" />
           </svg>
 
-          <h3>Providers</h3>
+          <h3>Provider health</h3>
           <table className="kv">
             <tbody>
               {Object.entries(ingest.providers ?? {}).map(([id, health]) => (
@@ -229,6 +229,6 @@ export function StatusView() {
           </table>
         </div>
       </div>
-    </section>
+    </>
   );
 }
