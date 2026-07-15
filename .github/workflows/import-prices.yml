@@ -72,7 +72,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/publish-data-release.sh
 
-      - name: Redeploy the Pages site
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run pages.yml
+      # Pages redeploys automatically: pages.yml triggers on this workflow's
+      # completion (workflow_run), same as the nightly refresh-data. No manual
+      # `gh workflow run` here — that needs `actions: write` and 403'd on the
+      # default token (it only holds `contents: write`).
