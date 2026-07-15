@@ -224,7 +224,6 @@ export default function App() {
             </a>
           ))}
         </nav>
-        <span className="spacer" />
         <SearchBox
           onPick={(symbol) =>
             navigate({ view: route.view, company: symbol, q: route.q, sort: route.sort })

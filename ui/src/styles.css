@@ -38,6 +38,7 @@ body {
   font-size: var(--scale-small);
   color: var(--color-muted);
   font-family: var(--font-mono);
+  white-space: nowrap;
 }
 
 .querybar {
@@ -287,6 +288,7 @@ table.results tr:hover td {
   font-size: var(--scale-small);
   color: var(--color-muted);
   text-decoration: none;
+  white-space: nowrap;
   padding: 2px var(--space-2);
   border: 1px solid transparent;
   border-radius: var(--radius-md);
@@ -300,10 +302,6 @@ table.results tr:hover td {
 .views a[aria-current="page"] {
   color: var(--color-primary);
   border-color: color-mix(in srgb, var(--color-primary) 55%, transparent);
-}
-
-.topbar .spacer {
-  flex: 1;
 }
 
 .theme-toggle {
@@ -567,12 +565,14 @@ table.inventory td.note {
 
 .searchbox {
   position: relative;
+  flex: 1;
+  min-width: 160px;
 }
 
 .searchbox input {
   font-family: var(--font-mono);
   font-size: var(--scale-small);
-  width: 180px;
+  width: 100%;
   padding: var(--space-1) var(--space-2);
   background: var(--color-bg);
   color: var(--color-fg);
@@ -589,9 +589,9 @@ table.inventory td.note {
 .searchbox-results {
   position: absolute;
   top: calc(100% + 4px);
+  left: 0;
   right: 0;
   z-index: var(--z-dropdown);
-  min-width: 280px;
   max-height: 320px;
   overflow-y: auto;
   margin: 0;
