@@ -23,8 +23,15 @@ on:
 permissions:
   contents: write
 
+# Own group, deliberately NOT shared with refresh-data: GitHub cancels the
+# older PENDING run when two queue in one group — on 2026-07-15 a queued
+# import-prices dispatch (run 29393834241) silently evicted the pending
+# scheduled nightly (run 29390743173, cancelled 3 s later). Separate groups
+# mean the two can overlap; the publish is last-writer-wins per asset and
+# the post-publish consistency check in publish-data-release.sh catches a
+# mixed-generation release.
 concurrency:
-  group: refresh-data # shares the publish lock with the nightly
+  group: import-prices
 
 jobs:
   import:

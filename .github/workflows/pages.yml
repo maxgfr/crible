@@ -19,6 +19,9 @@ permissions:
   pages: write
   id-token: write
 
+# cancel-in-progress is SAFE here (unlike refresh-data): every pages build
+# checks out HEAD and downloads the latest site-data.tar.gz, so the newest
+# build is always the most complete — cancelling an older one loses nothing.
 concurrency:
   group: pages
   cancel-in-progress: true

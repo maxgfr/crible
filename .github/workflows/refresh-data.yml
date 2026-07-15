@@ -17,6 +17,9 @@ on:
 permissions:
   contents: write
 
+# No cancel-in-progress: a running refresh is never killed. Nothing else may
+# share this group — a second member's queued run would evict a PENDING
+# nightly (GitHub keeps only one pending run per group; bit us 2026-07-15).
 concurrency:
   group: refresh-data
 
