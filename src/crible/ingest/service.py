@@ -115,7 +115,7 @@ def restore_queue_from_raw(con: duckdb.DuckDBPyConnection, data_dir) -> int:
     """Rebuild crawl freshness from the raw layer's filename stamps.
 
     A nightly Actions run starts from a fresh operational DB — only the raw
-    parquet layer travels on the data branch. Without this, every night
+    parquet layer travels in the published dataset. Without this, every night
     re-crawls the same queue head instead of advancing (the coverage
     plateau observed at ~145 symbols). Raw filenames carry fetched_at as a
     zero-padded ms stamp, so the queue state is recoverable exactly.

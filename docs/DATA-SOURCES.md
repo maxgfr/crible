@@ -18,9 +18,11 @@ NFR-009).
 
 The hosted screener is built exclusively from this table: the nightly
 `refresh-data` workflow (and `scripts/seed-data.sh`) run the same keyless
-pipeline and publish Parquet + JSON artifacts to the `data` branch and
-the rolling [`data-latest` release](https://github.com/maxgfr/crible/releases/tag/data-latest)
-(ADR-0006, ADR-0007 — what `crible bootstrap` restores). The site's Providers
+pipeline and publish Parquet + JSON artifacts as assets on the rolling
+[`data-latest` release](https://github.com/maxgfr/crible/releases/tag/data-latest)
+(ADR-0006, ADR-0007) — the only distribution channel: `crible bootstrap`
+restores `crible-data.tar.gz`, the Pages deploy attaches `site-data.tar.gz`,
+and no data ever travels in git (main stays code-only). The site's Providers
 view is exported with an empty environment, so it always reports the honest
 keyless state.
 

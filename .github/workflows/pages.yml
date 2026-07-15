@@ -1,7 +1,8 @@
 # GitHub Pages — the hosted screener, the SPA built in static mode (DSL
 # compiled in the browser, DuckDB-WASM over the published Parquet). Data comes
-# from the data branch maintained by refresh-data.yml; deploying without it
-# just shows the "not published yet" state. Hash routing → no 404 fallback.
+# from the site-data.tar.gz asset on the rolling data-latest release
+# (maintained by refresh-data.yml); deploying without it just shows the
+# "not published yet" state. Hash routing → no 404 fallback.
 
 name: pages
 
@@ -42,12 +43,13 @@ jobs:
       - name: Attach the published data artifacts
         run: |
           mkdir -p ui/dist/data
-          if git fetch origin data; then
-            git checkout FETCH_HEAD -- site-data
-            cp -R site-data/. ui/dist/data/
-            echo "attached $(ls site-data | wc -l) data artifacts"
+          if curl -fsSL --retry 3 -o /tmp/site-data.tar.gz \
+              "https://github.com/${{ github.repository }}/releases/download/data-latest/site-data.tar.gz"; then
+            tar -xzf /tmp/site-data.tar.gz -C /tmp
+            cp -R /tmp/site-data/. ui/dist/data/
+            echo "attached $(ls /tmp/site-data | wc -l) data artifacts"
           else
-            echo "no data branch yet — the site will show 'not published yet'"
+            echo "no published dataset yet — the site will show 'not published yet'"
           fi
           touch ui/dist/.nojekyll
 

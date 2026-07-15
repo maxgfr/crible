@@ -1,11 +1,11 @@
 """Bootstrap a self-hosted data/ from the published open dataset — zero crawl.
 
-The nightly refresh publishes the dataset twice: as GitHub Release assets on
-the rolling ``data-latest`` release (preferred — a stable download URL) and as
-the orphan ``data`` branch (fallback — exists as soon as the first
-refresh ran). ``crible bootstrap`` pulls whichever answers first, extracts
-only the ``data/`` layer (safe extraction: no links, no path escapes), and
-leaves keeping it fresh to the normal ingest loop.
+The nightly refresh publishes the dataset as GitHub Release assets on the
+rolling ``data-latest`` release — the only distribution channel (no data ever
+travels in git; main stays code-only). ``crible bootstrap`` pulls the
+``crible-data.tar.gz`` asset, extracts only the ``data/`` layer (safe
+extraction: no links, no path escapes), and leaves keeping it fresh to the
+normal ingest loop.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ class BootstrapError(RuntimeError):
 
 @dataclass(frozen=True)
 class BootstrapDataReport:
-    source: str  # "release" | "branch"
+    source: str  # always "release"
     files: int
 
 
@@ -42,16 +42,12 @@ def release_asset_url(repo: str) -> str:
     return f"https://github.com/{repo}/releases/download/{DATA_RELEASE_TAG}/{DATA_ASSET_NAME}"
 
 
-def branch_tarball_url(repo: str) -> str:
-    return f"https://codeload.github.com/{repo}/tar.gz/refs/heads/data"
-
-
 def _data_relpath(name: str) -> PurePosixPath | None:
     """The member's path inside the data/ layer, or None to skip it.
 
-    The release tarball roots members at ``data/…``; the codeload branch
-    tarball prefixes them with ``<repo>-data/``. Anything outside data/
-    (site-data, README…) and anything path-traversing is skipped.
+    The release tarball roots members at ``data/…``; a single leading prefix
+    (hand-made tarballs) is tolerated. Anything outside data/ (site-data,
+    README…) and anything path-traversing is skipped.
     """
     parts = PurePosixPath(name).parts
     idx = None
@@ -118,7 +114,7 @@ def bootstrap_data(
     http=None,
     force: bool = False,
 ) -> BootstrapDataReport:
-    """Initialize data_dir from the published dataset (release, then branch).
+    """Initialize data_dir from the published data-latest release.
 
     Refuses to touch a data_dir that already holds a dataset unless ``force``
     — an operator's crawled data is never silently clobbered. Extraction goes
@@ -137,41 +133,39 @@ def bootstrap_data(
 
         http = httpx.Client(timeout=120, follow_redirects=True)
 
-    attempts = [
-        ("release", release_asset_url(repo)),
-        ("branch", branch_tarball_url(repo)),
-    ]
-    last_error = "no attempt made"
-    for source, url in attempts:
-        with tempfile.TemporaryDirectory(prefix=".crible-bootstrap-") as tmp:
-            archive_path = Path(tmp) / "archive.tar.gz"
-            try:
-                # stream the (multi-hundred-MB) archive to disk — never buffer
-                # it whole in memory (OOM on a small self-hosted host, F13)
-                with http.stream("GET", url) as response:
-                    if response.status_code == 404:
-                        last_error = f"{source} not published yet ({url})"
-                        continue
-                    response.raise_for_status()
-                    with open(archive_path, "wb") as out:
-                        for chunk in response.iter_bytes(1 << 20):
-                            out.write(chunk)
-            except Exception as exc:  # noqa: BLE001 — try the next distribution channel
-                last_error = f"{source}: {exc}"
-                log.warning("bootstrap: %s — trying the next source", last_error)
-                continue
-            staging = Path(tmp) / "data"
-            staging.mkdir()
-            try:
-                with tarfile.open(name=archive_path, mode="r:gz") as archive:
-                    files = _extract_data_layer(archive, staging)
-            except tarfile.TarError as exc:
-                last_error = f"{source}: unreadable archive: {exc}"
-                continue
-            if files == 0:
-                last_error = f"{source}: archive contains no data/ layer"
-                continue
-            _move_into(staging, data_dir)
-            log.info("bootstrap: restored %d files from the %s (%s)", files, source, url)
-            return BootstrapDataReport(source=source, files=files)
-    raise BootstrapError(f"no published dataset found for {repo} — last error: {last_error}")
+    url = release_asset_url(repo)
+    with tempfile.TemporaryDirectory(prefix=".crible-bootstrap-") as tmp:
+        archive_path = Path(tmp) / "archive.tar.gz"
+        try:
+            # stream the (multi-hundred-MB) archive to disk — never buffer
+            # it whole in memory (OOM on a small self-hosted host, F13)
+            with http.stream("GET", url) as response:
+                if response.status_code == 404:
+                    raise BootstrapError(
+                        f"no published dataset found for {repo}"
+                        f" — the {DATA_RELEASE_TAG} release is not published yet ({url})"
+                    )
+                response.raise_for_status()
+                with open(archive_path, "wb") as out:
+                    for chunk in response.iter_bytes(1 << 20):
+                        out.write(chunk)
+        except BootstrapError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — network/HTTP failures surface as one error
+            raise BootstrapError(f"no published dataset found for {repo} — {exc}") from exc
+        staging = Path(tmp) / "data"
+        staging.mkdir()
+        try:
+            with tarfile.open(name=archive_path, mode="r:gz") as archive:
+                files = _extract_data_layer(archive, staging)
+        except tarfile.TarError as exc:
+            raise BootstrapError(
+                f"no published dataset found for {repo} — unreadable archive: {exc}"
+            ) from exc
+        if files == 0:
+            raise BootstrapError(
+                f"no published dataset found for {repo} — archive contains no data/ layer"
+            )
+        _move_into(staging, data_dir)
+        log.info("bootstrap: restored %d files from the release (%s)", files, url)
+        return BootstrapDataReport(source="release", files=files)

@@ -210,7 +210,7 @@ def test_run_refresh_without_universe_source_or_last_good_fails(refresh_env) -> 
 
 def test_run_refresh_restores_queue_from_raw_and_advances(refresh_env) -> None:
     """A nightly Actions run starts from a fresh operational DB (only the raw
-    parquet layer travels on the data branch). The queue freshness must
+    parquet layer travels in the published dataset). The queue freshness must
     be rebuilt from the raw filename stamps — otherwise every night re-crawls
     the same head and coverage plateaus instead of advancing."""
     provider = FakeYfProvider()

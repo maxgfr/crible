@@ -53,8 +53,8 @@ DEADLINE=7200 bash scripts/seed-data.sh   # crawl budget in seconds
 ```
 
 It restores the last-good dataset, crawls politely (~47 symbols/hour at the
-default budget), refuses to publish under 50 covered symbols, force-pushes the
-orphan `data` branch and triggers the Pages deploy. Re-running resumes
+default budget), refuses to publish under 50 covered symbols, uploads the
+`data-latest` release assets and triggers the Pages deploy. Re-running resumes
 instead of starting over.
 
 ## Pull requests

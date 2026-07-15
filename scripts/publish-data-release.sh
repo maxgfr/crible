@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # Publish the dataset as GitHub Release assets on the rolling `data-latest`
-# release — the stable download URL `crible bootstrap` prefers over the data
-# branch. Called by refresh-data.yml right after publish-data.sh and shares
-# its never-publish-empty gate (site-data/manifest.json). Requires the gh CLI
-# (GH_TOKEN in CI).
+# release — the ONLY distribution channel (no data ever travels in git; main
+# stays code-only). Called by refresh-data.yml, import-prices.yml and
+# seed-data.sh; the never-publish-empty gate is site-data/manifest.json.
+# Requires the gh CLI (GH_TOKEN in CI).
 #
 # Assets:
 #   crible-data.tar.gz   data/raw + data/universe.parquet + data/snapshot
 #                        (+ status.json, prices-latest.parquet, data/prices)
+#                        — what `crible bootstrap` and the CI restore steps pull
+#   site-data.tar.gz     the full site-data/ export (parquet + JSON manifest)
+#                        — what the Pages deploy attaches to the SPA
 #   universe.parquet     the site-data copies, individually downloadable
 #   snapshot.parquet
 #   prices-*.parquet     the OHLCV series shards (when series exist)
@@ -32,7 +35,10 @@ paths=(data/raw data/universe.parquet data/snapshot)
 [ -d data/prices ] && paths+=(data/prices)
 tar -czf "$tarball" "${paths[@]}"
 
-assets=("$tarball" site-data/universe.parquet site-data/snapshot.parquet)
+site_tarball="$workdir/site-data.tar.gz"
+tar -czf "$site_tarball" site-data
+
+assets=("$tarball" "$site_tarball" site-data/universe.parquet site-data/snapshot.parquet)
 for shard in site-data/prices-*.parquet; do
   [ -f "$shard" ] && assets+=("$shard")
 done

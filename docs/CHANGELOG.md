@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — 2026-07-15
+
+- **Release-only dataset distribution** — the orphan `data` branch is retired;
+  the rolling `data-latest` release is now the only channel. `refresh-data`,
+  `import-prices` and `seed-data.sh` restore/publish release assets, the Pages
+  deploy attaches the new `site-data.tar.gz` asset, and `crible bootstrap`
+  drops its branch fallback. One branch (`main`), no data in git history.
+  `publish-data.sh` and the caller-less `publish-prices.sh` are removed —
+  `publish-data-release.sh` is the single publisher.
+- **Blank query = no filter** — clearing the query (UI, API, CLI) screens the
+  full snapshot instead of erroring with `empty query (at position 0)`; the
+  DSL grammar itself still rejects empty input (golden-locked).
+- **Full indicator preset coverage** — 11 new presets (zmijewski-safe,
+  ohlson-safe, montier-clean, top-quality/value/momentum, greenblatt-factors,
+  graham-defensive, cash-quality, dividend-safety, all-indicators) so every
+  published indicator is one click away; a coverage test locks it in.
+
 ## Unreleased — 2026-07-13 (open-data hardening)
 
 - **Automated Stooq bulk download (`crible stooq-download`)** — clears Stooq's
@@ -50,7 +67,7 @@
   walked newest-first instead of polling one LEI at a time: every request
   lands on a real audited filing; the EU gisement becomes coverable in weeks.
 - **Nightly coverage plateau fixed** — the crawl queue is rebuilt from raw
-  filename stamps each run (only raw/ travels on the demo-data branch), so
+  filename stamps each run (only raw/ travels in the published dataset), so
   nightlies advance into new symbols instead of re-crawling the same head.
 - **SEC 403 on runners fixed** — www.sec.gov requires a contact email in the
   User-Agent; the nightly UA now carries one.

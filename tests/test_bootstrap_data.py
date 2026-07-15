@@ -1,6 +1,6 @@
 """crible bootstrap — initialize data/ from the published open dataset:
-release assets first, data branch fallback, safe tar extraction, and
-never clobbering an existing layer without --force."""
+the data-latest release assets (the only distribution channel), safe tar
+extraction, and never clobbering an existing layer without --force."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from crible.bootstrap import (
     BootstrapDataReport,
     BootstrapError,
     bootstrap_data,
-    branch_tarball_url,
     release_asset_url,
 )
 from crible.cli import app
@@ -47,13 +46,12 @@ RELEASE_TAR = _tarball(
         "data/raw/provider=yfinance/symbol=AAPL/income-annual-000000000001000.parquet",
     ]
 )
-# the codeload branch tarball prefixes everything with <repo>-<branch>/ and
-# also carries site-data/, which bootstrap must ignore
-BRANCH_TAR = _tarball(
+# site-data/ (or any member outside the data/ layer) must be ignored
+MIXED_TAR = _tarball(
     [
-        "crible-data/data/universe.parquet",
-        "crible-data/data/snapshot/snapshot.parquet",
-        "crible-data/site-data/universe.parquet",
+        "data/universe.parquet",
+        "data/snapshot/snapshot.parquet",
+        "site-data/universe.parquet",
     ]
 )
 HOSTILE_TAR = _tarball(
@@ -104,14 +102,14 @@ class FakeHttp:
         return self.responses.get(url, FakeResponse(404))
 
 
-def test_bootstrap_prefers_the_release_asset(tmp_path) -> None:
+def test_bootstrap_restores_the_release_asset(tmp_path) -> None:
     http = FakeHttp({release_asset_url(REPO): FakeResponse(200, RELEASE_TAR)})
     report = bootstrap_data(tmp_path / "data", repo=REPO, http=http)
     assert report.source == "release" and report.files == 3
     assert (tmp_path / "data" / "universe.parquet").exists()
     assert (tmp_path / "data" / "snapshot" / "snapshot.parquet").exists()
     assert (tmp_path / "data" / "raw" / "provider=yfinance" / "symbol=AAPL").is_dir()
-    assert http.calls == [release_asset_url(REPO)]  # the branch is never hit
+    assert http.calls == [release_asset_url(REPO)]
 
 
 def test_bootstrap_streams_the_archive_without_buffering(tmp_path) -> None:
@@ -124,13 +122,12 @@ def test_bootstrap_streams_the_archive_without_buffering(tmp_path) -> None:
     assert (tmp_path / "data" / "universe.parquet").exists()
 
 
-def test_bootstrap_falls_back_to_the_data_branch(tmp_path) -> None:
-    http = FakeHttp({branch_tarball_url(REPO): FakeResponse(200, BRANCH_TAR)})
+def test_bootstrap_ignores_members_outside_the_data_layer(tmp_path) -> None:
+    http = FakeHttp({release_asset_url(REPO): FakeResponse(200, MIXED_TAR)})
     report = bootstrap_data(tmp_path / "data", repo=REPO, http=http)
-    assert report.source == "branch" and report.files == 2
-    assert http.calls == [release_asset_url(REPO), branch_tarball_url(REPO)]
+    assert report.source == "release" and report.files == 2
     assert (tmp_path / "data" / "universe.parquet").exists()
-    # site-data/ from the branch tarball is not part of the data/ layer
+    # site-data/ is not part of the data/ layer
     assert not (tmp_path / "data" / "site-data").exists()
 
 

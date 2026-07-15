@@ -35,10 +35,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore last-good data from the data branch
+      - name: Restore last-good data from the data-latest release
         run: |
-          git fetch origin data
-          git checkout FETCH_HEAD -- data
+          curl -fsSL --retry 3 -o /tmp/crible-data.tar.gz \
+            "https://github.com/${{ github.repository }}/releases/download/data-latest/crible-data.tar.gz"
+          tar -xzf /tmp/crible-data.tar.gz
 
       # ddddocr (the captcha OCR) pulls opencv-python (not headless) → needs libGL.
       - name: Install the OpenGL runtime opencv needs
@@ -63,9 +64,6 @@ jobs:
 
       - name: Export the static site artifacts (min-symbols gate)
         run: uv run crible export-site --out site-data --min-symbols 50
-
-      - name: Publish the data branch (single orphan commit)
-        run: bash scripts/publish-data.sh
 
       - name: Publish the rolling data-latest release assets
         env:
