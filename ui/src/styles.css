@@ -48,8 +48,14 @@ body {
   align-items: center;
 }
 
-.querybar input {
+/* the input's flex lives on its autocomplete wrapper — the input fills it */
+.qb-autocomplete {
+  position: relative;
   flex: 1;
+}
+
+.querybar input {
+  width: 100%;
   font-family: var(--font-mono);
   font-size: var(--scale-body);
   padding: var(--space-2) var(--space-3);
@@ -58,6 +64,34 @@ body {
   border: 1px solid color-mix(in srgb, var(--color-muted) 40%, transparent);
   border-radius: var(--radius-sm);
   transition: border-color var(--motion-fast);
+}
+
+.qb-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: var(--z-dropdown);
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  background: var(--color-bg-raised);
+  border: 1px solid color-mix(in srgb, var(--color-muted) 40%, transparent);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--color-bg) 60%, transparent);
+}
+
+.qb-suggestions li {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--scale-small);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.qb-suggestions li.active {
+  background: color-mix(in srgb, var(--color-primary) 15%, transparent);
 }
 
 .querybar input:focus {

@@ -61,4 +61,12 @@ describe("formatCell — the verdict table", () => {
     });
     expect(formatCell("revenue_growth", -0.05).className).toBe("num-bad");
   });
+
+  it("reads debt growth inverted: piling on debt is never green", () => {
+    expect(formatCell("total_debt_growth", 0.15).className).toBe("num-bad");
+    expect(formatCell("total_debt_growth", 0.15).text).toBe("+0.150");
+    expect(formatCell("total_debt_growth", -0.1).className).toBe("num-good");
+    expect(formatCell("debt_to_equity_ratio_growth", 0.2).className).toBe("num-bad");
+    expect(formatCell("net_debt_to_ebitda_ratio_growth", -0.3).className).toBe("num-good");
+  });
 });

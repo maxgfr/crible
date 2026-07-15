@@ -56,22 +56,35 @@ const STATEMENT_FIELDS = [
   "revenue", "gross_profit", "operating_income", "net_income",
   "total_assets", "total_equity", "total_debt", "operating_cashflow", "free_cash_flow",
 ];
-// earnings backed by cash — the cash-quality preset's inputs
-const CASH_QUALITY = ["ebitda_margin", "fcf_margin", "fcf_conversion", "dividend_coverage"];
+// earnings backed by cash — the cash-quality preset's inputs + quality checks
+const CASH_QUALITY = [
+  "ebitda_margin", "fcf_margin", "fcf_conversion", "income_quality_ratio",
+  "capex_coverage_ratio", "dividend_coverage",
+];
 // the classic ratio families, grouped the way an analyst scans them
 const KEY_RATIOS: [string, string[]][] = [
   ["Valuation", [
-    "price_to_earnings_ratio", "price_to_book_ratio", "ev_to_ebitda_ratio",
-    "earnings_yield", "free_cash_flow_yield", "weighted_dividend_yield",
+    "market_cap", "price_to_earnings_ratio", "price_to_book_ratio", "ev_to_ebitda_ratio",
+    "ev_to_sales_ratio", "earnings_yield", "free_cash_flow_yield", "weighted_dividend_yield",
   ]],
   ["Profitability", [
     "gross_margin", "operating_margin", "net_profit_margin",
     "return_on_assets", "return_on_equity", "return_on_capital_employed",
   ]],
   ["Balance", [
-    "current_ratio", "quick_ratio", "debt_to_equity_ratio",
+    "current_ratio", "quick_ratio", "cash_ratio", "debt_to_equity_ratio",
     "net_debt_to_ebitda_ratio", "interest_coverage_ratio",
   ]],
+  ["Efficiency", [
+    "asset_turnover_ratio", "inventory_turnover_ratio", "days_of_sales_outstanding",
+    "days_of_inventory_outstanding", "days_of_accounts_payable_outstanding",
+    "sga_to_revenue_ratio",
+  ]],
+];
+// year-over-year trajectory (signed + colored; debt growth reads inverted)
+const GROWTH_FIELDS = [
+  "revenue_growth", "net_income_growth", "operating_cashflow_growth",
+  "free_cash_flow_growth", "total_debt_growth",
 ];
 
 // provenance ends at the SOURCE, not at a provider string: link the place
@@ -298,6 +311,21 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                         </tr>
                       ))}
                     </Fragment>
+                  ))}
+                </tbody>
+              </table>
+              <h3>Growth (YoY)</h3>
+              <table>
+                <tbody>
+                  {GROWTH_FIELDS.map((field) => (
+                    <tr key={field}>
+                      <td>{fieldLabel(field)}</td>
+                      {detail.periods.map((p) => (
+                        <td key={String(p.period)}>
+                          <Val column={field} value={p[field]} />
+                        </td>
+                      ))}
+                    </tr>
                   ))}
                 </tbody>
               </table>

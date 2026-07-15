@@ -16,6 +16,13 @@ function verdict(text: string, kind: keyof typeof FLAGS | ""): FormattedCell {
   return { text, className: kind ? `num-${kind}` : "", flag: kind ? FLAGS[kind] : "" };
 }
 
+// growth columns where UP is the bad direction (debt piling on)
+const INVERTED_GROWTH = new Set([
+  "total_debt_growth",
+  "debt_to_equity_ratio_growth",
+  "net_debt_to_ebitda_ratio_growth",
+]);
+
 /** ≥1e9 → "…B", ≥1e6 → "…M", integers verbatim, else 3 decimals. */
 export function formatNumber(value: number): string {
   if (Math.abs(value) >= 1e9) return `${(value / 1e9).toFixed(2)}B`;
@@ -42,12 +49,15 @@ export function formatCell(column: string, value: unknown): FormattedCell {
     if (column === "fcf_conversion") return verdict(text, value < 1 ? "warn" : "");
     if (column === "dividend_coverage")
       return verdict(text, value >= 2 ? "good" : value < 1 ? "bad" : "");
-    if (column.endsWith("_growth"))
+    if (column.endsWith("_growth")) {
+      const goodWhenUp = !INVERTED_GROWTH.has(column);
       return {
         text: value > 0 ? `+${text}` : text,
-        className: value > 0 ? "num-good" : value < 0 ? "num-bad" : "",
+        className:
+          value === 0 ? "" : (value > 0) === goodWhenUp ? "num-good" : "num-bad",
         flag: "",
       };
+    }
     return { text, className: "", flag: "" };
   }
   return { text: String(value), className: "", flag: "" };

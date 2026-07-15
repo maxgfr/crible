@@ -55,15 +55,29 @@ const CATALOG: Record<string, CatalogEntry> = {
   ebitda_margin: { label: "EBITDA margin", group: "Profitability" },
   fcf_margin: { label: "FCF margin", group: "Profitability" },
   fcf_conversion: { label: "FCF conversion", group: "Profitability" },
+  income_quality_ratio: { label: "Income quality (OCF/NI)", group: "Profitability" },
+  effective_tax_rate: { label: "Effective tax rate", group: "Profitability" },
   debt_to_equity_ratio: { label: "Debt / equity", group: "Health" },
   current_ratio: { label: "Current ratio", group: "Health" },
   quick_ratio: { label: "Quick ratio", group: "Health" },
+  cash_ratio: { label: "Cash ratio", group: "Health" },
   interest_coverage_ratio: { label: "Interest coverage", group: "Health" },
   net_debt_to_ebitda_ratio: { label: "Net debt / EBITDA", group: "Health" },
   dividend_coverage: { label: "Dividend cover", group: "Health" },
-  // growth (every fundamental has a _growth companion; these two are curated)
+  capex_coverage_ratio: { label: "Capex coverage", group: "Health" },
+  // efficiency (turnover & working-capital cycle)
+  asset_turnover_ratio: { label: "Asset turnover", group: "Efficiency" },
+  inventory_turnover_ratio: { label: "Inventory turnover", group: "Efficiency" },
+  days_of_sales_outstanding: { label: "DSO (days)", group: "Efficiency" },
+  days_of_inventory_outstanding: { label: "DIO (days)", group: "Efficiency" },
+  days_of_accounts_payable_outstanding: { label: "DPO (days)", group: "Efficiency" },
+  sga_to_revenue_ratio: { label: "SG&A / revenue", group: "Efficiency" },
+  // growth (every fundamental has a _growth companion; these are curated)
   revenue_growth: { label: "Revenue growth (YoY)", group: "Growth (YoY)" },
   net_income_growth: { label: "Earnings growth (YoY)", group: "Growth (YoY)" },
+  operating_cashflow_growth: { label: "OCF growth (YoY)", group: "Growth (YoY)" },
+  free_cash_flow_growth: { label: "FCF growth (YoY)", group: "Growth (YoY)" },
+  total_debt_growth: { label: "Debt growth (YoY)", group: "Growth (YoY)" },
   // scores
   piotroski_f: { label: "Piotroski F", group: "Scores" },
   altman_z: { label: "Altman Z", group: "Scores" },
@@ -91,7 +105,7 @@ const CATALOG: Record<string, CatalogEntry> = {
 // display order for the field select's optgroups; unknown groups append after
 export const GROUP_ORDER = [
   "Identity", "Scores", "Ranks", "Value", "Valuation", "Profitability", "Health",
-  "Fundamentals", "Growth (YoY)", "Other",
+  "Efficiency", "Fundamentals", "Growth (YoY)", "Other",
 ];
 
 // enumerated string fields get a value dropdown instead of free text

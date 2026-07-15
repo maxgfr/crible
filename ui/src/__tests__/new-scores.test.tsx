@@ -22,7 +22,9 @@ vi.mock("../data", () => ({
         ncav_to_market_cap: 0.1, magic_formula_rank: 80,
         greenblatt_earnings_yield: 0.13, greenblatt_roc: 0.21,
         ebitda_margin: 0.22, fcf_margin: 0.08, fcf_conversion: 0.4, dividend_coverage: 2.5,
-        price_to_earnings_ratio: 11.4, return_on_equity: 0.18, current_ratio: 1.9,
+        income_quality_ratio: 1.3, price_to_earnings_ratio: 11.4, return_on_equity: 0.18,
+        current_ratio: 1.9, asset_turnover_ratio: 0.9, days_of_sales_outstanding: 41.2,
+        revenue_growth: 0.07, total_debt_growth: 0.15,
         provider: "yfinance", computed_at: 1700000000,
       },
     ],
@@ -131,5 +133,18 @@ describe("new scores — drawer breakdown", () => {
     expect(rtl.getByText("11.400")).toBeInTheDocument();
     // un-thresholded ratios stay neutral
     expect(rtl.getByText("0.180").className).toBe("");
+  });
+
+  it("renders the Efficiency group and the Growth (YoY) section", async () => {
+    const { CompanyDrawer } = await import("../components/CompanyDrawer");
+    render(<CompanyDrawer symbol="ACME" onClose={() => {}} />);
+    await waitFor(() => expect(rtl.getByText("Efficiency")).toBeInTheDocument());
+    expect(rtl.getByText("Asset turnover")).toBeInTheDocument();
+    expect(rtl.getByText("DSO (days)")).toBeInTheDocument();
+    expect(rtl.getByText("Income quality (OCF/NI)")).toBeInTheDocument();
+    // growth trajectory: signed + colored, debt growth reads inverted
+    expect(rtl.getByText("Growth (YoY)")).toBeInTheDocument();
+    expect(rtl.getByText("+0.070").className).toBe("num-good"); // revenue up
+    expect(rtl.getByText("+0.150").className).toBe("num-bad"); // debt up
   });
 });
