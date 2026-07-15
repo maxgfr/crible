@@ -2,7 +2,15 @@
 // breakdowns (9 Piotroski criteria, 8 Beneish components, Altman inputs),
 // provenance (provider + computed_at). Deep enough to explain every number.
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { company, type CompanyDetail } from "../data";
 import { fieldLabel } from "../data/field-catalog";
 import { formatCell, formatNumber } from "../format";
@@ -88,6 +96,43 @@ const PROVENANCE_LINKS: Record<string, (symbol: string) => { href: string; label
   }),
 };
 
+// drawer size: a width the user dragged + an expanded toggle, both
+// persisted (same try/catch contract as theme.ts — storage may not exist)
+const DRAWER_KEY = "crible-drawer";
+const DEFAULT_WIDTH = 560;
+const MIN_WIDTH = 420;
+const EXPANDED_WIDTH = "min(1100px, 96vw)";
+
+interface DrawerPrefs {
+  width: number;
+  expanded: boolean;
+}
+
+function loadDrawerPrefs(): DrawerPrefs {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(DRAWER_KEY) ?? "{}") as Partial<DrawerPrefs>;
+    return {
+      width: typeof parsed.width === "number" && Number.isFinite(parsed.width) ? parsed.width : DEFAULT_WIDTH,
+      expanded: parsed.expanded === true,
+    };
+  } catch {
+    /* storage unavailable or garbage — defaults */
+    return { width: DEFAULT_WIDTH, expanded: false };
+  }
+}
+
+function saveDrawerPrefs(prefs: DrawerPrefs): void {
+  try {
+    window.localStorage.setItem(DRAWER_KEY, JSON.stringify(prefs));
+  } catch {
+    /* non-persistent is fine */
+  }
+}
+
+function clampWidth(width: number): number {
+  return Math.min(Math.max(width, MIN_WIDTH), Math.round(window.innerWidth * 0.96));
+}
+
 function num(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "number") return formatNumber(value);
@@ -110,6 +155,8 @@ function Val({ column, value }: { column: string; value: unknown }) {
 
 export function CompanyDrawer({ symbol, onClose }: Props) {
   const [detail, setDetail] = useState<CompanyDetail | null | "loading">("loading");
+  const [prefs, setPrefs] = useState<DrawerPrefs>(() => loadDrawerPrefs());
+  const [dragging, setDragging] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -124,10 +171,58 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
     return () => opener?.focus?.();
   }, []);
 
+  useEffect(() => {
+    saveDrawerPrefs(prefs);
+  }, [prefs]);
+
+  // dragging the left edge resizes; a drag always leaves expanded mode so
+  // the width under the pointer is the width you get
+  const onResizeMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragging) return;
+    const width = clampWidth(window.innerWidth - event.clientX);
+    setPrefs({ width, expanded: false });
+  };
+
+  const onResizeKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const delta = event.key === "ArrowLeft" ? 32 : -32; // the drawer grows leftward
+    setPrefs((p) => ({ width: clampWidth(p.width + delta), expanded: false }));
+  };
+
   return (
-    <aside className="drawer" role="dialog" aria-modal="true" aria-label={`${symbol} details`}>
+    <aside
+      className={`drawer${prefs.expanded ? " expanded" : ""}${dragging ? " dragging" : ""}`}
+      style={{ "--drawer-w": prefs.expanded ? EXPANDED_WIDTH : `${prefs.width}px` } as CSSProperties}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${symbol} details`}
+    >
+      <div
+        className="drawer-resize"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize drawer (arrow keys)"
+        tabIndex={0}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.currentTarget.setPointerCapture?.(event.pointerId);
+          setDragging(true);
+        }}
+        onPointerMove={onResizeMove}
+        onPointerUp={() => setDragging(false)}
+        onPointerCancel={() => setDragging(false)}
+        onKeyDown={onResizeKey}
+      />
       <button ref={closeRef} className="drawer-close" onClick={onClose}>
         Close
+      </button>
+      <button
+        className="drawer-expand"
+        aria-pressed={prefs.expanded}
+        onClick={() => setPrefs((p) => ({ ...p, expanded: !p.expanded }))}
+      >
+        {prefs.expanded ? "Shrink" : "Expand"}
       </button>
       {detail === "loading" && <p className="meta">Loading {symbol}…</p>}
       {detail === null && <p className="meta">{symbol}: not in the universe.</p>}

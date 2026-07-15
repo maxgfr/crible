@@ -195,14 +195,58 @@ table.results tr:hover td {
   position: fixed;
   top: 0;
   right: 0;
-  width: min(560px, 92vw);
+  width: min(var(--drawer-w, 560px), 96vw);
   height: 100vh;
   background: var(--color-bg-raised);
   box-shadow: var(--shadow-md);
   padding: var(--space-4);
   overflow: auto;
-  transition: transform var(--motion-base);
   border-left: 1px solid color-mix(in srgb, var(--color-muted) 30%, transparent);
+}
+
+.drawer.dragging {
+  user-select: none;
+}
+
+/* the drawer's 11px mono tables earn body size once there is room */
+.drawer.expanded table {
+  font-size: var(--scale-body);
+}
+
+.drawer-resize {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+/* widen the grab zone past the visible sliver (comfortable hit area) */
+.drawer-resize::before {
+  content: "";
+  position: absolute;
+  inset: 0 -4px 0 -6px;
+}
+
+.drawer-resize:hover,
+.drawer-resize:focus-visible {
+  background: color-mix(in srgb, var(--color-primary) 25%, transparent);
+  outline: none;
+}
+
+.drawer-expand {
+  float: right;
+  margin-right: var(--space-2);
+}
+
+/* at phone width the drawer is already ~full screen — no affordances */
+@media (max-width: 640px) {
+  .drawer-resize,
+  .drawer-expand {
+    display: none;
+  }
 }
 
 .drawer h2 { margin-top: 0; font-size: var(--scale-h1); }
