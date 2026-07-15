@@ -51,6 +51,13 @@ jobs:
             tar -xzf /tmp/site-data.tar.gz -C /tmp
             cp -R /tmp/site-data/. ui/dist/data/
             echo "attached $(ls /tmp/site-data | wc -l) data artifacts"
+            # generation stamp in the run summary: which dataset this deploy ships
+            {
+              echo "### Dataset generation"
+              echo '```json'
+              python3 -c "import json; m=json.load(open('/tmp/site-data/manifest.json')); print(json.dumps({k: m.get(k) for k in ('schema','generated_at','snapshot_symbols','commit')}, indent=2))"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "no published dataset yet — the site will show 'not published yet'"
           fi
