@@ -194,7 +194,7 @@ product, running on the published dataset.
 Built test-first: every behavior is proven by an FR-tagged test (`tests/test_fr004_dsl.py`
 proves FR-004, and so on), and the DSL compiler is locked to its TypeScript port by shared
 golden vectors. The keyless data-sourcing approach and the two dataset tiers are written up in
-[`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md); the improvement methodology in [`IMPROVE.md`](IMPROVE.md).
+[`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md).
 
 ## Development
 

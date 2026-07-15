@@ -108,5 +108,4 @@ account or key.
 
 ## Earlier
 
-Pre-release development followed a test-first, FR-tagged discipline; the
-improvement methodology is documented in `IMPROVE.md`.
+Pre-release development followed a test-first, FR-tagged discipline.
