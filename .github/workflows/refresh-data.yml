@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  issues: write # the failure beacon opens/bumps a labeled issue
 
 # No cancel-in-progress: a running refresh is never killed. Nothing else may
 # share this group — a second member's queued run would evict a PENDING
@@ -88,3 +89,12 @@ jobs:
             cat site-data/manifest.json
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # a red nightly must never be silent: raise/bump the labeled issue
+      - name: Notify on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/notify-workflow-failure.sh "refresh-data" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

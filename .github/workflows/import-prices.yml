@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: write
+  issues: write # the failure beacon opens/bumps a labeled issue
 
 # Own group, deliberately NOT shared with refresh-data: GitHub cancels the
 # older PENDING run when two queue in one group — on 2026-07-15 a queued
@@ -81,3 +82,11 @@ jobs:
       # completion (workflow_run), same as the nightly refresh-data. No manual
       # `gh workflow run` here — that needs `actions: write` and 403'd on the
       # default token (it only holds `contents: write`).
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/notify-workflow-failure.sh "import-prices" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
