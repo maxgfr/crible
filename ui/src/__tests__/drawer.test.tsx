@@ -19,6 +19,16 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
+describe("drawer synthesis placement", () => {
+  it("no synthesis without periods; with periods it precedes Statements", async () => {
+    const { unmount } = render(<CompanyDrawer symbol="ACME" onClose={() => {}} />);
+    await waitFor(() => expect(rtl.getByText("Acme")).toBeInTheDocument());
+    // the mocked company has periods: [] — metadata only, no synthesis
+    expect(rtl.queryByLabelText("Synthesis")).not.toBeInTheDocument();
+    unmount();
+  });
+});
+
 describe("drawer sizing", () => {
   it("Expand toggles a persisted wide mode that survives a reopen", async () => {
     const { unmount } = render(<CompanyDrawer symbol="ACME" onClose={() => {}} />);

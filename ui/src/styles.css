@@ -668,6 +668,78 @@ table.inventory td.note {
   }
 }
 
+/* ------------------------------------------------ drawer synthesis */
+
+.synthesis {
+  margin: var(--space-3) 0 var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-muted) 30%, transparent);
+}
+
+.synthesis-hero {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  margin-bottom: var(--space-2);
+}
+
+.synthesis-hero > div:first-child {
+  min-width: 120px;
+}
+
+.synthesis-rank {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 28px;
+  line-height: 1.1;
+  color: var(--color-fg);
+}
+
+.synthesis-hero .rank-bars {
+  flex: 1;
+  font-size: var(--scale-small);
+}
+
+.synthesis-family {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--scale-small);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.synthesis-family-name {
+  color: var(--color-fg);
+  min-width: 150px;
+}
+
+.attention-list {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  font-size: var(--scale-small);
+}
+
+.attention-list li {
+  margin-bottom: 2px;
+}
+
+/* a jump WITHIN the drawer — a button, never an <a href="#…"> (hash router) */
+.jump-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--color-primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.jump-link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
 /* ------------------------------------------------ drawer charts */
 
 .series-1 { --series-color: var(--color-series-1); }

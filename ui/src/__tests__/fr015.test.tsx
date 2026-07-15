@@ -48,10 +48,11 @@ describe("FR-015 rank breakdown in the drawer", () => {
     render(<CompanyDrawer symbol="AIR.PA" onClose={() => {}} />);
     await waitFor(() => expect(rtl.getByText(/Rank — how it is built/)).toBeInTheDocument());
 
-    expect(rtl.getByText("Composite")).toBeInTheDocument();
-    expect(rtl.getByText("82.750")).toBeInTheDocument();
+    // "Composite" appears in the synthesis RankBars AND the Rank section
+    expect(rtl.getAllByText("Composite").length).toBeGreaterThan(0);
+    expect(rtl.getAllByText("82.750").length).toBeGreaterThan(0); // hero + bars + section
     // pillars link back to their component values (AC-3)
-    expect(rtl.getByText("Quality")).toBeInTheDocument();
+    expect(rtl.getAllByText("Quality").length).toBeGreaterThan(0);
     expect(rtl.getByText("· earnings_yield")).toBeInTheDocument();
     expect(rtl.getByText("· price_to_book_ratio")).toBeInTheDocument();
     expect(rtl.getByText("· return_6m")).toBeInTheDocument();

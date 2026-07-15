@@ -15,6 +15,8 @@ import { company, type CompanyDetail } from "../data";
 import { fieldLabel } from "../data/field-catalog";
 import { formatCell, formatNumber } from "../format";
 import { PriceChart } from "./PriceChart";
+import { SynthesisBlock } from "./SynthesisBlock";
+import { TrendCharts } from "./TrendCharts";
 
 interface Props {
   symbol: string;
@@ -273,7 +275,8 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
             </p>
           ) : (
             <>
-              <h3>Statements</h3>
+              <SynthesisBlock latest={detail.periods[0]} periods={detail.periods} />
+              <h3 id="drawer-statements" tabIndex={-1}>Statements</h3>
               <table>
                 <thead>
                   <tr>
@@ -294,7 +297,9 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                   ))}
                 </tbody>
               </table>
-              <h3>Cash quality</h3>
+              <h3 id="drawer-trends" tabIndex={-1}>Trends</h3>
+              <TrendCharts periods={detail.periods} />
+              <h3 id="drawer-cash" tabIndex={-1}>Cash quality</h3>
               <table>
                 <tbody>
                   {CASH_QUALITY.map((field) => (
@@ -309,7 +314,7 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                   ))}
                 </tbody>
               </table>
-              <h3>Key ratios</h3>
+              <h3 id="drawer-ratios" tabIndex={-1}>Key ratios</h3>
               <table>
                 <tbody>
                   {KEY_RATIOS.map(([group, fields]) => (
@@ -333,7 +338,7 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                   ))}
                 </tbody>
               </table>
-              <h3>Growth (YoY)</h3>
+              <h3 id="drawer-growth" tabIndex={-1}>Growth (YoY)</h3>
               <table>
                 <tbody>
                   {GROWTH_FIELDS.map((field) => (
@@ -348,7 +353,7 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                   ))}
                 </tbody>
               </table>
-              <h3>Momentum</h3>
+              <h3 id="drawer-momentum" tabIndex={-1}>Momentum</h3>
               <table>
                 <tbody>
                   {MOMENTUM_FIELDS.map((field) => (
@@ -363,7 +368,7 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
               </table>
               {detail.periods[0].ttm_revenue != null && (
                 <>
-                  <h3>TTM — trailing 12 months</h3>
+                  <h3 id="drawer-ttm" tabIndex={-1}>TTM — trailing 12 months</h3>
                   <table>
                     <tbody>
                       {TTM_FIELDS.map((field) => (
@@ -382,7 +387,7 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                   </p>
                 </>
               )}
-              <h3>Scores — full breakdown</h3>
+              <h3 id="drawer-scores" tabIndex={-1}>Scores — full breakdown</h3>
               <table>
                 <tbody>
                   <tr>
@@ -502,7 +507,7 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
               {detail.periods[0].composite_rank !== null &&
                 detail.periods[0].composite_rank !== undefined && (
                   <>
-                    <h3>Rank — how it is built</h3>
+                    <h3 id="drawer-rank" tabIndex={-1}>Rank — how it is built</h3>
                     <table>
                       <tbody>
                         <tr>
@@ -542,7 +547,7 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
               {(detail.periods[0].graham_number != null ||
                 detail.periods[0].magic_formula_rank != null) && (
                 <>
-                  <h3>Value — Greenblatt & Graham</h3>
+                  <h3 id="drawer-value" tabIndex={-1}>Value — Greenblatt & Graham</h3>
                   <table>
                     <tbody>
                       {VALUE_ROWS.map(([label, column]) => (
