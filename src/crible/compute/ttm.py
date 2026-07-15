@@ -7,12 +7,11 @@ COLUMNS on the latest snapshot row — never extra rows, so snapshot_latest's
 one-row-per-symbol semantics hold for every consumer (runtime views, ranks,
 the drawer's period table).
 
-Reach honesty: the audited providers (EDGAR companyfacts, ESEF) emit
-annual-only frames today, so TTM rides the yfinance-crawled tier — hundreds
-of symbols, large caps first under the cap-tiered crawl priority. The named
-v2 is EDGAR 10-Q extraction. Balance items are point-in-time and excluded by
-design; provider restatements can make a TTM sum drift from the annual
-figure — never reconciled, documented.
+Reach (v2): EDGAR now emits DISCRETE 10-Q quarters (70–100-day durations;
+YTD-only reporters honestly stay without a TTM), preferred over the scraped
+yfinance quarterlies — a window is never source-mixed. Balance items are
+point-in-time and excluded by design; provider restatements can make a TTM
+sum drift from the annual figure — never reconciled, documented.
 """
 
 from __future__ import annotations

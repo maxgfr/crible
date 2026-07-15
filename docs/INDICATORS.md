@@ -43,7 +43,7 @@ imputée** ; la colonne `missing_inputs` du snapshot nomme les champs absents.
 | `return_12_1` | 12-month return, last month skipped | ~unbounded | higher · plus haut | — |
 | `high_52w_proximity` | close / 52-week high | 0–1 | higher · plus haut | — |
 | `volatility_1y` | annualized σ of daily log returns | ≥ 0 | context | — |
-| `ttm_*` / `price_to_earnings_ttm` / `price_to_sales_ttm` / `ttm_fcf_yield` | trailing 12 months | — | — | crawled tier only |
+| `ttm_*` / `price_to_earnings_ttm` / `price_to_sales_ttm` / `ttm_fcf_yield` | trailing 12 months | — | — | crawled + audited discrete-quarter issuers |
 | `revenue_cagr_3y` / `net_income_cagr_3y` | 3-year compound growth | ~unbounded | higher · plus haut | — |
 
 Direction reminder: distress and manipulation scores are **risk** measures (lower is
@@ -607,17 +607,21 @@ quarters, so a P/E (TTM) reflects the most recent twelve months actually filed. 
 COLUMNS on the latest row — never extra rows, so one-row-per-symbol semantics hold everywhere.
 Guard: the four quarter-ends must span roughly a year (240–300 days) — gapped, duplicated or
 semi-annual reporters get NaN instead of a wrong sum. Balance-sheet items are point-in-time and
-deliberately excluded. **Reach: the crawled (yfinance) tier only** — the audited providers file
-annual frames today; extending `edgar.facts_to_frames` to 10-Q facts is the named v2.
+deliberately excluded. **Reach (v2): audited US issuers reporting DISCRETE quarters (EDGAR
+10-Qs, 70–100-day durations — preferred over the scraped quarterlies, never source-mixed) plus
+the crawled (yfinance) tier.** Issuers filing only year-to-date cash-flow durations honestly
+stay without a TTM — YTD figures are never differenced into quarters.
 
 **FR** — Les chiffres annuels peuvent dater d'un an ; le TTM somme les quatre derniers
 trimestres publiés, donc un P/E (TTM) reflète les douze derniers mois réellement déposés. Posé
 en COLONNES sur la dernière ligne — jamais en lignes supplémentaires, la sémantique
 une-ligne-par-société tient partout. Garde-fou : les quatre fins de trimestre doivent couvrir
 environ un an (240–300 jours) — trous, doublons ou reporting semestriel donnent NaN plutôt
-qu'une somme fausse. Les postes de bilan sont des instantanés, exclus à dessein. **Portée : le
-tier crawlé (yfinance) uniquement** — les fournisseurs audités déposent de l'annuel ;
-l'extension 10-Q d'EDGAR est la v2 nommée.
+qu'une somme fausse. Les postes de bilan sont des instantanés, exclus à dessein. **Portée
+(v2) : les émetteurs US audités publiant des trimestres DISCRETS (10-Q EDGAR, durées de 70 à
+100 jours — préférés aux trimestriels scrapés, jamais mélangés) plus le tier crawlé
+(yfinance).** Un émetteur ne publiant que du cumul annuel (YTD) reste honnêtement sans TTM —
+un cumul n'est jamais différencié en trimestres.
 
 > **Caveat · Nuance** — Provider restatements can make a TTM sum drift from the annual figure;
 > the two are never reconciled — both are shown. · Les retraitements peuvent faire diverger la

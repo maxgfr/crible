@@ -34,10 +34,18 @@ COMPANYFACTS_BULK_URL = "https://www.sec.gov/Archives/edgar/daily-index/xbrl/com
 # bound the snapshot's growth: 8 fiscal years is plenty for trends and keeps
 # the published parquet well under GitHub's 100 MiB file limit at ~10k issuers
 MAX_FISCAL_YEARS = 8
+MAX_QUARTERS = 8
 
 ANNUAL_FORMS = ("10-K", "20-F", "40-F")
 # a full-year duration, with slack for 52/53-week fiscal calendars
 FULL_YEAR_DAYS = (320, 400)
+# a DISCRETE quarter (13/14-week calendars land at 84–98 days); the 6/9-month
+# YTD durations many 10-Qs carry (~181/273 days) are safely outside — they
+# are dropped, never differenced into quarters
+QUARTER_DAYS = (70, 100)
+# Q4 discrete durations are re-reported inside the 10-K (fp=FY there), so the
+# quarterly sink reads annual forms too and does not filter on fp
+QUARTERLY_FORMS = ("10-Q", *ANNUAL_FORMS)
 
 # us-gaap concept → (yfinance-vocabulary column, statement type), so
 # compute/canonical.py picks the values up unchanged. Ordered: for a column
@@ -107,59 +115,98 @@ def _full_year(start: str, end: str) -> bool:
     return FULL_YEAR_DAYS[0] <= days <= FULL_YEAR_DAYS[1]
 
 
-def facts_to_frames(companyfacts: dict[str, Any]) -> dict[tuple[str, str], pd.DataFrame]:
-    """companyfacts JSON → raw frames keyed by (statement_type, 'annual').
+def _quarter_duration(start: str, end: str) -> bool:
+    try:
+        days = (date.fromisoformat(end) - date.fromisoformat(start)).days
+    except ValueError:
+        return False
+    return QUARTER_DAYS[0] <= days <= QUARTER_DAYS[1]
 
-    Only annual-report facts are kept (forms 10-K/20-F/40-F with fp=FY, in
-    USD/shares; duration facts must span a full fiscal year) — conservative
-    by design, the ESEF rule: an audited number we are not sure about is a
-    number we do not take. The latest-filed value wins per period; the period
-    label is the fiscal END date ("2024-09-28"), which align_periods matches
-    to yfinance's dated periods.
+
+def facts_to_frames(companyfacts: dict[str, Any]) -> dict[tuple[str, str], pd.DataFrame]:
+    """companyfacts JSON → raw frames keyed by (statement_type, freq).
+
+    Annual: forms 10-K/20-F/40-F with fp=FY (duration facts must span a full
+    fiscal year) → (statement, 'annual'). Quarterly: DISCRETE 70–100-day
+    durations from 10-Qs — plus the Q4 durations re-reported inside 10-Ks —
+    for income/cashflow concepts only (balance is point-in-time and the TTM
+    excludes it) → (statement, 'quarterly'). YTD durations are dropped, never
+    differenced: an issuer reporting only year-to-date keeps honest NaN.
+    Conservative by design, the ESEF rule: an audited number we are not sure
+    about is a number we do not take. The latest-filed value wins per period;
+    the period label is the END date ("2024-09-28"), which align_periods
+    matches to yfinance's dated periods.
     """
     gaap = companyfacts.get("facts", {}).get("us-gaap", {})
-    # values[period][column] = (filed, value); claimed pins the winning concept
+    # sink[period][column] = (filed, value); claims pins the winning concept
     values: dict[str, dict[str, tuple[str, float]]] = {}
     claimed: dict[tuple[str, str], str] = {}
-    for concept, (column, _) in CONCEPT_MAP.items():
+    values_q: dict[str, dict[str, tuple[str, float]]] = {}
+    claimed_q: dict[tuple[str, str], str] = {}
+
+    def record(
+        sink: dict[str, dict[str, tuple[str, float]]],
+        claims: dict[tuple[str, str], str],
+        period: str, column: str, concept: str, filed: str, value: float,
+    ) -> None:
+        owner = claims.get((period, column))
+        if owner is not None and owner != concept:
+            return  # an earlier-listed concept already supplies this column
+        current = sink.setdefault(period, {}).get(column)
+        if current is None or filed >= current[0]:
+            sink[period][column] = (filed, value)
+            claims[(period, column)] = concept
+
+    for concept, (column, statement_type) in CONCEPT_MAP.items():
         units = gaap.get(concept, {}).get("units", {})
         unit_key = "shares" if column in SHARE_COLUMNS else "USD"
         for entry in units.get(unit_key, []):
-            if entry.get("form") not in ANNUAL_FORMS or entry.get("fp") != "FY":
-                continue
             period = entry.get("end")
             if not period:
                 continue
-            start = entry.get("start")
-            if start is not None and not _full_year(start, period):
-                continue  # a quarterly duration re-reported inside a 10-K
             try:
                 value = float(entry["val"])
             except (KeyError, TypeError, ValueError):
                 continue
             if concept in NEGATED_CONCEPTS:
                 value = -value
-            owner = claimed.get((period, column))
-            if owner is not None and owner != concept:
-                continue  # an earlier-listed concept already supplies this column
             filed = str(entry.get("filed", ""))
-            current = values.setdefault(period, {}).get(column)
-            if current is None or filed >= current[0]:
-                values[period][column] = (filed, value)
-                claimed[(period, column)] = concept
+            start = entry.get("start")
+            form = entry.get("form")
+            if (
+                form in ANNUAL_FORMS
+                and entry.get("fp") == "FY"
+                and (start is None or _full_year(start, period))
+            ):
+                record(values, claimed, period, column, concept, filed, value)
+            if (
+                statement_type in ("income", "cashflow")
+                and form in QUARTERLY_FORMS
+                and start is not None
+                and _quarter_duration(start, period)
+            ):
+                record(values_q, claimed_q, period, column, concept, filed, value)
 
     frames: dict[tuple[str, str], pd.DataFrame] = {}
-    periods = sorted(values)[-MAX_FISCAL_YEARS:]
-    for statement_type in ("income", "balance", "cashflow"):
-        columns = [c for c, s in STATEMENT_OF.items() if s == statement_type]
-        rows = []
-        for period in periods:
-            row: dict[str, Any] = {"period": period}
-            row.update({c: values[period][c][1] for c in columns if c in values[period]})
-            if len(row) > 1:
-                rows.append(row)
-        if rows:
-            frames[(statement_type, "annual")] = pd.DataFrame(rows)
+
+    def assemble(
+        sink: dict[str, dict[str, tuple[str, float]]],
+        freq: str, statements: tuple[str, ...], keep: int,
+    ) -> None:
+        periods = sorted(sink)[-keep:]
+        for statement_type in statements:
+            columns = [c for c, s in STATEMENT_OF.items() if s == statement_type]
+            rows = []
+            for period in periods:
+                row: dict[str, Any] = {"period": period}
+                row.update({c: sink[period][c][1] for c in columns if c in sink[period]})
+                if len(row) > 1:
+                    rows.append(row)
+            if rows:
+                frames[(statement_type, freq)] = pd.DataFrame(rows)
+
+    assemble(values, "annual", ("income", "balance", "cashflow"), MAX_FISCAL_YEARS)
+    assemble(values_q, "quarterly", ("income", "cashflow"), MAX_QUARTERS)
     return frames
 
 

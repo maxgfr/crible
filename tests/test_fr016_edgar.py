@@ -1,6 +1,7 @@
 """FR-016 — EDGAR enrichment: ticker→CIK resolution, companyfacts parsing
-(FY-only, latest-filed wins, capex sign, quarterly dropped), SEC fair-access
-User-Agent, period alignment with dated scraped periods, audited provenance.
+(FY annual frames + discrete-quarter frames, latest-filed wins, capex sign,
+YTD dropped), SEC fair-access User-Agent, period alignment with dated
+scraped periods, audited provenance.
 """
 
 from __future__ import annotations
@@ -33,9 +34,9 @@ COMPANYFACTS = {
                         _fact("2023-10-01", "2024-09-28", 391_035_000_000.0),
                         # an earlier filing of the same period loses to latest-filed
                         _fact("2023-10-01", "2024-09-28", 390_000_000_000.0, filed="2024-10-15"),
-                        # a quarterly duration re-reported inside the 10-K is dropped
+                        # a DISCRETE Q4 duration re-reported inside the 10-K → quarterly frame
                         _fact("2024-06-30", "2024-09-28", 94_930_000_000.0),
-                        # a 10-Q fact is dropped (annual forms only)
+                        # a discrete 10-Q quarter → quarterly frame (not annual)
                         _fact("2023-10-01", "2023-12-30", 119_575_000_000.0, form="10-Q", fp="Q1"),
                     ]
                 },
@@ -84,7 +85,7 @@ def test_fr016_companyfacts_map_to_canonical_annual_frames() -> None:
     income = frames[("income", "annual")].set_index("period")
     balance = frames[("balance", "annual")].set_index("period")
     cashflow = frames[("cashflow", "annual")].set_index("period")
-    # latest-filed wins; the quarterly duration and the 10-Q fact are dropped
+    # latest-filed wins; the discrete quarters stay OUT of the annual frame
     assert list(income.index) == ["2024-09-28"]
     assert income.loc["2024-09-28", "TotalRevenue"] == 391_035_000_000.0
     assert income.loc["2024-09-28", "NetIncome"] == 93_736_000_000.0
@@ -97,6 +98,54 @@ def test_fr016_companyfacts_map_to_canonical_annual_frames() -> None:
     # capex sign flips to the yfinance convention (negative outflow → FCF = ocf + capex)
     assert cashflow.loc["2024-09-28", "CapitalExpenditure"] == -9_447_000_000.0
     assert cashflow.loc["2024-09-28", "OperatingCashFlow"] == 118_254_000_000.0
+
+
+def test_fr016_companyfacts_emit_discrete_quarterly_frames() -> None:
+    """TTM v2: discrete 70-100-day durations (10-Qs + the Q4 re-reported
+    inside the 10-K) land in (statement, 'quarterly'); YTD spans are dropped,
+    never differenced."""
+    facts = {
+        "facts": {
+            "us-gaap": {
+                "Revenues": {
+                    "units": {
+                        "USD": [
+                            _fact("2023-10-01", "2023-12-30", 100.0, form="10-Q", fp="Q1"),
+                            _fact("2023-12-31", "2024-03-30", 110.0, form="10-Q", fp="Q2"),
+                            _fact("2024-03-31", "2024-06-29", 120.0, form="10-Q", fp="Q3"),
+                            # Q4 discrete duration re-reported inside the 10-K
+                            _fact("2024-06-30", "2024-09-28", 130.0),
+                            # a 6-month YTD duration MUST be dropped, never differenced
+                            _fact("2023-10-01", "2024-03-30", 210.0, form="10-Q", fp="Q2"),
+                        ]
+                    }
+                },
+                "NetCashProvidedByUsedInOperatingActivities": {
+                    "units": {
+                        "USD": [
+                            _fact("2023-10-01", "2023-12-30", 20.0, form="10-Q", fp="Q1"),
+                            _fact("2023-12-31", "2024-03-30", 21.0, form="10-Q", fp="Q2"),
+                        ]
+                    }
+                },
+                "PaymentsToAcquirePropertyPlantAndEquipment": {
+                    "units": {
+                        "USD": [_fact("2023-10-01", "2023-12-30", 5.0, form="10-Q", fp="Q1")]
+                    }
+                },
+            }
+        }
+    }
+    frames = facts_to_frames(facts)
+    income = frames[("income", "quarterly")].set_index("period")
+    assert list(income.index) == ["2023-12-30", "2024-03-30", "2024-06-29", "2024-09-28"]
+    assert income["TotalRevenue"].tolist() == [100.0, 110.0, 120.0, 130.0]  # YTD absent
+    cashflow = frames[("cashflow", "quarterly")].set_index("period")
+    assert cashflow.loc["2023-12-30", "OperatingCashFlow"] == 20.0
+    # capex sign flips in the quarterly frame too
+    assert cashflow.loc["2023-12-30", "CapitalExpenditure"] == -5.0
+    # balance stays annual-only (point-in-time — the TTM excludes it)
+    assert ("balance", "quarterly") not in frames
 
 
 def test_fr016_first_listed_concept_keeps_the_column() -> None:
@@ -144,7 +193,9 @@ def test_fr016_service_cycle_writes_edgar_raw_and_counts_unmatched(tmp_path, mon
     assert outcome["enriched"] == ["AAPL"]
     assert outcome["unmatched"] == 0  # AAPL is the fixture's only US listing
     files = list(tmp_path.glob("raw/provider=edgar/symbol=AAPL/*.parquet"))
-    assert len(files) == 3  # income + balance + cashflow
+    assert len(files) == 4  # income + balance + cashflow + quarterly income
+    # the fixture's two discrete-quarter revenue facts (the Q1 10-Q and the
+    # Q4-inside-10-K) now feed a quarterly income frame instead of being dropped
 
 
 def test_fr016_service_cycle_outage_records_and_resumes(tmp_path, monkeypatch) -> None:
@@ -209,7 +260,9 @@ def test_fr016_bulk_ingests_every_resolved_us_issuer(tmp_path, monkeypatch) -> N
     assert outcome["enriched"] == 1
     assert outcome["outage"] is None
     files = list(tmp_path.glob("raw/provider=edgar/symbol=AAPL/*.parquet"))
-    assert len(files) == 3  # income + balance + cashflow
+    assert len(files) == 4  # income + balance + cashflow + quarterly income
+    # the fixture's two discrete-quarter revenue facts (the Q1 10-Q and the
+    # Q4-inside-10-K) now feed a quarterly income frame instead of being dropped
 
     con = _duckdb.connect(str(tmp_path / "crible.duckdb"))
     fetched = con.execute(
@@ -229,7 +282,7 @@ def test_fr016_bulk_ingests_every_resolved_us_issuer(tmp_path, monkeypatch) -> N
     # re-stamped, so unchanged issuers stay clean for incremental compute
     rerun = run_edgar_bulk(zip_path=zip_path, ticker_map={"AAPL": 320193}, download=False)
     assert rerun["enriched"] == 1  # processed, but…
-    assert len(list(tmp_path.glob("raw/provider=edgar/symbol=AAPL/*.parquet"))) == 3  # …no new files
+    assert len(list(tmp_path.glob("raw/provider=edgar/symbol=AAPL/*.parquet"))) == 4  # …no new files
 
 
 def test_fr016_cycle_freshness_survives_a_fresh_operational_db(tmp_path, monkeypatch) -> None:

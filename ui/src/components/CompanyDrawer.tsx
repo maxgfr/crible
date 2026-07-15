@@ -384,7 +384,7 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                   </table>
                   <p className="meta">
                     Last four reported quarters — fresher than the fiscal-year rows above;
-                    covered for crawled symbols only.
+                    crawled symbols plus audited US issuers reporting discrete quarters.
                   </p>
                 </>
               )}

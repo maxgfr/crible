@@ -79,6 +79,44 @@ def test_ttm_ratios_hand_computed_and_guarded() -> None:
     assert all(pd.isna(v) for v in ttm_ratios(ttm, float("nan")).values())
 
 
+def test_ttm_prefers_audited_quarters_and_never_mixes_sources() -> None:
+    """v2: EDGAR discrete quarters outrank the scraped ones; a window is
+    all-audited or all-scraped, never blended."""
+    annual = {
+        (s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()
+    }
+    scraped = {**annual, **quarterly_frames(QUARTER_ENDS)}
+    audited = quarterly_frames(
+        QUARTER_ENDS, revenue=[200.0] * 5, ni=[20.0] * 5, ocf=[25.0] * 5
+    )
+    snapshot = build_symbol_snapshot("P.PA", scraped, computed_at=1.0, audited_frames=audited)
+    assert snapshot.iloc[-1]["ttm_revenue"] == pytest.approx(4 * 200.0)  # audited wins
+
+
+def test_ttm_falls_back_to_scraped_when_audited_quarters_incomplete() -> None:
+    annual = {
+        (s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()
+    }
+    scraped = {**annual, **quarterly_frames(QUARTER_ENDS)}
+    audited = quarterly_frames(
+        QUARTER_ENDS[1:], ocf=[25.0, float("nan"), 25.0, 25.0]  # a core gap → {}
+    )
+    snapshot = build_symbol_snapshot("P.PA", scraped, computed_at=1.0, audited_frames=audited)
+    assert snapshot.iloc[-1]["ttm_revenue"] == pytest.approx(500.0)  # scraped sum
+
+
+def test_ttm_lands_for_an_audited_only_symbol() -> None:
+    """The v2 point: no yfinance crawl needed — EDGAR quarters feed the TTM."""
+    audited = {
+        (s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()
+    }
+    audited.update(quarterly_frames(QUARTER_ENDS))
+    snapshot = build_symbol_snapshot(
+        "A.US", {}, provider="edgar", computed_at=1.0, audited_frames=audited
+    )
+    assert snapshot.iloc[-1]["ttm_revenue"] == pytest.approx(500.0)
+
+
 def test_ttm_lands_on_the_latest_snapshot_row_only() -> None:
     frames = {
         (s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()

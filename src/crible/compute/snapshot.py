@@ -109,12 +109,15 @@ def build_symbol_snapshot(
             if pd.isna(value) and quote_features is not None:
                 value = quote_features.get(col, float("nan"))
             out.iloc[-1, out.columns.get_loc(col)] = value
-    # TTM v1 — the last four quarters summed onto the latest row (columns,
-    # not rows). Scraped frames only: the audited providers are annual-only.
+    # TTM — the last four quarters summed onto the latest row (columns, not
+    # rows). Audited discrete quarters (EDGAR 10-Q, v2) outrank scraped, and
+    # a window is never source-mixed: all-audited or all-scraped, else NaN.
     for col in TTM_COLUMNS:
         out[col] = float("nan")
     if len(out):
-        ttm = ttm_from_quarterly(frames)
+        ttm = ttm_from_quarterly(audited_frames) if audited_frames else {}
+        if not ttm:
+            ttm = ttm_from_quarterly(frames)
         latest_price = price.iloc[-1] if price is not None else float("nan")
         latest_shares = canonical["shares_outstanding"].iloc[-1]
         market_cap_latest = (
