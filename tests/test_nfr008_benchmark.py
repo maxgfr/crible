@@ -50,6 +50,16 @@ def con(tmp_path_factory) -> duckdb.DuckDBPyConnection:
                 random() * 100 AS momentum_rank,
                 random() * 100 AS magic_formula_rank,
                 random() * 3 AS ncav_to_market_cap,
+                random() * 6 - 3 AS zmijewski_score,
+                random() * 6 - 3 AS ohlson_o,
+                CAST(floor(random() * 7) AS TINYINT) AS montier_c,
+                random() * 0.3 - 0.05 AS greenblatt_earnings_yield,
+                random() * 0.6 - 0.1 AS greenblatt_roc,
+                random() * 2 - 1 AS graham_margin_of_safety,
+                random() * 0.5 - 0.1 AS ebitda_margin,
+                random() * 0.3 - 0.1 AS fcf_margin,
+                random() * 3 - 0.5 AS fcf_conversion,
+                random() * 5 AS dividend_coverage,
                 {fillers}
             FROM range({ROWS}) t(i)
         ) TO '{path.as_posix()}' (FORMAT parquet)
