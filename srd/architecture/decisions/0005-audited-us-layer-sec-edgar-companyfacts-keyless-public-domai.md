@@ -1,6 +1,6 @@
 # 0005. Audited US layer: SEC EDGAR companyfacts (keyless, public domain)
 
-- **Status:** accepted (2026-07-13)
+- **Status:** accepted
 
 ## Context
 The 2026-07-13 data-sources research (`docs/research/2026-07-13-data-sources/`, 81 cited sources) identified SEC EDGAR as the single biggest keyless opportunity: every US issuer's XBRL facts are public domain, served without a key from `data.sec.gov/api/xbrl/companyfacts/CIK##########.json` (plus a nightly 1.39 GB `companyfacts.zip` bulk). The same research confirmed Yahoo-scraped data is contractually non-redistributable (personal-use ToS) and Google Finance is permanently closed — so EDGAR is the only path to *audited, redistributable* US fundamentals. Separately, implementation review found the audited-outranks-scraped reconciliation (FR-010) silently no-oped: ESEF labels fiscal periods by year ("2024") while yfinance labels them by end date ("2024-12-31"), and `reconcile()` skips audited periods absent from the scraped index — zero snapshot rows carried `audited_fields`.

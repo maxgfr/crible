@@ -704,8 +704,12 @@
         "S2",
         "S58"
       ],
-      "entities": [],
-      "interfaces": [],
+      "entities": [
+        "RawStatement"
+      ],
+      "interfaces": [
+        "CLI"
+      ],
       "nfrs": [],
       "unresolved": []
     },
@@ -736,8 +740,12 @@
         "S23",
         "S24"
       ],
-      "entities": [],
-      "interfaces": [],
+      "entities": [
+        "RawStatement"
+      ],
+      "interfaces": [
+        "CLI"
+      ],
       "nfrs": [],
       "unresolved": []
     },
@@ -768,8 +776,14 @@
         "S71",
         "S26"
       ],
-      "entities": [],
-      "interfaces": [],
+      "entities": [
+        "FxRate",
+        "SnapshotRow"
+      ],
+      "interfaces": [
+        "CLI",
+        "HTTP API"
+      ],
       "nfrs": [],
       "unresolved": []
     },
@@ -799,8 +813,12 @@
         "S13",
         "S17"
       ],
-      "entities": [],
-      "interfaces": [],
+      "entities": [
+        "RawStatement"
+      ],
+      "interfaces": [
+        "CLI"
+      ],
       "nfrs": [],
       "unresolved": []
     },
@@ -830,8 +848,14 @@
         "S28",
         "S56"
       ],
-      "entities": [],
-      "interfaces": [],
+      "entities": [
+        "RawStatement",
+        "Provider"
+      ],
+      "interfaces": [
+        "CLI",
+        "Provider Plugin API"
+      ],
       "nfrs": [],
       "unresolved": []
     },
@@ -864,7 +888,9 @@
       "entities": [
         "MirrorArchive"
       ],
-      "interfaces": [],
+      "interfaces": [
+        "CLI"
+      ],
       "nfrs": [],
       "unresolved": []
     },
@@ -893,8 +919,12 @@
       "rationaleEvidence": [
         "S25"
       ],
-      "entities": [],
-      "interfaces": [],
+      "entities": [
+        "SnapshotRow"
+      ],
+      "interfaces": [
+        "CLI"
+      ],
       "nfrs": [],
       "unresolved": []
     }
@@ -1130,7 +1160,11 @@
           "FR-002",
           "FR-010",
           "FR-012",
-          "FR-013"
+          "FR-013",
+          "FR-016",
+          "FR-017",
+          "FR-019",
+          "FR-020"
         ]
       },
       {
@@ -1204,7 +1238,9 @@
           "FR-005",
           "FR-006",
           "FR-007",
-          "FR-012"
+          "FR-012",
+          "FR-018",
+          "FR-022"
         ]
       },
       {
@@ -1294,7 +1330,8 @@
           "FR-008",
           "FR-011",
           "FR-013",
-          "FR-014"
+          "FR-014",
+          "FR-020"
         ]
       },
       {
@@ -2087,7 +2124,9 @@
       "entities": [
         "RawStatement"
       ],
-      "interfaces": [],
+      "interfaces": [
+        "CLI"
+      ],
       "components": [],
       "screens": []
     },
@@ -2100,7 +2139,9 @@
       "entities": [
         "RawStatement"
       ],
-      "interfaces": [],
+      "interfaces": [
+        "CLI"
+      ],
       "components": [],
       "screens": []
     },
@@ -2114,7 +2155,10 @@
         "FxRate",
         "SnapshotRow"
       ],
-      "interfaces": [],
+      "interfaces": [
+        "CLI",
+        "HTTP API"
+      ],
       "components": [],
       "screens": []
     },
@@ -2127,7 +2171,9 @@
       "entities": [
         "RawStatement"
       ],
-      "interfaces": [],
+      "interfaces": [
+        "CLI"
+      ],
       "components": [],
       "screens": []
     },
@@ -2141,7 +2187,10 @@
         "RawStatement",
         "Provider"
       ],
-      "interfaces": [],
+      "interfaces": [
+        "CLI",
+        "Provider Plugin API"
+      ],
       "components": [],
       "screens": []
     },
@@ -2154,7 +2203,9 @@
       "entities": [
         "MirrorArchive"
       ],
-      "interfaces": [],
+      "interfaces": [
+        "CLI"
+      ],
       "components": [],
       "screens": []
     },
@@ -2167,7 +2218,9 @@
       "entities": [
         "SnapshotRow"
       ],
-      "interfaces": [],
+      "interfaces": [
+        "CLI"
+      ],
       "components": [],
       "screens": []
     }

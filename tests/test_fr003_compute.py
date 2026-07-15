@@ -241,7 +241,7 @@ def test_fr003_null_cells_carry_a_note_naming_the_missing_inputs() -> None:
     assert "revenue" not in note.split(",")  # supplied fields are not listed
 
 
-# ----------------------------------------------- F7: incremental compute
+# --------------------------------- FR-022 / F7: incremental compute
 
 
 def test_incremental_compute_recomputes_only_dirty_symbols(tmp_path, monkeypatch) -> None:

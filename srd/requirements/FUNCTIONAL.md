@@ -164,3 +164,80 @@ Rank the screening universe on a single composite score built from the fundament
 - **Given** a rank is shown in the UI **When** the user opens the company drawer **Then** each pillar rank links to the underlying component values, consistent with the score-breakdown transparency of FR-012
 
 _Traceability — NFRs: — · entities: — · interfaces: —_
+
+## FR-016 — Audited US layer from SEC EDGAR companyfacts _(must)_ [S2][S58]
+
+US issuers whose ticker resolves in the SEC directory (company_tickers.json) get audited XBRL fundamentals from companyfacts — keyless, public domain — mapped through a conservative us-gaap CONCEPT_MAP onto the canonical vocabulary and written as provider='edgar' raw that outranks scraped values at reconciliation (align_periods bridges year vs dated labels). A nightly companyfacts.zip bulk sweep (run_edgar_bulk) covers the whole US market; SEC fair-access is honoured with a declared User-Agent and a dedicated 5 req/s budget. Shipped: src/crible/providers/edgar.py, ingest/enrich/us.py.
+
+**Acceptance criteria:**
+- **Given** a US listing whose ticker resolves to a CIK **When** the EDGAR cycle runs **Then** its annual (10-K/20-F/40-F, fp=FY, full-year) figures are written as provider='edgar' raw and, at reconciliation, override the scraped value where they differ, recording audited_fields provenance
+- **Given** a US listing whose ticker is not in the SEC directory **When** the cycle runs **Then** it is counted as unmatched, never errored, and the crawl continues
+- **Given** the nightly bulk sweep runs **When** companyfacts.zip is processed member-by-member **Then** every resolved US issuer gets its audited layer in one pass, history bounded to 8 fiscal years, the archive never committed
+
+_Traceability — NFRs: — · entities: RawStatement · interfaces: CLI_
+
+## FR-017 — Deep US history from SEC Financial Statement Data Sets (FSDS) _(should)_ [S46][S23][S24]
+
+The quarterly FSDS ZIPs (sub.txt+num.txt) backfill the pre-8-year 'as-filed' US history companyfacts drops. num.txt (100s of MB) is streamed; only whole-entity facts are kept — rows with a non-empty segments (disaggregated by geography/business) or coreg (co-registrant) are dropped, only full-year durations (qtrs=4) / instants (qtrs=0). Written as provider='edgar-fsds'; merge_audited lets companyfacts win recent periods while FSDS backfills depth. Public domain — fully redistributable. Opt-in via `crible refresh --fsds-quarters N`. Shipped: src/crible/providers/edgar_fsds.py.
+
+**Acceptance criteria:**
+- **Given** a real FSDS quarter with segmented and consolidated rows for one issuer **When** frames_from_fsds parses it **Then** only the consolidated (segments empty, coreg empty) full-year value is booked as the reported figure — never a segment
+- **Given** companyfacts and FSDS both cover a US symbol **When** the snapshot is built **Then** companyfacts wins the recent overlapping periods and FSDS adds the deeper history, chronologically ordered
+- **Given** a 530 MB num.txt **When** iter_fsds runs on a small host **Then** it streams row-by-row without loading the file whole into memory
+
+_Traceability — NFRs: — · entities: RawStatement · interfaces: CLI_
+
+## FR-018 — Cross-currency normalization from ECB reference rates (keyless FX) _(could)_ [S72][S71][S26]
+
+Ratios are currency-neutral but absolute magnitudes are per-currency, so cross-currency size screens are impossible. crible mirrors the ECB daily reference rates (Frankfurter, open source, redistributable) and adds companion *_eur columns (revenue_eur, net_income_eur, total_assets_eur, stockholders_equity_eur) — never imputed, and only for the latest period per symbol (only the spot rate is mirrored). Auto-filterable via the dynamic DSL whitelist. Shipped: src/crible/providers/fx.py.
+
+**Acceptance criteria:**
+- **Given** a snapshot row in USD and mirrored ECB rates **When** attach_fx runs **Then** the latest-period *_eur companions are the value divided by the currency's rate; an unknown currency or missing rate leaves the column NULL
+- **Given** a company's historical periods **When** *_eur is attached **Then** only the latest period is normalized; older periods stay NULL rather than get today's rate applied to a five-year-old figure
+- **Given** no ECB rates are mirrored **When** the snapshot is built **Then** the build is a no-op for *_eur and ships unchanged (offline-safe)
+
+_Traceability — NFRs: — · entities: FxRate, SnapshotRow · interfaces: CLI, HTTP API_
+
+## FR-019 — Audited UK layer from Companies House accounts (assumed-risk tier) _(could)_ [S13][S17]
+
+The free Accounts Data Product (a ZIP of iXBRL accounts named by company number) fills the audited UK gap ESEF leaves post-Brexit. A dependency-free stdlib iXBRL parser (html.parser) extracts the FRC-taxonomy concepts crible maps to canonical fields, keeping only full-year figures, written as provider='companies-house' raw. Redistribution is an assumed risk (no explicit licence) so it lives in the assumed-risk dataset tier; resolution is operator-provided (data/uk-company-numbers.csv). Shipped: src/crible/providers/companies_house.py.
+
+**Acceptance criteria:**
+- **Given** a real Accounts Data Product ZIP whose members are Prod<batch>_<seq>_<number>_<date>.html **When** iter_accounts runs **Then** the 8-char company number is extracted (not the trailing filing date) and the mapped FRS-102/105 balance/income figures are written as provider='companies-house' raw
+- **Given** a small UK company that files a balance sheet only **When** its accounts are parsed **Then** the balance-sheet figures are captured and the missing P&L is simply absent, never fabricated
+- **Given** a broken iXBRL member **When** the sweep runs **Then** it is skipped, never fatal
+
+_Traceability — NFRs: — · entities: RawStatement · interfaces: CLI_
+
+## FR-020 — Audited Japan layer from EDINET (free-key opt-in) _(could)_ [S28][S56]
+
+EDINET (API-only, free Subscription-Key) provides audited JP filings. It is OFF by default so the core and published dataset stay keyless (NFR-009). The XBRL instance parser (stdlib etree) maps jppfs concepts to canonical fields, prefers the consolidated (連結) value over non-consolidated (単体), rejects interim/quarter contexts, and only annual securities reports (docTypeCode 120) are ingested. PDL1.0 → redistributable with attribution. Resolution is clean (7203.T → securities code 72030). Shipped: src/crible/providers/edinet.py, ingest/enrich/jp.py.
+
+**Acceptance criteria:**
+- **Given** CRIBLE_EDINET_KEY is unset **When** the provider inventory and the cycle run **Then** EDINET reports disabled and ingests nothing — the dataset stays keyless
+- **Given** an annual report whose XBRL carries both consolidated and non-consolidated values **When** the instance is parsed **Then** the consolidated value wins deterministically and a quarter-end balance instant is never booked as annual
+- **Given** a JP listing 7203.T in the universe with a key set **When** run_edinet lists documents **Then** only the annual securities report (docTypeCode 120) is fetched and written as provider='edinet' raw
+
+_Traceability — NFRs: — · entities: RawStatement, Provider · interfaces: CLI, Provider Plugin API_
+
+## FR-021 — Local-first bulk mirror with a last-good guarantee _(should)_ [S2][S24]
+
+Every bulk source (EDGAR/FSDS, GLEIF, Companies House, ECB FX) is fetched once into data/mirror/<source>/, kept as last-good, and re-fetched only when stale (ETag/If-None-Match), size-capped (4 GiB), meta written atomically. In steady state the ingestion reads the local mirror, never a live per-record API; on a network failure it serves the last-good copy so coverage never regresses, and a whole refresh can run offline. The mirror persists in the Docker /data volume and is never committed to the published dataset. Shipped: src/crible/ingest/mirror.py.
+
+**Acceptance criteria:**
+- **Given** a bulk archive already mirrored and fresh **When** fetch_if_stale is called **Then** it serves the cached local copy with no network request
+- **Given** the mirror is stale but the network is down **When** fetch_if_stale is called **Then** it returns the last-good copy (coverage never regresses); it only errors when there is no copy at all
+- **Given** a pathological oversized response **When** the mirror streams it **Then** the download aborts past the size ceiling and leaves no partial file behind
+
+_Traceability — NFRs: — · entities: MirrorArchive · interfaces: CLI_
+
+## FR-022 — Incremental snapshot compute _(should)_ [S25]
+
+The snapshot build is split into an expensive per-symbol stage (build_symbol_rows) and a cheap cross-sectional finalize (universe + FX + peer-group ranks). A base.parquet caches the pre-finalize rows; only symbols whose raw changed since the last build are recomputed (plus all symbols when the price distillate refreshes), then everything is re-finalized (ranks are cross-sectional). Returns nothing to publish when nothing changed. This keeps the build tractable at 20k+ issuers. Shipped: src/crible/compute/snapshot.py::build_snapshot_incremental.
+
+**Acceptance criteria:**
+- **Given** a base cache and one symbol whose raw changed **When** the incremental compute runs **Then** only that symbol's rows are rebuilt, the rest are reused from the base, and the whole set is re-finalized for cross-sectional ranks
+- **Given** no raw changed since the last build **When** the incremental compute runs **Then** it returns nothing to publish and the snapshot is left unchanged
+- **Given** a refreshed price distillate **When** the incremental compute runs **Then** every symbol is rebuilt so no stale price_quote/return_6m is served
+
+_Traceability — NFRs: — · entities: SnapshotRow · interfaces: CLI_

@@ -1,4 +1,4 @@
-"""EDINET (Japan) — audited JP filings, free-key opt-in.
+"""FR-020 — EDINET (Japan) — audited JP filings, free-key opt-in.
 
 EDINET is API-only and needs a free Subscription-Key, so it is a free-key
 provider: OFF by default (the core stays keyless), never scraped. Its XBRL

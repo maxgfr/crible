@@ -1,4 +1,4 @@
-"""FIX-007 / F8 — keyless FX normalization (ECB rates via Frankfurter).
+"""FR-018 — FIX-007 / F8 — keyless FX normalization (ECB rates via Frankfurter).
 
 Ratios are currency-neutral, but absolute magnitudes (revenue, assets…) are in
 each company's reporting currency, so cross-currency size screens are

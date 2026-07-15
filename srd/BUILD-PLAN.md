@@ -27,3 +27,12 @@ Nice-to-have capabilities that differentiate the product.
 - **Risks:**
   - EODHD paid quotas/pricing recorded at planning time must be re-validated with the free key before any purchase decision [E111][E112].
   - FinancialReports.eu MCP OAuth flow may not suit headless ingestion — evaluate during the plugin spike before committing.
+
+## M4 — Bulk-first / local-first data plane (2026-07-14/15)
+
+Audited redistributable bulk (US deep + EU/UK/JP), keyless FX, a local-first mirror with last-good, and incremental compute — Yahoo demoted to a resilient fallback.
+
+- **Requirements:** FR-016, FR-017, FR-018, FR-019, FR-020, FR-021, FR-022
+- **Risks:**
+  - No open redistributable OHLCV source exists — prices stay Yahoo/dumps (assumed-risk).
+  - Real-corpus parser edge cases (FSDS segments, iXBRL taxonomy variety, EDINET consolidation) — mitigated by real-data validation, not just fixtures.

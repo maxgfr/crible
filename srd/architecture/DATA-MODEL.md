@@ -35,7 +35,7 @@ _Referenced by: FR-001, FR-006, FR-007, FR-010, FR-012_
 | fetchedAt | timestamp |
 | parquetPath | string (versioned raw layer file) |
 
-_Referenced by: FR-002, FR-010, FR-012, FR-013_
+_Referenced by: FR-002, FR-010, FR-012, FR-013, FR-016, FR-017, FR-019, FR-020_
 
 ## PriceBar
 
@@ -62,7 +62,7 @@ _Referenced by: FR-002, FR-011_
 | provenance | json (per-field provider + fetchedAt) |
 | computedAt | timestamp |
 
-_Referenced by: FR-003, FR-004, FR-005, FR-006, FR-007, FR-012_
+_Referenced by: FR-003, FR-004, FR-005, FR-006, FR-007, FR-012, FR-018, FR-022_
 
 ## CrawlTask
 
@@ -98,4 +98,25 @@ _Referenced by: FR-004, FR-006, FR-009_
 | keyEnvVar | string (nullable) |
 | health | json (last success, error counts, budget usage) |
 
-_Referenced by: FR-002, FR-008, FR-011, FR-013, FR-014_
+_Referenced by: FR-002, FR-008, FR-011, FR-013, FR-014, FR-020_
+
+## FxRate
+
+| Attribute | Type |
+|---|---|
+| currency | identifier (ISO-4217, PK with as_of) |
+| as_of | date (ECB publication date) |
+| units_per_eur | number (ECB reference rate) |
+
+_Referenced by: FR-018_
+
+## MirrorArchive
+
+| Attribute | Type |
+|---|---|
+| source | identifier (edgar\|edgar-fsds\|gleif\|companies-house\|fx, PK with name) |
+| name | string (archive filename) |
+| etag | string (nullable, for conditional refresh) |
+| fetched_at | number (epoch seconds, last-good stamp) |
+
+_Referenced by: FR-021_

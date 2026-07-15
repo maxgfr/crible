@@ -1,4 +1,4 @@
-"""SEC Financial Statement Data Sets (FSDS) — deep 'as-filed' US history.
+"""FR-017 — SEC Financial Statement Data Sets (FSDS) — deep 'as-filed' US history.
 
 The quarterly FSDS ZIPs (sub.txt + num.txt, tab-separated) carry the flat
 'as filed' numbers going back to 2009 — the historical depth companyfacts

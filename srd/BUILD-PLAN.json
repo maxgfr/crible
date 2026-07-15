@@ -521,9 +521,8 @@
         "T-002"
       ],
       "artifacts": [
-        "src/crible/providers/simfin.py",
-        "src/crible/providers/fmp_free.py",
-        "src/crible/providers/base.py"
+        "src/crible/providers/base.py",
+        "src/crible/providers/catalog.py"
       ],
       "tests": [
         "tests/test_fr013_plugins.py"
@@ -555,12 +554,10 @@
         "T-002"
       ],
       "artifacts": [
-        "docs/prds/eodhd.md",
-        "docs/prds/fmp-ultimate.md",
-        "src/crible/providers/eodhd.py"
+        "src/crible/providers/base.py",
+        "src/crible/providers/catalog.py"
       ],
       "tests": [
-        "tests/test_fr014_prds.py",
         "tests/test_fr013_plugins.py"
       ],
       "verify": {
@@ -570,6 +567,229 @@
     },
     {
       "id": "T-015",
+      "title": "FR-016 — Audited US layer from SEC EDGAR companyfacts",
+      "milestone": "M4",
+      "frIds": [
+        "FR-016"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-016",
+          "index": 0
+        },
+        {
+          "frId": "FR-016",
+          "index": 1
+        },
+        {
+          "frId": "FR-016",
+          "index": 2
+        }
+      ],
+      "dependsOn": [
+        "T-000",
+        "T-002"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-016",
+      "title": "FR-017 — Deep US history from SEC Financial Statement Data Sets (FSDS)",
+      "milestone": "M4",
+      "frIds": [
+        "FR-017"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-017",
+          "index": 0
+        },
+        {
+          "frId": "FR-017",
+          "index": 1
+        },
+        {
+          "frId": "FR-017",
+          "index": 2
+        }
+      ],
+      "dependsOn": [
+        "T-000",
+        "T-002"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-017",
+      "title": "FR-018 — Cross-currency normalization from ECB reference rates (keyless FX)",
+      "milestone": "M4",
+      "frIds": [
+        "FR-018"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-018",
+          "index": 0
+        },
+        {
+          "frId": "FR-018",
+          "index": 1
+        },
+        {
+          "frId": "FR-018",
+          "index": 2
+        }
+      ],
+      "dependsOn": [
+        "T-000",
+        "T-003"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-018",
+      "title": "FR-019 — Audited UK layer from Companies House accounts (assumed-risk tier)",
+      "milestone": "M4",
+      "frIds": [
+        "FR-019"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-019",
+          "index": 0
+        },
+        {
+          "frId": "FR-019",
+          "index": 1
+        },
+        {
+          "frId": "FR-019",
+          "index": 2
+        }
+      ],
+      "dependsOn": [
+        "T-000",
+        "T-002"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-019",
+      "title": "FR-020 — Audited Japan layer from EDINET (free-key opt-in)",
+      "milestone": "M4",
+      "frIds": [
+        "FR-020"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-020",
+          "index": 0
+        },
+        {
+          "frId": "FR-020",
+          "index": 1
+        },
+        {
+          "frId": "FR-020",
+          "index": 2
+        }
+      ],
+      "dependsOn": [
+        "T-000",
+        "T-002"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-020",
+      "title": "FR-021 — Local-first bulk mirror with a last-good guarantee",
+      "milestone": "M4",
+      "frIds": [
+        "FR-021"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-021",
+          "index": 0
+        },
+        {
+          "frId": "FR-021",
+          "index": 1
+        },
+        {
+          "frId": "FR-021",
+          "index": 2
+        }
+      ],
+      "dependsOn": [
+        "T-000"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-021",
+      "title": "FR-022 — Incremental snapshot compute",
+      "milestone": "M4",
+      "frIds": [
+        "FR-022"
+      ],
+      "acceptance": [
+        {
+          "frId": "FR-022",
+          "index": 0
+        },
+        {
+          "frId": "FR-022",
+          "index": 1
+        },
+        {
+          "frId": "FR-022",
+          "index": 2
+        }
+      ],
+      "dependsOn": [
+        "T-000",
+        "T-003"
+      ],
+      "artifacts": [],
+      "tests": [],
+      "verify": {
+        "commands": []
+      },
+      "status": "todo"
+    },
+    {
+      "id": "T-022",
       "title": "FR-015 — Composite quality/value/momentum rank across the universe",
       "milestone": "M1",
       "frIds": [
@@ -610,7 +830,7 @@
       "status": "done"
     },
     {
-      "id": "T-016",
+      "id": "T-023",
       "title": "Design foundation — design tokens, base components, accessibility baseline",
       "milestone": "M1",
       "frIds": [],

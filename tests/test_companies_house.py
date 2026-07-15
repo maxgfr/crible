@@ -1,4 +1,4 @@
-"""Companies House UK — audited accounts from the free Accounts Data Product.
+"""FR-019 — Companies House UK — audited accounts from the free Accounts Data Product.
 
 The product is a ZIP of iXBRL (inline-XBRL, XHTML) accounts named by company
 number. crible parses the FRC-taxonomy concepts it maps to canonical fields

@@ -1,4 +1,4 @@
-"""Local-first bulk mirror with a last-good guarantee (F4 / local-first pillar).
+"""FR-021 — Local-first bulk mirror with a last-good guarantee (F4 / local-first pillar).
 
 Every bulk source's archive is fetched once to data/mirror/<source>/, kept as
 last-good, and re-fetched only when stale. In steady state ingestion reads the

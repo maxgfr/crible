@@ -1,6 +1,6 @@
 # 0007. The hosted site is the product; publish the OHLCV price series
 
-- **Status:** accepted (2026-07-13)
+- **Status:** accepted
 
 ## Context
 The GitHub Pages build was framed as a "demo" — a limited preview of the self-hosted screener — but it is not limited: it runs the same DSL (golden-locked TS port), the same DuckDB queries and the same CSV export as the API, over the same published dataset. The "demo" label was naming, a UI banner, and one real data exclusion: price **series** were withheld. `crible import-prices` distilled every dump to one derived row per symbol (last close, as-of, 6-month return) and the crawled yfinance OHLCV bars, though present in the raw layer on the published branch/release, were never exported to the browser. The exclusion was a licensing stance (Yahoo/HuggingFace/Stooq series are not open data), not a size constraint — the full 1-year series for the crawled sample is ~1.8 MB, orders of magnitude under GitHub's 100 MB file / 1 GB Pages / 2 GB release limits.

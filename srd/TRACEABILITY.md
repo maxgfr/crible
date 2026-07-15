@@ -17,3 +17,10 @@
 | FR-013 | NFR-006, NFR-009, NFR-012 | 0002, 0003 | Provider, RawStatement | Provider Plugin API | Status Dashboard | Ingest & coverage status, Providers & settings |
 | FR-014 | NFR-006, NFR-012 | 0002, 0004 | Provider | Provider Plugin API | — | Providers & settings |
 | FR-015 | — | 0001 | — | — | — | — |
+| FR-016 | — | 0005 | RawStatement | CLI | — | — |
+| FR-017 | — | 0008 | RawStatement | CLI | — | — |
+| FR-018 | — | 0008 | FxRate, SnapshotRow | CLI, HTTP API | — | — |
+| FR-019 | — | 0008 | RawStatement | CLI | — | — |
+| FR-020 | — | 0008 | RawStatement, Provider | CLI, Provider Plugin API | — | — |
+| FR-021 | — | 0008 | MirrorArchive | CLI | — | — |
+| FR-022 | — | 0003 | SnapshotRow | CLI | — | — |
