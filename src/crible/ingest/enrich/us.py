@@ -5,7 +5,8 @@ from __future__ import annotations
 import time
 
 from crible.ingest.enrich._base import (
-    EDGAR_REFRESH_SECONDS, EDGAR_SCHEMA, FSDS_MAX_AGE, _connect, config, log, update_heartbeat,
+    EDGAR_REFRESH_SECONDS, EDGAR_SCHEMA, FSDS_MAX_AGE, _connect, config, log,
+    seed_tasks_from_raw, update_heartbeat,
 )
 
 def run_edgar_cycle(limit: int = 5, client=None, ticker_map: dict[str, int] | None = None) -> dict:
@@ -51,6 +52,11 @@ def run_edgar_cycle(limit: int = 5, client=None, ticker_map: dict[str, int] | No
                 "INSERT INTO edgar_tasks (symbol, cik) VALUES (?, ?) ON CONFLICT (symbol) DO NOTHING",
                 [symbol, cik],
             )
+        # fresh operational DB (every CI run): re-derive freshness from the
+        # restored raw layer so the cycle advances instead of re-fetching
+        seed_tasks_from_raw(
+            con, data, provider="edgar", table="edgar_tasks", key_column="cik", keys=resolved,
+        )
         due = con.execute(
             "SELECT symbol, cik FROM edgar_tasks WHERE last_fetched_at IS NULL"
             " OR last_fetched_at < ? ORDER BY last_fetched_at NULLS FIRST LIMIT ?",

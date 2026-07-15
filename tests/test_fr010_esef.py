@@ -393,6 +393,28 @@ def test_fr010_index_sweep_enriches_known_filers_and_skips_the_rest(tmp_path, mo
     assert again["enriched"] == []
 
 
+def test_fr010_sweep_freshness_survives_a_fresh_operational_db(tmp_path, monkeypatch) -> None:
+    """The CI amnesia fix: crible.duckdb never travels in the published
+    dataset, so every nightly starts blank — the raw layer must re-seed
+    esef_tasks or the sweep re-downloads the same newest filings forever
+    (the observed ~115-symbol coverage plateau)."""
+    from crible.ingest.service import run_esef_sweep
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+    mapping = {"NL0011540547": LEI_ABN}
+    first = FakeIndexClient()
+    assert run_esef_sweep(limit=10, client=first, mapping=mapping)["enriched"] == ["ABN.AS"]
+    assert first.json_fetches == 1
+
+    # simulate the nightly: fresh operational DB, restored raw layer
+    (tmp_path / "crible.duckdb").unlink()
+    _seed_sweep_universe(tmp_path, monkeypatch)
+    again = FakeIndexClient()
+    outcome = run_esef_sweep(limit=10, client=again, mapping=mapping)
+    assert outcome["enriched"] == []
+    assert again.json_fetches == 0  # nothing re-downloaded inside the 90-day window
+
+
 def test_fr010_index_sweep_stops_on_time_budget(tmp_path, monkeypatch) -> None:
     """A zero wall-clock budget (run_refresh --max-minutes reserve) stops the
     sweep before any document fetch; freshness state resumes it next run."""

@@ -7,7 +7,8 @@ import time
 import duckdb
 
 from crible.ingest.enrich._base import (
-    ESEF_REFRESH_SECONDS, ESEF_SCHEMA, _connect, config, log, update_heartbeat,
+    ESEF_REFRESH_SECONDS, ESEF_SCHEMA, _connect, config, log, seed_tasks_from_raw,
+    update_heartbeat,
 )
 
 def run_esef_cycle(limit: int = 5, client=None, mapping: dict[str, str] | None = None) -> dict:
@@ -157,6 +158,12 @@ def run_esef_sweep(
         update_heartbeat(
             esef_resolved=sum(len(v) for v in by_lei.values()),
             esef_unmatched=len(rows) - sum(len(v) for v in by_lei.values()),
+        )
+        # a fresh operational DB (every CI run) must not forget what previous
+        # runs fetched — re-derive freshness from the restored raw layer
+        seed_tasks_from_raw(
+            con, data, provider="esef", table="esef_tasks", key_column="lei",
+            keys={s: lei for lei, symbols in by_lei.items() for s in symbols},
         )
 
         if client is None:

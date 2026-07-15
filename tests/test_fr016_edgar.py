@@ -222,6 +222,31 @@ def test_fr016_bulk_ingests_every_resolved_us_issuer(tmp_path, monkeypatch) -> N
     assert len(list(tmp_path.glob("raw/provider=edgar/symbol=AAPL/*.parquet"))) == 3  # …no new files
 
 
+def test_fr016_cycle_freshness_survives_a_fresh_operational_db(tmp_path, monkeypatch) -> None:
+    """Same CI amnesia fix as ESEF: a fresh crible.duckdb re-derives
+    edgar_tasks freshness from the restored raw layer."""
+    from crible.ingest.service import run_edgar_cycle
+
+    _seed_universe(tmp_path, monkeypatch)
+
+    class OneShotClient:
+        def companyfacts(self, cik):
+            return COMPANYFACTS
+
+    outcome = run_edgar_cycle(limit=10, client=OneShotClient(), ticker_map={"AAPL": 320193})
+    assert outcome["enriched"] == ["AAPL"]
+
+    (tmp_path / "crible.duckdb").unlink()
+    _seed_universe(tmp_path, monkeypatch)
+
+    class NeverCalled:
+        def companyfacts(self, cik):
+            raise AssertionError("freshness was re-seeded from raw — nothing is due")
+
+    followup = run_edgar_cycle(limit=10, client=NeverCalled(), ticker_map={"AAPL": 320193})
+    assert followup["enriched"] == []
+
+
 def test_fr016_bulk_without_archive_and_download_disabled_skips(tmp_path, monkeypatch) -> None:
     from crible.ingest.service import run_edgar_bulk
 
