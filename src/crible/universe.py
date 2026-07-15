@@ -2,8 +2,9 @@
 
 FinanceDatabase ships ~161k equities as CSVs whose ``symbol`` column is the
 Yahoo-suffixed ticker (e.g. ``ABN.AS``), directly usable by yfinance. This
-module loads such a frame into the ``companies`` table with a region tag that
-drives crawl priority: europe (0) → us (1) → world (2).
+module loads such a frame into the ``companies`` table with a crawl priority
+of region tier (europe → us → world) THEN cap class (Mega → … → Nano) within
+the tier: priority = region×8 + cap rank.
 """
 
 from __future__ import annotations
@@ -27,6 +28,16 @@ EUROPE_COUNTRIES = {
 }
 
 REGION_PRIORITY = {"europe": 0, "us": 1, "world": 2}
+
+# Within a region, larger caps crawl first: the budgeted Yahoo crawl feeds
+# prices and quarterly statements, and Mega/Large are the names people
+# actually screen — the long tail trickles in behind them. Region always
+# dominates (priority = region×8 + rank; max rank 6 < 8).
+CAP_RANK = {
+    "Mega Cap": 0, "Large Cap": 1, "Mid Cap": 2,
+    "Small Cap": 3, "Micro Cap": 4, "Nano Cap": 5,
+}
+UNKNOWN_CAP_RANK = 6
 
 # FinanceDatabase country names → ISO-3166 alpha-2. The DSL filters on these
 # codes (country IN ('FR','DE')); unmapped names fall back to the full name so
@@ -104,7 +115,6 @@ def bootstrap_universe(con: duckdb.DuckDBPyConnection, frame: pd.DataFrame) -> B
     dropped = before - len(rows)
 
     rows["region"] = rows["country"].map(region_for)
-    rows["crawl_priority"] = rows["region"].map(REGION_PRIORITY)
     rows["country_name"] = rows["country"]
     rows["country"] = rows["country_name"].map(lambda n: COUNTRY_TO_ISO.get(n, n))
     if "isin" not in rows.columns:
@@ -113,6 +123,10 @@ def bootstrap_universe(con: duckdb.DuckDBPyConnection, frame: pd.DataFrame) -> B
         rows["delisted"] = False
     market_cap = rows["market_cap"] if "market_cap" in rows.columns else None
     rows["market_cap_class"] = market_cap if market_cap is not None else None
+    rows["crawl_priority"] = (
+        rows["region"].map(REGION_PRIORITY) * 8
+        + rows["market_cap_class"].map(CAP_RANK).fillna(UNKNOWN_CAP_RANK).astype("int64")
+    )
 
     staged = rows[
         [

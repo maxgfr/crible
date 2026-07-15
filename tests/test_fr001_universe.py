@@ -52,14 +52,21 @@ def test_fr001_bootstrap_loads_universe_with_yahoo_symbols_and_regions(con) -> N
     assert len(rows) == 8
     assert None not in by_symbol
 
-    # region tagging: EU/EEA + UK + CH => europe (highest priority tier)
-    for sym in ("ABN.AS", "AIR.PA", "SAP.DE", "NESN.SW", "BARC.L"):
+    # region tagging: EU/EEA + UK + CH => europe (highest priority tier);
+    # priority = region×8 + cap rank (Large=1, Mid=2, Small=3) — region
+    # always dominates, larger caps crawl first within it
+    for sym in ("AIR.PA", "SAP.DE", "NESN.SW", "BARC.L"):
         assert by_symbol[sym][2] == "europe"
-        assert by_symbol[sym][3] == 0
+        assert by_symbol[sym][3] == 1  # Large Cap
+    assert by_symbol["ABN.AS"][2] == "europe"
+    assert by_symbol["ABN.AS"][3] == 2  # Mid Cap — behind the Larges, same tier
+    assert by_symbol["DEAD.PA"][3] == 3  # Small Cap
     assert by_symbol["AAPL"][2] == "us"
-    assert by_symbol["AAPL"][3] == 1
+    assert by_symbol["AAPL"][3] == 8 + 1
     assert by_symbol["7203.T"][2] == "world"
-    assert by_symbol["7203.T"][3] == 2
+    assert by_symbol["7203.T"][3] == 16 + 1
+    # every europe priority < every us priority < every world priority
+    assert max(by_symbol[s][3] for s in by_symbol if by_symbol[s][2] == "europe") < 8
 
     # every retained row carries the metadata FR-001 promises
     complete = con.execute(

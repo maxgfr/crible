@@ -1,6 +1,7 @@
 """FR-002 — the persisted crawl queue (operational state, DuckDB).
 
-Priority tiers come from the universe (europe 0 → us 1 → world 2); revisit is
+Priority tiers come from the universe (region×8 + cap rank: europe before us
+before world, larger caps first within a region); revisit is
 freshness-driven (quarterly for fundamentals). The queue lives in the same
 DuckDB database as the operational state so a crawler restart resumes exactly
 where the previous process stopped.
@@ -32,7 +33,9 @@ class CrawlQueue:
         self.seed_from_universe()
 
     def seed_from_universe(self) -> int:
-        """Insert queue entries for universe symbols not yet tracked."""
+        """Insert queue entries for universe symbols not yet tracked, and sync
+        priorities when the universe's scheme changed (e.g. cap-class tiers) —
+        preserving the −1 the bootstrap sample gets from prioritize_sample."""
         has_companies = self.con.execute(
             "SELECT count(*) FROM information_schema.tables WHERE table_name = 'companies'"
         ).fetchone()[0]
@@ -46,6 +49,16 @@ class CrawlQueue:
             FROM companies c
             LEFT JOIN crawl_tasks t ON t.symbol = c.symbol
             WHERE t.symbol IS NULL
+            """
+        )
+        self.con.execute(
+            """
+            UPDATE crawl_tasks
+            SET priority = c.crawl_priority
+            FROM companies c
+            WHERE crawl_tasks.symbol = c.symbol
+              AND crawl_tasks.priority <> c.crawl_priority
+              AND crawl_tasks.priority <> -1
             """
         )
         after = self.con.execute("SELECT count(*) FROM crawl_tasks").fetchone()[0]

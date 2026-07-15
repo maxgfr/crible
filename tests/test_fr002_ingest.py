@@ -188,6 +188,11 @@ def test_fr002_europe_is_crawled_before_us_before_world(con, tmp_path) -> None:
     seen_order = [regions[s] for s in provider.calls]
     # all europe first, then us, then world
     assert seen_order == sorted(seen_order, key=["europe", "us", "world"].index)
+    # within europe, Large Caps beat the Mid Cap (ABN.AS) — cap-tiered priority
+    europe_calls = [s for s in provider.calls if regions[s] == "europe"]
+    assert europe_calls.index("ABN.AS") > max(
+        europe_calls.index(s) for s in ("AIR.PA", "SAP.DE", "NESN.SW", "BARC.L")
+    )
 
 
 def test_fr002_backoff_doubles_with_cap_and_reschedules(con, tmp_path) -> None:
