@@ -1,12 +1,15 @@
 // UX critique fixes — every screen is a permalink (#/?q=…&sort=…), sorting
 // and paging run in the engine (never a client-side sort of one page), the
-// grid and search are keyboard-first, presets group in a popover.
+// grid and search are keyboard-first, presets group in a popover, the query
+// bar autocompletes fields and recalls history, scores are never color-only,
+// and the status observatory stays live.
 
-import { fireEvent, render, screen as rtl, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen as rtl, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App, { PAGE_SIZE } from "../App";
 import { SearchBox } from "../components/SearchBox";
 import { PresetsMenu } from "../components/PresetsMenu";
+import { StatusView } from "../components/StatusView";
 
 const ROWS = [
   { symbol: "AIR.PA", name: "Airbus", country: "FR", sector: "Industrials", piotroski_f: 8 },
@@ -36,6 +39,16 @@ function mockApi(total = 2) {
       }
       if (String(url) === "/api/status") {
         return { ok: true, status: 200, json: async () => ({ universe: 8, snapshot: true }) };
+      }
+      if (String(url) === "/api/fields") {
+        return {
+          ok: true, status: 200,
+          json: async () => [
+            { name: "piotroski_f", type: "number" },
+            { name: "altman_z", type: "number" },
+            { name: "return_on_equity", type: "number" },
+          ],
+        };
       }
       return { ok: false, status: 404, json: async () => ({}) };
     }),
@@ -106,6 +119,74 @@ describe("engine sort + pagination", () => {
     const link = rtl.getByRole("link", { name: "AIR.PA" }) as HTMLAnchorElement;
     expect(link.getAttribute("href")).toContain("#/company/AIR.PA");
     expect(link.getAttribute("href")).toContain("q=piotroski_f");
+  });
+});
+
+describe("query bar accelerators", () => {
+  it("autocompletes field names — Tab inserts the suggestion", async () => {
+    mockApi();
+    render(<App />);
+    await waitFor(() => expect(screenCalls.length).toBe(1));
+    const input = rtl.getByLabelText("DSL query") as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "altm" } });
+    await waitFor(() => expect(rtl.getByText("altman_z")).toBeInTheDocument());
+    fireEvent.keyDown(input, { key: "Tab" });
+    expect(input.value).toBe("altman_z ");
+    expect(rtl.queryByText(/Altman Z ·/)).not.toBeInTheDocument(); // dropdown closed
+  });
+
+  it("ArrowUp recalls the last ran query when no suggestions are open", async () => {
+    mockApi();
+    render(<App />);
+    await waitFor(() => expect(screenCalls.length).toBe(1)); // ran DEFAULT_QUERY
+    const input = rtl.getByLabelText("DSL query") as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expect(input.value).toBe("piotroski_f >= 7");
+  });
+
+  it("scores carry a non-color verdict glyph", async () => {
+    mockApi();
+    render(<App />);
+    await waitFor(() => expect(rtl.getAllByText(/✓/).length).toBeGreaterThan(0)); // piotroski 8 ≥ 7
+  });
+});
+
+describe("status observatory", () => {
+  it("auto-refreshes every 30 s and shows when the view was refreshed", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        calls += 1;
+        return {
+          ok: true, status: 200,
+          json: async () => ({
+            universe: 8, snapshot: true,
+            ingest: { coverage_pct: 1.2, crawled: 100, universe: 8, ts: 1_784_000_000 },
+          }),
+        };
+      }),
+    );
+    vi.useFakeTimers();
+    try {
+      render(<StatusView />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0); // flush the initial load
+      });
+      expect(calls).toBe(1);
+      expect(rtl.getByText(/auto-refreshes every 30 s/)).toBeInTheDocument();
+      expect(rtl.getByText(/crawl heartbeat/)).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(calls).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

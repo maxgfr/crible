@@ -47,6 +47,28 @@ const STATEMENT_FIELDS = [
   "total_assets", "total_equity", "total_debt", "operating_cashflow", "free_cash_flow",
 ];
 
+// provenance ends at the SOURCE, not at a provider string: link the place
+// the numbers actually come from (the audited filings when the layer is
+// audited, the quote page for the scraped fallback)
+const PROVENANCE_LINKS: Record<string, (symbol: string) => { href: string; label: string }> = {
+  yfinance: (symbol) => ({
+    href: `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}`,
+    label: "view on Yahoo Finance",
+  }),
+  edgar: (symbol) => ({
+    href: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${encodeURIComponent(symbol.split(".")[0])}&type=10-K`,
+    label: "view the SEC filings",
+  }),
+  fsds: (symbol) => ({
+    href: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${encodeURIComponent(symbol.split(".")[0])}&type=10-K`,
+    label: "view the SEC filings",
+  }),
+  esef: () => ({
+    href: "https://filings.xbrl.org/",
+    label: "browse the ESEF filings repository",
+  }),
+};
+
 function num(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "number") {
@@ -91,8 +113,8 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
           <PriceChart symbol={symbol} />
           {detail.periods.length === 0 ? (
             <p className="meta">
-              Not crawled yet — universe metadata only. It is queued by region priority; check the
-              status bar for coverage progress.
+              Not crawled yet — universe metadata only. It is queued by region priority; watch
+              coverage progress in the <a href="#/status">Status view</a>.
             </p>
           ) : (
             <>
@@ -193,7 +215,7 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
               {detail.periods[0].composite_rank !== null &&
                 detail.periods[0].composite_rank !== undefined && (
                   <>
-                    <h3>Rank — how it is built (FR-015)</h3>
+                    <h3>Rank — how it is built</h3>
                     <table>
                       <tbody>
                         <tr>
@@ -249,6 +271,18 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                 {detail.periods[0].computed_at
                   ? new Date(Number(detail.periods[0].computed_at) * 1000).toISOString()
                   : "—"}
+                {(() => {
+                  const provider = String(detail.periods[0].provider ?? "yfinance");
+                  const link = PROVENANCE_LINKS[provider]?.(symbol);
+                  return link ? (
+                    <>
+                      {" · "}
+                      <a href={link.href} target="_blank" rel="noreferrer">
+                        {link.label}
+                      </a>
+                    </>
+                  ) : null;
+                })()}
               </p>
             </>
           )}

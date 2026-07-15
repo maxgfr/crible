@@ -45,12 +45,34 @@ function Skeleton() {
   );
 }
 
+const REFRESH_MS = 30_000;
+
 export function StatusView() {
   const [data, setData] = useState<StatusResponse | null>(null);
   const [failed, setFailed] = useState(false);
+  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
 
+  // the observatory stays live: an operator watching a crawl should never
+  // have to hammer reload — refresh every 30 s while the tab is visible
   useEffect(() => {
-    status().then(setData).catch(() => setFailed(true));
+    let alive = true;
+    const load = () =>
+      status()
+        .then((s) => {
+          if (!alive) return;
+          setData(s);
+          setFetchedAt(Date.now());
+          setFailed(false);
+        })
+        .catch(() => alive && setFailed(true));
+    load();
+    const interval = setInterval(() => {
+      if (!document.hidden) load();
+    }, REFRESH_MS);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
   }, []);
 
   if (failed) {
@@ -101,6 +123,14 @@ export function StatusView() {
   return (
     <section className="view">
       <h2>Status</h2>
+      <p className="meta">
+        {ingest.ts
+          ? `crawl heartbeat ${new Date(Number(ingest.ts) * 1000).toISOString().replace("T", " ").slice(0, 19)} UTC · `
+          : ""}
+        view refreshed{" "}
+        {fetchedAt ? new Date(fetchedAt).toISOString().slice(11, 19) : "—"} UTC · auto-refreshes
+        every 30 s
+      </p>
       <div className="view-body status-columns">
         <div>
           <h3>Coverage</h3>

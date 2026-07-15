@@ -32,6 +32,7 @@ import { SearchBox } from "./components/SearchBox";
 import { StatusView } from "./components/StatusView";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { Wordmark } from "./components/Wordmark";
+import { pushQueryHistory } from "./query-history";
 import { hashFor, parseHash, useHashRoute } from "./router";
 import {
   applyTheme,
@@ -97,6 +98,7 @@ export default function App() {
   const [statusData, setStatusData] = useState<StatusResponse | null>(null);
   const [statusLine, setStatusLine] = useState("");
   const [fieldInfos, setFieldInfos] = useState<FieldInfo[]>([]);
+  const [exporting, setExporting] = useState(false);
   const queryInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => watchSystemTheme(() => setSystemLight(prefersLight())), []);
@@ -117,6 +119,7 @@ export default function App() {
       setRanQuery(q);
       setSort(sortNext);
       setPage(pageNext);
+      pushQueryHistory(q);
       // sync the URL from the CURRENT hash (never a stale closure): keep the
       // open drawer, and never hijack the status/providers views
       const current = parseHash(window.location.hash);
@@ -246,6 +249,7 @@ export default function App() {
             running={running}
             error={firstRun ? null : error}
             inputRef={queryInputRef}
+            fields={fieldInfos}
           />
           <QueryBuilder
             fields={fieldInfos}
@@ -301,27 +305,44 @@ export default function App() {
               </span>
             )}
             <button
-              disabled={!ranQuery || !result?.total}
+              disabled={!ranQuery || !result?.total || exporting}
               onClick={async () => {
-                if (ranQuery === null) return;
-                const csv = await exportCsv(ranQuery, sort, columns);
-                if ("url" in csv) {
-                  window.location.assign(csv.url);
-                } else {
-                  const url = URL.createObjectURL(csv.blob);
-                  const link = document.createElement("a");
-                  link.href = url;
-                  link.download = csv.filename;
-                  link.click();
-                  URL.revokeObjectURL(url);
+                if (ranQuery === null || exporting) return;
+                setExporting(true);
+                try {
+                  const csv = await exportCsv(ranQuery, sort, columns);
+                  if ("url" in csv) {
+                    window.location.assign(csv.url);
+                  } else {
+                    const url = URL.createObjectURL(csv.blob);
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = csv.filename;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                  }
+                } catch (err) {
+                  setError({
+                    error: `export failed: ${String(err)}`,
+                    position: null,
+                    hint: "try again — the engine may still be loading",
+                  });
+                } finally {
+                  setExporting(false);
                 }
               }}
             >
-              Export all results (CSV)
+              {exporting ? "Exporting…" : "Export all results (CSV)"}
             </button>
           </div>
           {firstRun && statusData ? (
             <FirstRun statusData={statusData} />
+          ) : !result && running ? (
+            /* the engine (DuckDB-WASM in static mode) is still booting — never
+               show a false "No matching rows" as the first paint */
+            <div className="grid-wrap" aria-busy="true">
+              <p className="meta">Running the first screen…</p>
+            </div>
           ) : (
             <ResultsGrid
               rows={result?.rows ?? []}

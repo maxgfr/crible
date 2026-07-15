@@ -22,3 +22,6 @@ ui/dist/
 # env & os
 .env
 .DS_Store
+
+# design critique snapshots (local working notes, never published)
+.impeccable/

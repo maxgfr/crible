@@ -52,7 +52,7 @@ _PRESETS = [
     Preset(
         id="top-ranked",
         name="Top ranked",
-        description="Top quintile of the composite quality/value/momentum rank (FR-015)",
+        description="Top quintile of the composite quality/value/momentum rank",
         dsl="composite_rank >= 80",
     ),
     Preset(
@@ -88,19 +88,19 @@ _PRESETS = [
     Preset(
         id="top-quality",
         name="Top quality",
-        description="Top quintile of the quality pillar rank (FR-015)",
+        description="Top quintile of the quality pillar rank",
         dsl="quality_rank >= 80",
     ),
     Preset(
         id="top-value",
         name="Top value",
-        description="Top quintile of the value pillar rank (FR-015)",
+        description="Top quintile of the value pillar rank",
         dsl="value_rank >= 80",
     ),
     Preset(
         id="top-momentum",
         name="Top momentum",
-        description="Top quintile of the momentum pillar rank (FR-015)",
+        description="Top quintile of the momentum pillar rank",
         dsl="momentum_rank >= 80",
     ),
     Preset(
