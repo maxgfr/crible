@@ -215,6 +215,12 @@ def test_fr016_bulk_ingests_every_resolved_us_issuer(tmp_path, monkeypatch) -> N
     followup = run_edgar_cycle(limit=10, client=NeverCalled(), ticker_map={"AAPL": 320193})
     assert followup["enriched"] == []
 
+    # nightly re-run over the SAME archive: identical data is never
+    # re-stamped, so unchanged issuers stay clean for incremental compute
+    rerun = run_edgar_bulk(zip_path=zip_path, ticker_map={"AAPL": 320193}, download=False)
+    assert rerun["enriched"] == 1  # processed, but…
+    assert len(list(tmp_path.glob("raw/provider=edgar/symbol=AAPL/*.parquet"))) == 3  # …no new files
+
 
 def test_fr016_bulk_without_archive_and_download_disabled_skips(tmp_path, monkeypatch) -> None:
     from crible.ingest.service import run_edgar_bulk

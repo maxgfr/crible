@@ -65,10 +65,13 @@ def write_audited_frames(
     provider_id: str,
     frames: dict[tuple[str, str], pd.DataFrame],
     fetched_at: float,
+    skip_identical: bool = False,
 ) -> int:
     """Persist an audited provider's canonical frames as provider-tagged raw
-    (the audited layer reconcile prefers over scraped). Returns the count
-    written — the one place every audited cycle funnels its writes through."""
+    (the audited layer reconcile prefers over scraped). Returns the count of
+    frames processed — the one place every audited cycle funnels its writes
+    through. ``skip_identical`` passes through to the raw layer (re-fetch-
+    everything providers must not re-stamp unchanged data)."""
     written = 0
     for (statement_type, freq), frame in frames.items():
         write_raw_statement(
@@ -79,6 +82,7 @@ def write_audited_frames(
             freq=freq,
             frame=frame,
             fetched_at=fetched_at,
+            skip_identical=skip_identical,
         )
         written += 1
     return written

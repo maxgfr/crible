@@ -249,6 +249,42 @@ def test_fr002_raw_parquet_is_versioned_and_readable(tmp_path) -> None:
     assert got == 100.0
 
 
+def test_fr002_skip_identical_reuses_the_newest_version(tmp_path) -> None:
+    """Re-fetch-everything providers (EDGAR bulk, FSDS, ESEF) must not
+    re-stamp unchanged data: a fresh stamp marks the symbol dirty and
+    degrades incremental compute to a full rebuild."""
+    frame = pd.DataFrame({"period": ["2025"], "revenue": [100.0]})
+    first = write_raw_statement(
+        tmp_path, symbol="AAPL", provider="edgar",
+        statement_type="income", freq="annual", frame=frame, fetched_at=1_000.0,
+    )
+    again = write_raw_statement(
+        tmp_path, symbol="AAPL", provider="edgar",
+        statement_type="income", freq="annual", frame=frame.copy(), fetched_at=2_000.0,
+        skip_identical=True,
+    )
+    assert again == first  # no new file, no new stamp
+    directory = tmp_path / "raw" / "provider=edgar" / "symbol=AAPL"
+    assert len(list(directory.glob("*.parquet"))) == 1
+
+    # a changed value DOES write a new version
+    changed = frame.assign(revenue=[120.0])
+    third = write_raw_statement(
+        tmp_path, symbol="AAPL", provider="edgar",
+        statement_type="income", freq="annual", frame=changed, fetched_at=3_000.0,
+        skip_identical=True,
+    )
+    assert third != first
+    assert len(list(directory.glob("*.parquet"))) == 2
+    # a different (statement, freq) key never matches the income file
+    other = write_raw_statement(
+        tmp_path, symbol="AAPL", provider="edgar",
+        statement_type="balance", freq="annual", frame=frame, fetched_at=4_000.0,
+        skip_identical=True,
+    )
+    assert other.name.startswith("balance-annual-")
+
+
 def test_fr002_keyed_provider_without_key_disables_cleanly(caplog) -> None:
     registry = ProviderRegistry(env={})
     keyed = KeyedProvider()

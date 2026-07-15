@@ -72,7 +72,7 @@ def run_edgar_cycle(limit: int = 5, client=None, ticker_map: dict[str, int] | No
                 for (statement_type, freq), frame in frames.items():
                     write_raw_statement(
                         data, symbol=symbol, provider="edgar", statement_type=statement_type,
-                        freq=freq, frame=frame, fetched_at=fetched_at,
+                        freq=freq, frame=frame, fetched_at=fetched_at, skip_identical=True,
                     )
                 con.execute(
                     "UPDATE edgar_tasks SET last_fetched_at = ? WHERE symbol = ?",
@@ -173,9 +173,12 @@ def run_edgar_bulk(
                 continue
             symbol = by_cik[cik]
             for (statement_type, freq), frame in frames.items():
+                # skip_identical: the nightly bulk re-reads EVERY issuer — an
+                # unchanged one must not get a fresh stamp (it would mark all
+                # ~5k edgar symbols dirty and degrade compute to a full rebuild)
                 write_raw_statement(
                     data, symbol=symbol, provider="edgar", statement_type=statement_type,
-                    freq=freq, frame=frame, fetched_at=fetched_at,
+                    freq=freq, frame=frame, fetched_at=fetched_at, skip_identical=True,
                 )
             con.execute(
                 "INSERT INTO edgar_tasks (symbol, cik, last_fetched_at) VALUES (?, ?, ?)"
@@ -259,7 +262,7 @@ def run_fsds(
             for cik, frames in iter_fsds(result.path, set(by_cik)):
                 write_audited_frames(
                     data, symbol=by_cik[cik], provider_id="edgar-fsds",
-                    frames=frames, fetched_at=fetched_at,
+                    frames=frames, fetched_at=fetched_at, skip_identical=True,
                 )
                 count += 1
                 outcome["enriched"] += 1

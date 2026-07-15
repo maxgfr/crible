@@ -79,7 +79,7 @@ def run_esef_cycle(limit: int = 5, client=None, mapping: dict[str, str] | None =
                 for (statement_type, freq), frame in frames.items():
                     write_raw_statement(
                         data, symbol=symbol, provider="esef", statement_type=statement_type,
-                        freq=freq, frame=frame, fetched_at=fetched_at,
+                        freq=freq, frame=frame, fetched_at=fetched_at, skip_identical=True,
                     )
                 con.execute(
                     "UPDATE esef_tasks SET last_fetched_at = ? WHERE symbol = ?",
@@ -209,7 +209,7 @@ def run_esef_sweep(
                         write_raw_statement(
                             data, symbol=symbol, provider="esef",
                             statement_type=statement_type, freq=freq,
-                            frame=frame, fetched_at=fetched_at,
+                            frame=frame, fetched_at=fetched_at, skip_identical=True,
                         )
                     con.execute(
                         "INSERT INTO esef_tasks (symbol, lei, last_fetched_at) VALUES (?, ?, ?)"
