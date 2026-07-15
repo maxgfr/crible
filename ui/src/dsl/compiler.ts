@@ -11,7 +11,7 @@ export const OPERATORS: Record<string, string> = {
 };
 
 // mirrors crible.compute.ranks.RANK_COLUMNS + the compiler's extras
-const RANK_COLUMNS = ["quality_rank", "value_rank", "momentum_rank", "composite_rank"];
+const RANK_COLUMNS = ["quality_rank", "value_rank", "momentum_rank", "composite_rank", "magic_formula_rank"];
 export const BUILD_TIME_COLUMNS = new Set([
   ...RANK_COLUMNS, "rank_peer_group", "rank_missing_pillars", "return_6m",
 ]);

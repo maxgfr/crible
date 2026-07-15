@@ -30,7 +30,12 @@ PILLARS: dict[str, dict[str, int]] = {
     "momentum": {"return_6m": 1},
 }
 
-RANK_COLUMNS = [f"{p}_rank" for p in PILLARS] + ["composite_rank"]
+# Greenblatt magic formula — a standalone rank blending earnings yield (EBIT/EV)
+# and return on capital (EBIT/(NWC+net fixed assets)). Deliberately NOT folded
+# into composite_rank so the quality/value/momentum blend stays stable.
+MAGIC_INPUTS: dict[str, int] = {"greenblatt_earnings_yield": 1, "greenblatt_roc": 1}
+
+RANK_COLUMNS = [f"{p}_rank" for p in PILLARS] + ["composite_rank", "magic_formula_rank"]
 
 
 def price_return(bars: pd.DataFrame, days: int = 182) -> float:
@@ -66,21 +71,27 @@ def _pct(series: pd.Series, direction: int) -> pd.Series:
     return (direction * series).rank(pct=True, method="average") * 100
 
 
+def _blend(group: pd.DataFrame, inputs: dict[str, int]) -> pd.Series:
+    """Mean of the inputs' percentiles; NULL if ANY input is missing (AC-2: a
+    blend missing an input is never imputed)."""
+    pcts = [
+        _pct(group[col], direction) if col in group.columns else pd.Series(float("nan"), index=group.index)
+        for col, direction in inputs.items()
+    ]
+    blended = pd.concat(pcts, axis=1).mean(axis=1)
+    has_all = pd.concat(
+        [group[col].notna() if col in group.columns else pd.Series(False, index=group.index) for col in inputs],
+        axis=1,
+    ).all(axis=1)
+    return blended.where(has_all)
+
+
 def _rank_group(group: pd.DataFrame) -> pd.DataFrame:
     out = pd.DataFrame(index=group.index)
     for pillar, inputs in PILLARS.items():
-        pcts = [
-            _pct(group[col], direction) if col in group.columns else pd.Series(float("nan"), index=group.index)
-            for col, direction in inputs.items()
-        ]
-        pillar_rank = pd.concat(pcts, axis=1).mean(axis=1)
-        # AC-2: a pillar missing ANY input is NULL, never imputed
-        has_all = pd.concat(
-            [group[col].notna() if col in group.columns else pd.Series(False, index=group.index) for col in inputs],
-            axis=1,
-        ).all(axis=1)
-        out[f"{pillar}_rank"] = pillar_rank.where(has_all)
+        out[f"{pillar}_rank"] = _blend(group, inputs)
     out["composite_rank"] = out[[f"{p}_rank" for p in PILLARS]].mean(axis=1)
+    out["magic_formula_rank"] = _blend(group, MAGIC_INPUTS)
     missing = out[[f"{p}_rank" for p in PILLARS]].isna()
     out["rank_missing_pillars"] = [
         ",".join(p for p in PILLARS if missing.loc[i, f"{p}_rank"]) or None for i in out.index

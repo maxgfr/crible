@@ -21,6 +21,7 @@ FIELD_CANDIDATES: dict[str, list[str]] = {
     "operating_expenses": ["OperatingExpense"],
     "sga_expenses": ["SellingGeneralAndAdministration", "SellingGeneralAndAdministrative"],
     "earnings_before_interest_and_taxes": ["EBIT"],
+    "ebitda": ["EBITDA", "NormalizedEBITDA"],
     "income_before_tax": ["PretaxIncome"],
     "income_tax_expense": ["TaxProvision"],
     "net_income": ["NetIncome", "NetIncomeCommonStockholders"],
@@ -104,6 +105,10 @@ def build_canonical(frames: dict[tuple[str, str], pd.DataFrame], freq: str = "an
     if out["earnings_before_interest_and_taxes"].isna().all():
         out["earnings_before_interest_and_taxes"] = (
             out["income_before_tax"] + out["interest_expense"]
+        )
+    if out["ebitda"].isna().all():
+        out["ebitda"] = (
+            out["earnings_before_interest_and_taxes"] + out["depreciation_and_amortization"]
         )
 
     return out.sort_index()

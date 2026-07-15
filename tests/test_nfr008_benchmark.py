@@ -48,6 +48,8 @@ def con(tmp_path_factory) -> duckdb.DuckDBPyConnection:
                 random() * 100 AS quality_rank,
                 random() * 100 AS value_rank,
                 random() * 100 AS momentum_rank,
+                random() * 100 AS magic_formula_rank,
+                random() * 3 AS ncav_to_market_cap,
                 {fillers}
             FROM range({ROWS}) t(i)
         ) TO '{path.as_posix()}' (FORMAT parquet)

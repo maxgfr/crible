@@ -8,10 +8,12 @@ never imputed.
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 from financetoolkit.models import altman_model, piotroski_model
 
 from crible.compute.beneish import beneish_components
+from crible.compute.montier import montier_components
 
 PIOTROSKI_CRITERIA = [
     "piotroski_roa_positive",
@@ -104,7 +106,72 @@ def altman(canonical: pd.DataFrame, price: pd.Series | None = None) -> pd.DataFr
     )
 
 
+def zmijewski(canonical: pd.DataFrame) -> pd.DataFrame:
+    """Zmijewski (1984) probit distress score — X > 0 (prob > 0.5) flags distress.
+
+        X = -4.336 - 4.513*(net_income/total_assets)
+                    + 5.679*(total_liabilities/total_assets)
+                    + 0.004*(current_assets/current_liabilities)
+
+    Three inputs, no prior period needed. Missing inputs propagate as NaN.
+    """
+    c = canonical
+    roa = c["net_income"] / c["total_assets"]
+    leverage = c["total_liabilities"] / c["total_assets"]
+    liquidity = c["current_assets"] / c["current_liabilities"]
+    score = -4.336 - 4.513 * roa + 5.679 * leverage + 0.004 * liquidity
+    return pd.DataFrame({"zmijewski_score": score}, index=canonical.index)
+
+
+def ohlson(canonical: pd.DataFrame) -> pd.DataFrame:
+    """Ohlson (1980) O-Score logit distress model — prob = 1/(1+e^-O), O > 0
+    (prob > 0.5) flags distress. Uses the prior period like Beneish.
+
+        O = -1.32 - 0.407*log(total_assets) + 6.03*(TL/TA) - 1.43*(WC/TA)
+            + 0.0757*(CL/CA) - 1.72*OENEG - 2.37*(NI/TA) - 1.83*(FFO/TL)
+            + 0.285*INTWO - 0.521*CHIN
+
+    Two documented deviations from the 1980 paper (crible is multi-currency and
+    provider-agnostic, unlike the US-firm sample Ohlson fitted):
+    - the size term uses log(total_assets) directly instead of dividing total
+      assets by a US GNP price-level index (base 1968);
+    - funds-from-operations is proxied by operating cash flow (alternative:
+      net_income + depreciation_and_amortization).
+    OENEG/INTWO comparisons against NaN yield 0, but the arithmetic terms carry
+    the NaN through, so any missing input still nulls the whole score.
+    """
+    c = canonical
+    ta = c["total_assets"]
+    tl = c["total_liabilities"]
+    ni = c["net_income"]
+    size = np.log(ta.where(ta > 0))
+    oeneg = (tl > ta).astype(float)
+    intwo = ((ni < 0) & (ni.shift(1) < 0)).astype(float)
+    chin = (ni - ni.shift(1)) / (ni.abs() + ni.shift(1).abs())
+    o = (
+        -1.32
+        - 0.407 * size
+        + 6.03 * (tl / ta)
+        - 1.43 * (c["working_capital"] / ta)
+        + 0.0757 * (c["current_liabilities"] / c["current_assets"])
+        - 1.72 * oeneg
+        - 2.37 * (ni / ta)
+        - 1.83 * (c["operating_cashflow"] / tl)
+        + 0.285 * intwo
+        - 0.521 * chin
+    )
+    return pd.DataFrame({"ohlson_o": o}, index=canonical.index)
+
+
 def all_scores(canonical: pd.DataFrame, price: pd.Series | None = None) -> pd.DataFrame:
     return pd.concat(
-        [piotroski(canonical), altman(canonical, price), beneish_components(canonical)], axis=1
+        [
+            piotroski(canonical),
+            altman(canonical, price),
+            beneish_components(canonical),
+            zmijewski(canonical),
+            ohlson(canonical),
+            montier_components(canonical),
+        ],
+        axis=1,
     )

@@ -35,6 +35,8 @@ def test_fr009_running_a_preset_is_byte_for_byte_its_dsl() -> None:
             "altman_z": [3.5, 1.2, 4.0],
             "beneish_m": [-2.5, -1.0, -2.9],
             "composite_rank": [85.0, 40.0, 92.0],
+            "magic_formula_rank": [88.0, 30.0, 95.0],
+            "ncav_to_market_cap": [2.0, 0.5, 1.6],
         }
     )
     con.register("snapshot_latest", frame)

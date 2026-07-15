@@ -21,6 +21,21 @@ const BENEISH = [
   "beneish_depi", "beneish_sgai", "beneish_tata", "beneish_lvgi",
 ];
 const ALTMAN = ["altman_x1_wc_ta", "altman_x2_re_ta", "altman_x3_ebit_ta", "altman_x4_mve_tl", "altman_x5_s_ta"];
+// Montier C: six red flags (0/1); unlike Piotroski, a raised flag is BAD
+const MONTIER = [
+  "montier_ni_cfo_diverging", "montier_dso_rising", "montier_dsi_rising",
+  "montier_oca_to_rev_rising", "montier_depr_declining", "montier_asset_growth_high",
+];
+// value toolkit — each metric links back to the components it is built from
+const VALUE_ROWS: [string, string][] = [
+  ["Magic Formula rank", "magic_formula_rank"],
+  ["· earnings yield (EBIT/EV)", "greenblatt_earnings_yield"],
+  ["· return on capital", "greenblatt_roc"],
+  ["Graham number", "graham_number"],
+  ["· margin of safety", "graham_margin_of_safety"],
+  ["NCAV (net-net)", "ncav"],
+  ["· NCAV / market cap", "ncav_to_market_cap"],
+];
 // FR-015 — each pillar rank links back to the component values it ranks
 const RANK_PILLARS: [string, string, string[]][] = [
   ["Quality", "quality_rank", ["piotroski_f", "altman_z"]],
@@ -139,6 +154,32 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                       ))}
                     </tr>
                   ))}
+                  <tr>
+                    <td>Zmijewski</td>
+                    {detail.periods.map((p) => (
+                      <td key={String(p.period)}>{num(p.zmijewski_score)}</td>
+                    ))}
+                  </tr>
+                  <tr>
+                    <td>Ohlson O</td>
+                    {detail.periods.map((p) => (
+                      <td key={String(p.period)}>{num(p.ohlson_o)}</td>
+                    ))}
+                  </tr>
+                  <tr>
+                    <td>Montier C</td>
+                    {detail.periods.map((p) => (
+                      <td key={String(p.period)}>{num(p.montier_c)}</td>
+                    ))}
+                  </tr>
+                  {MONTIER.map((flag) => (
+                    <tr key={flag}>
+                      <td className="meta">{flag.replace("montier_", "· ")}</td>
+                      {detail.periods.map((p) => (
+                        <td key={String(p.period)}>{num(p[flag])}</td>
+                      ))}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
               {detail.periods[0].composite_rank !== null &&
@@ -175,6 +216,25 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                     </p>
                   </>
                 )}
+              {(detail.periods[0].graham_number != null ||
+                detail.periods[0].magic_formula_rank != null) && (
+                <>
+                  <h3>Value — Greenblatt & Graham</h3>
+                  <table>
+                    <tbody>
+                      {VALUE_ROWS.map(([label, column]) => (
+                        <tr key={column}>
+                          <td className={label.startsWith("·") ? "meta" : undefined}>{label}</td>
+                          <td>{num(detail.periods[0][column])}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="meta">
+                    Latest fiscal period only — price-based metrics are never back-dated (missing price → —).
+                  </p>
+                </>
+              )}
               <h3>Provenance</h3>
               <p className="meta">
                 provider: {String(detail.periods[0].provider ?? "yfinance")} · computed at:{" "}

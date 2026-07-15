@@ -55,6 +55,18 @@ _PRESETS = [
         description="Top quintile of the composite quality/value/momentum rank (FR-015)",
         dsl="composite_rank >= 80",
     ),
+    Preset(
+        id="magic-formula",
+        name="Magic formula",
+        description="Greenblatt's magic formula — top quintile blending earnings yield and return on capital",
+        dsl="magic_formula_rank >= 80",
+    ),
+    Preset(
+        id="graham-net-net",
+        name="Graham net-net",
+        description="Deep value: market cap under two-thirds of net current asset value (NCAV)",
+        dsl="ncav_to_market_cap >= 1.5",
+    ),
 ]
 
 PRESETS: dict[str, Preset] = {p.id: p for p in _PRESETS}

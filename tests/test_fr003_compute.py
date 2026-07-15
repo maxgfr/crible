@@ -13,7 +13,9 @@ import pytest
 
 from crible.compute.beneish import beneish_components
 from crible.compute.canonical import build_canonical
-from crible.compute.scores import altman, piotroski
+from crible.compute.extras import compute_extras
+from crible.compute.montier import montier_components
+from crible.compute.scores import altman, ohlson, piotroski, zmijewski
 from crible.compute.snapshot import build_symbol_snapshot, publish_snapshot, read_snapshot
 
 
@@ -59,6 +61,15 @@ def test_fr003_missing_statement_yields_null_never_fabricated() -> None:
     assert pd.isna(row["total_assets"])
     # the row still exists — company not dropped
     assert row["revenue"] == 1000.0
+
+
+def test_fr003_ebitda_derived_from_ebit_plus_depreciation() -> None:
+    canonical = canonical_from(
+        {"income": {"TotalRevenue": [1000.0], "EBIT": [150.0], "ReconciledDepreciation": [50.0]}},
+        ["2025"],
+    )
+    # transparent derivation when the provider does not publish EBITDA directly
+    assert canonical.loc["2025", "ebitda"] == 200.0
 
 
 # -------------------------------------------------------------------- beneish
@@ -178,6 +189,159 @@ def test_fr003_altman_z_matches_hand_computed_value() -> None:
     out = altman(canonical, price)
     # Z = 1.2*0.2 + 1.4*0.3 + 3.3*0.15 + 0.6*1.5 + 1.0*1.0 = 3.055
     assert out.loc["2025", "altman_z"] == pytest.approx(3.055, abs=0.01)
+
+
+# ------------------------------------------------------------------ zmijewski
+
+
+def test_fr003_zmijewski_matches_hand_computed_value() -> None:
+    canonical = canonical_from(
+        {
+            "income": {"NetIncome": [80.0]},
+            "balance": {
+                "TotalAssets": [1000.0],
+                "TotalLiabilitiesNetMinorityInterest": [400.0],
+                "CurrentAssets": [500.0],
+                "CurrentLiabilities": [200.0],
+            },
+        },
+        ["2025"],
+    )
+    out = zmijewski(canonical)
+    # X = -4.336 - 4.513*0.08 + 5.679*0.4 + 0.004*2.5 = -2.41544 (X<0 → safe)
+    assert out.loc["2025", "zmijewski_score"] == pytest.approx(-2.41544, abs=1e-5)
+
+
+# --------------------------------------------------------------------- ohlson
+
+OHLSON_FRAME = {
+    "income": {"NetIncome": [50.0, 80.0]},
+    "balance": {
+        "TotalAssets": [1000.0, 1000.0],
+        "TotalLiabilitiesNetMinorityInterest": [400.0, 400.0],
+        "CurrentAssets": [500.0, 500.0],
+        "CurrentLiabilities": [200.0, 200.0],
+    },
+    "cashflow": {"OperatingCashFlow": [100.0, 100.0]},
+}
+
+
+def test_fr003_ohlson_o_matches_hand_computed_value() -> None:
+    out = ohlson(canonical_from(OHLSON_FRAME, ["2024", "2025"]))
+    # Hand-worked from the 1980 coefficients (natural log; size = log(total_assets);
+    # FFO ≈ operating cash flow; WC = CA-CL = 300; CHIN = 30/130): O ≈ -2.8855.
+    assert out.loc["2025", "ohlson_o"] == pytest.approx(-2.8855, abs=1e-3)
+    # needs the prior period → the first period is NaN, never fabricated
+    assert pd.isna(out.loc["2024", "ohlson_o"])
+
+
+# -------------------------------------------------------------------- montier
+
+# A fully aggressive company: every one of the six Montier flags is raised.
+MONTIER_MANIP = {
+    "income": {
+        "TotalRevenue": [1000.0, 1200.0],
+        "CostOfRevenue": [600.0, 700.0],
+        "NetIncome": [100.0, 150.0],
+        "ReconciledDepreciation": [50.0, 40.0],
+    },
+    "balance": {
+        "TotalAssets": [1000.0, 1200.0],
+        "CurrentAssets": [500.0, 800.0],
+        "AccountsReceivable": [100.0, 200.0],
+        "Inventory": [200.0, 300.0],
+        "CashAndCashEquivalents": [100.0, 100.0],
+        "GrossPPE": [500.0, 500.0],
+    },
+    "cashflow": {"OperatingCashFlow": [120.0, 100.0]},
+}
+
+
+def test_fr003_montier_c_flags_aggressive_accounting() -> None:
+    out = montier_components(canonical_from(MONTIER_MANIP, ["2024", "2025"]))
+    row = out.loc["2025"]
+    for flag in (
+        "montier_ni_cfo_diverging", "montier_dso_rising", "montier_dsi_rising",
+        "montier_oca_to_rev_rising", "montier_depr_declining", "montier_asset_growth_high",
+    ):
+        assert row[flag] == 1.0, flag
+    assert row["montier_c"] == 6
+    # the prior period cannot be decided (nothing before it) → NaN, never 0
+    assert pd.isna(out.loc["2024", "montier_c"])
+
+
+def test_fr003_montier_c_null_when_a_flag_input_is_missing() -> None:
+    frame = {k: {**v} for k, v in MONTIER_MANIP.items()}
+    del frame["balance"]["GrossPPE"]  # depreciation-rate flag undecidable
+    out = montier_components(canonical_from(frame, ["2024", "2025"]))
+    assert pd.isna(out.loc["2025", "montier_depr_declining"])
+    assert pd.isna(out.loc["2025", "montier_c"])  # a missing flag nulls the score
+
+
+# ----------------------------------------------------------------- extras (value)
+
+EXTRAS_FRAME = {
+    "income": {
+        "TotalRevenue": [1000.0],
+        "EBIT": [150.0],
+        "ReconciledDepreciation": [50.0],
+        "NetIncome": [100.0],
+    },
+    "balance": {
+        "TotalAssets": [1000.0],
+        "CurrentAssets": [500.0],
+        "CurrentLiabilities": [200.0],
+        "TotalLiabilitiesNetMinorityInterest": [400.0],
+        "StockholdersEquity": [900.0],
+        "NetPPE": [400.0],
+        "TotalDebt": [200.0],
+        "CashAndCashEquivalents": [100.0],
+        "BasicAverageShares": [100.0],
+    },
+    "cashflow": {"FreeCashFlow": [80.0], "CashDividendsPaid": [-40.0]},
+}
+
+
+def test_fr003_extras_value_and_quality_metrics_are_exact() -> None:
+    canonical = canonical_from(EXTRAS_FRAME, ["2025"])
+    price = pd.Series([10.0], index=canonical.index)
+    out = compute_extras(canonical, price).loc["2025"]
+    assert out["ebitda_margin"] == pytest.approx(0.2)  # (150+50)/1000
+    assert out["fcf_margin"] == pytest.approx(0.08)
+    assert out["fcf_conversion"] == pytest.approx(0.8)
+    assert out["dividend_coverage"] == pytest.approx(2.5)  # 100 / |−40|
+    assert out["greenblatt_roc"] == pytest.approx(150 / 700)  # EBIT/(WC+netPPE)
+    assert out["ncav"] == pytest.approx(100.0)  # CA − total liabilities
+    # Graham number √(22.5·EPS·BVPS) = √(22.5·1·9) = √202.5
+    assert out["graham_number"] == pytest.approx(202.5**0.5)
+    assert out["graham_margin_of_safety"] == pytest.approx(202.5**0.5 / 10 - 1)
+    assert out["ncav_to_market_cap"] == pytest.approx(0.1)  # 100 / (10·100)
+    assert out["greenblatt_earnings_yield"] == pytest.approx(150 / 1100)  # EBIT/EV
+
+
+def test_fr003_extras_without_price_null_the_price_dependent_block() -> None:
+    out = compute_extras(canonical_from(EXTRAS_FRAME, ["2025"]), None).loc["2025"]
+    # price-free metrics are still computed
+    assert out["ebitda_margin"] == pytest.approx(0.2)
+    assert out["ncav"] == pytest.approx(100.0)
+    assert out["greenblatt_roc"] == pytest.approx(150 / 700)
+    # price-dependent metrics are NaN, never fabricated
+    for col in ("graham_number", "graham_margin_of_safety", "ncav_to_market_cap", "greenblatt_earnings_yield"):
+        assert pd.isna(out[col]), col
+
+
+def test_fr003_graham_number_null_when_earnings_not_positive() -> None:
+    frame = {
+        "income": {"TotalRevenue": [1000.0], "NetIncome": [-50.0]},
+        "balance": {
+            "StockholdersEquity": [900.0], "BasicAverageShares": [100.0],
+            "CurrentAssets": [500.0], "TotalLiabilitiesNetMinorityInterest": [400.0],
+        },
+    }
+    canonical = canonical_from(frame, ["2025"])
+    price = pd.Series([10.0], index=canonical.index)
+    out = compute_extras(canonical, price).loc["2025"]
+    assert pd.isna(out["graham_number"])  # EPS < 0 → undefined, never imputed
 
 
 # ------------------------------------------------------------------- snapshot

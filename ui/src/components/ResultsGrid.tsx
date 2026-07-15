@@ -33,6 +33,11 @@ function formatCell(column: string, value: unknown): { text: string; className: 
     if (column === "piotroski_f") return { text, className: value >= 7 ? "num-good" : value <= 3 ? "num-bad" : "" };
     if (column === "altman_z") return { text, className: value > 2.99 ? "num-good" : value < 1.81 ? "num-bad" : "" };
     if (column === "beneish_m") return { text, className: value > -1.78 ? "num-warn" : "num-good" };
+    // distress models read like Altman: safe (green) below 0, distress (red) above
+    if (column === "zmijewski_score" || column === "ohlson_o")
+      return { text, className: value < 0 ? "num-good" : value > 0 ? "num-bad" : "" };
+    // Montier reads like Beneish: 5–6 raised flags warns, 0–1 is clean
+    if (column === "montier_c") return { text, className: value >= 5 ? "num-warn" : value <= 1 ? "num-good" : "" };
     if (column.endsWith("_growth")) return { text, className: value > 0 ? "num-good" : value < 0 ? "num-bad" : "" };
     return { text, className: "" };
   }

@@ -51,10 +51,15 @@ const CATALOG: Record<string, CatalogEntry> = {
   net_profit_margin: { label: "Net margin", group: "Profitability" },
   gross_margin: { label: "Gross margin", group: "Profitability" },
   operating_margin: { label: "Operating margin", group: "Profitability" },
+  ebitda: { label: "EBITDA", group: "Fundamentals" },
+  ebitda_margin: { label: "EBITDA margin", group: "Profitability" },
+  fcf_margin: { label: "FCF margin", group: "Profitability" },
+  fcf_conversion: { label: "FCF conversion", group: "Profitability" },
   debt_to_equity_ratio: { label: "Debt / equity", group: "Health" },
   current_ratio: { label: "Current ratio", group: "Health" },
   quick_ratio: { label: "Quick ratio", group: "Health" },
   interest_coverage_ratio: { label: "Interest coverage", group: "Health" },
+  dividend_coverage: { label: "Dividend cover", group: "Health" },
   // growth (every fundamental has a _growth companion; these two are curated)
   revenue_growth: { label: "Revenue growth (YoY)", group: "Growth (YoY)" },
   net_income_growth: { label: "Earnings growth (YoY)", group: "Growth (YoY)" },
@@ -62,6 +67,9 @@ const CATALOG: Record<string, CatalogEntry> = {
   piotroski_f: { label: "Piotroski F", group: "Scores" },
   altman_z: { label: "Altman Z", group: "Scores" },
   beneish_m: { label: "Beneish M", group: "Scores" },
+  zmijewski_score: { label: "Zmijewski", group: "Scores" },
+  ohlson_o: { label: "Ohlson O", group: "Scores" },
+  montier_c: { label: "Montier C", group: "Scores" },
   // ranks & momentum (FR-015)
   composite_rank: { label: "Composite rank", group: "Ranks" },
   quality_rank: { label: "Quality rank", group: "Ranks" },
@@ -69,11 +77,19 @@ const CATALOG: Record<string, CatalogEntry> = {
   momentum_rank: { label: "Momentum rank", group: "Ranks" },
   rank_peer_group: { label: "Rank peer group", group: "Ranks" },
   return_6m: { label: "6-month return", group: "Ranks" },
+  // value toolkit (Greenblatt magic formula, Graham number & net-net)
+  magic_formula_rank: { label: "Magic Formula rank", group: "Value" },
+  greenblatt_earnings_yield: { label: "Earnings yield (EBIT/EV)", group: "Value" },
+  greenblatt_roc: { label: "Return on capital", group: "Value" },
+  graham_number: { label: "Graham number", group: "Value" },
+  graham_margin_of_safety: { label: "Margin of safety", group: "Value" },
+  ncav: { label: "NCAV", group: "Value" },
+  ncav_to_market_cap: { label: "NCAV / mkt cap", group: "Value" },
 };
 
 // display order for the field select's optgroups; unknown groups append after
 export const GROUP_ORDER = [
-  "Identity", "Scores", "Ranks", "Valuation", "Profitability", "Health",
+  "Identity", "Scores", "Ranks", "Value", "Valuation", "Profitability", "Health",
   "Fundamentals", "Growth (YoY)", "Other",
 ];
 
@@ -110,6 +126,11 @@ export const STARTER_FILTERS: StarterFilter[] = [
   { field: "piotroski_f", op: ">=", value: "7" },
   { field: "altman_z", op: ">", value: "2.99" },
   { field: "composite_rank", op: ">=", value: "80" },
+  { field: "magic_formula_rank", op: ">=", value: "80" },
+  { field: "ncav_to_market_cap", op: ">=", value: "1.5" },
+  { field: "zmijewski_score", op: "<", value: "0" },
+  { field: "montier_c", op: "<=", value: "1" },
+  { field: "graham_margin_of_safety", op: ">", value: "0" },
   { field: "region", op: "=", value: "europe" },
   { field: "sector", op: "=", value: "" },
   { field: "country", op: "=", value: "" },
@@ -123,8 +144,17 @@ export function fieldGroup(name: string): string {
   const entry = CATALOG[name];
   if (entry) return entry.group;
   if (name.endsWith("_growth")) return "Growth (YoY)";
+  if (
+    name.startsWith("greenblatt_") || name.startsWith("graham_") ||
+    name.startsWith("ncav") || name.startsWith("magic_formula")
+  ) {
+    return "Value";
+  }
   if (name.endsWith("_rank") || name.startsWith("rank_")) return "Ranks";
-  if (name.startsWith("piotroski_") || name.startsWith("altman_") || name.startsWith("beneish_")) {
+  if (
+    name.startsWith("piotroski_") || name.startsWith("altman_") || name.startsWith("beneish_") ||
+    name.startsWith("zmijewski") || name.startsWith("ohlson") || name.startsWith("montier")
+  ) {
     return "Scores";
   }
   return "Other";

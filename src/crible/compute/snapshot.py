@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from crible.compute.canonical import CANONICAL_FIELDS, build_canonical
+from crible.compute.extras import compute_extras
 from crible.compute.ranks import attach_ranks, price_return
 from crible.compute.ratios import compute_ratios
 from crible.compute.scores import all_scores
@@ -80,12 +81,13 @@ def build_symbol_snapshot(
 
     ratios = compute_ratios(canonical, price)
     scores = all_scores(canonical, price)
+    extras = compute_extras(canonical, price)
     growth = canonical[CANONICAL_FIELDS].pct_change(fill_method=None)
     growth.columns = [f"{col}_growth" for col in growth.columns]
     ratio_growth = ratios.pct_change(fill_method=None)
     ratio_growth.columns = [f"{col}_growth" for col in ratio_growth.columns]
 
-    out = pd.concat([canonical, ratios, growth, ratio_growth, scores], axis=1)
+    out = pd.concat([canonical, ratios, growth, ratio_growth, scores, extras], axis=1)
     # FR-015 momentum input: trailing 6-month price return, latest period only
     # (cross-sectional like the price itself); NaN when history is too short.
     out["return_6m"] = float("nan")

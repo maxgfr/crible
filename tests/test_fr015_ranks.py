@@ -166,3 +166,53 @@ def test_fr015_top_ranked_preset_ships() -> None:
     preset = PRESETS.get("top-ranked")
     assert preset is not None
     assert "composite_rank" in preset.dsl
+
+
+# --------------------------------------------- magic formula (Greenblatt) rank
+
+
+def test_magic_formula_rank_blends_greenblatt_inputs_without_touching_composite() -> None:
+    n = 6
+    frame = pd.DataFrame(
+        {
+            "symbol": [f"C{i}.PA" for i in range(n)],
+            "period": ["2025-12-31"] * n,
+            "region": ["europe"] * n,
+            "sector": ["Tech"] * n,
+            "greenblatt_earnings_yield": [0.02, 0.03, 0.04, 0.05, 0.06, 0.07],
+            "greenblatt_roc": [0.10, 0.15, 0.20, 0.25, 0.30, 0.35],
+        }
+    )
+    ranked = attach_ranks(frame)
+    assert "magic_formula_rank" in ranked.columns
+    assert ranked["magic_formula_rank"].between(0, 100).all()
+    # better on both Greenblatt inputs → strictly higher magic-formula rank
+    ordered = ranked.sort_values("symbol")["magic_formula_rank"].tolist()
+    assert ordered == sorted(ordered)
+    assert ordered[-1] > ordered[0]
+    # the standalone rank must NOT perturb composite_rank (no pillar inputs here)
+    assert ranked["composite_rank"].isna().all()
+
+
+def test_magic_formula_rank_nulls_on_missing_input() -> None:
+    frame = pd.DataFrame(
+        {
+            "symbol": ["A.PA", "B.PA", "C.PA", "D.PA", "E.PA"],
+            "period": ["2025-12-31"] * 5,
+            "region": ["europe"] * 5,
+            "sector": ["Tech"] * 5,
+            "greenblatt_earnings_yield": [0.02, 0.03, 0.04, 0.05, 0.06],
+            "greenblatt_roc": [float("nan"), 0.15, 0.20, 0.25, 0.30],
+        }
+    )
+    ranked = attach_ranks(frame)
+    row = ranked[ranked["symbol"] == "A.PA"].iloc[0]
+    assert pd.isna(row["magic_formula_rank"])  # missing input → never imputed
+    assert ranked[ranked["symbol"] != "A.PA"]["magic_formula_rank"].notna().all()
+
+
+def test_magic_formula_preset_ships() -> None:
+    from crible.presets import PRESETS
+
+    assert PRESETS["magic-formula"].dsl == "magic_formula_rank >= 80"
+    assert PRESETS["graham-net-net"].dsl == "ncav_to_market_cap >= 1.5"
