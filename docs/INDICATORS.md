@@ -171,14 +171,16 @@ capital, EBIT sur le capital tangible employé). crible publie chaque facteur pl
 sociétés, sinon tout le snapshot). Plus haut = meilleur ; `>= 80` est le quintile de tête.
 
 > **Caveats · Nuances** — Greenblatt ranks by ordinal position and sums the two ranks; crible
-> uses a percentile-mean (equivalent ordering, native to its rank system). Return on capital
-> uses `working_capital` (current assets − current liabilities), **not floored at 0**, so a
-> capital-light company with negative working capital can score oddly; Greenblatt also excludes
-> financials and utilities, which crible does **not**. It is kept **separate** from
-> `composite_rank`. · Greenblatt classe par rang ordinal et somme les deux rangs ; crible utilise
-> une moyenne de percentiles (ordre équivalent). Le return on capital utilise `working_capital`
-> **non plafonné à 0** ; Greenblatt exclut aussi la finance et les utilities, ce que crible ne
-> fait **pas**. Gardé **séparé** de `composite_rank`.
+> uses a percentile-mean (equivalent ordering, native to its rank system). When invested capital
+> (`working_capital + net_ppe`) or enterprise value is **non-positive**, the ratio would sign-flip
+> and is left **undefined (NaN)** — the company is simply excluded from `magic_formula_rank`, never
+> imputed. Greenblatt also excludes financials and utilities, which crible does **not**. The rank is
+> kept **separate** from `composite_rank`. · Greenblatt classe par rang ordinal et somme les deux
+> rangs ; crible utilise une moyenne de percentiles (ordre équivalent). Quand le capital investi
+> (`working_capital + net_ppe`) ou l'enterprise value est **non positif**, le ratio s'inverserait :
+> il est laissé **indéfini (NaN)** — la société est exclue de `magic_formula_rank`, jamais imputée.
+> Greenblatt exclut aussi la finance et les utilities, ce que crible ne fait **pas**. Rang **séparé**
+> de `composite_rank`.
 
 ---
 

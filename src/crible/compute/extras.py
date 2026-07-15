@@ -27,8 +27,12 @@ def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
     # (a non-payer has undefined coverage, not infinite)
     out["dividend_coverage"] = c["net_income"] / c["dividends_paid"].abs().replace(0, float("nan"))
 
-    # Greenblatt magic-formula: return on capital = EBIT / (NWC + net fixed assets)
-    out["greenblatt_roc"] = ebit / (c["working_capital"] + c["net_ppe"])
+    # Greenblatt magic-formula: return on capital = EBIT / (NWC + net fixed assets).
+    # Non-positive invested capital would sign-flip the ratio (negative EBIT over a
+    # negative denominator reads as a high return) and corrupt magic_formula_rank,
+    # so it is undefined there — NaN, never imputed.
+    invested_capital = c["working_capital"] + c["net_ppe"]
+    out["greenblatt_roc"] = ebit / invested_capital.where(invested_capital > 0)
 
     # Graham deep-value: net current asset value (strict net-net)
     out["ncav"] = c["current_assets"] - c["total_liabilities"]
@@ -45,7 +49,8 @@ def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
         out["graham_number"] = np.sqrt(graham_base.where((eps > 0) & (bvps > 0)))
         out["graham_margin_of_safety"] = out["graham_number"] / price - 1
         out["ncav_to_market_cap"] = out["ncav"] / market_cap
-        out["greenblatt_earnings_yield"] = ebit / enterprise_value
+        # non-positive enterprise value sign-flips the yield → undefined (NaN)
+        out["greenblatt_earnings_yield"] = ebit / enterprise_value.where(enterprise_value > 0)
     else:
         for col in (
             "graham_number",

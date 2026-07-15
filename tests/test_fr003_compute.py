@@ -344,6 +344,29 @@ def test_fr003_graham_number_null_when_earnings_not_positive() -> None:
     assert pd.isna(out["graham_number"])  # EPS < 0 → undefined, never imputed
 
 
+def test_fr003_greenblatt_undefined_on_nonpositive_capital_or_ev() -> None:
+    """Regression: non-positive invested capital / enterprise value would
+    sign-flip the Greenblatt ratios (negative EBIT over a negative denominator
+    reads as a high return) and corrupt magic_formula_rank — must be NaN."""
+    canonical = canonical_from(
+        {
+            "income": {"TotalRevenue": [1000.0], "EBIT": [150.0], "NetIncome": [100.0]},
+            "balance": {
+                "CurrentAssets": [100.0], "CurrentLiabilities": [500.0],  # working capital = -400
+                "NetPPE": [100.0],                                        # invested capital = -300
+                "TotalDebt": [0.0], "CashAndCashEquivalents": [500.0],
+                "BasicAverageShares": [100.0], "StockholdersEquity": [50.0],
+                "TotalLiabilitiesNetMinorityInterest": [600.0],
+            },
+        },
+        ["2025"],
+    )
+    price = pd.Series([1.0], index=canonical.index)  # market cap = 100 → EV = 100 + 0 - 500 = -400
+    out = compute_extras(canonical, price).loc["2025"]
+    assert pd.isna(out["greenblatt_roc"])              # invested capital ≤ 0 → undefined
+    assert pd.isna(out["greenblatt_earnings_yield"])   # enterprise value ≤ 0 → undefined
+
+
 # ------------------------------------------------------------------- snapshot
 
 
