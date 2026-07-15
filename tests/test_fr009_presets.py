@@ -92,6 +92,7 @@ def test_fr009_running_a_preset_is_byte_for_byte_its_dsl() -> None:
             "sloan_accruals": [-0.02, 0.12, -0.05],
             "return_12_1": [0.35, -0.1, 0.28],
             "mohanram_g": [5.0, 2.0, 6.0],
+            "dechow_f": [0.4, 2.1, 0.7],
         }
     )
     con.register("snapshot_latest", frame)

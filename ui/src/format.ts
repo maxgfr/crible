@@ -42,6 +42,8 @@ export function formatCell(column: string, value: unknown): FormattedCell {
       return verdict(text, value < 0 ? "good" : value > 0 ? "bad" : "");
     // Montier reads like Beneish: 5–6 raised flags warns, 0–1 is clean
     if (column === "montier_c") return verdict(text, value >= 5 ? "warn" : value <= 1 ? "good" : "");
+    // Dechow (2011): F ≥ 1 above-normal misstatement risk, ≥ 1.85 substantial
+    if (column === "dechow_f") return verdict(text, value > 1.85 ? "warn" : value < 1 ? "good" : "");
     // value toolkit — published thresholds only
     if (column === "graham_margin_of_safety")
       return verdict(text, value > 0 ? "good" : value < 0 ? "bad" : "");

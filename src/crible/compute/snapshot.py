@@ -267,7 +267,8 @@ BASE_SCHEMA_NAME = "base-schema.json"
 #    Sloan accruals, PEG, shareholder yield)
 # 3: momentum trio (return_12_1, high_52w_proximity, volatility_1y)
 # 4: Mohanram G (partial 6/8) — inputs + peer-relative signals + score
-ENGINE_SCHEMA_VERSION = 4
+# 5: Dechow F-Score (Model 1 accounting core) — 7 components + F
+ENGINE_SCHEMA_VERSION = 5
 
 
 def _newest_raw_stamp(data_dir: Path | str, symbol: str) -> float:

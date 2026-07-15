@@ -41,6 +41,11 @@ const MOHANRAM = [
   "mohanram_g1_roa", "mohanram_g2_cfo_roa", "mohanram_g3_accruals",
   "mohanram_g4_roa_stability", "mohanram_g5_growth_stability", "mohanram_g6_capex_intensity",
 ];
+// Dechow F (Model 1, accounting core): 7 components behind the logit
+const DECHOW = [
+  "dechow_rsst", "dechow_ch_rec", "dechow_ch_inv", "dechow_soft_assets",
+  "dechow_ch_cs", "dechow_ch_roa", "dechow_issuance",
+];
 // value toolkit — each metric links back to the components it is built from
 const VALUE_ROWS: [string, string][] = [
   ["Magic Formula rank", "magic_formula_rank"],
@@ -431,6 +436,22 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                       <td className="meta">{flag.replace("montier_", "· ")}</td>
                       {detail.periods.map((p) => (
                         <td key={String(p.period)}>{num(p[flag])}</td>
+                      ))}
+                    </tr>
+                  ))}
+                  <tr>
+                    <td>Dechow F</td>
+                    {detail.periods.map((p) => (
+                      <td key={String(p.period)}>
+                        <Val column="dechow_f" value={p.dechow_f} />
+                      </td>
+                    ))}
+                  </tr>
+                  {DECHOW.map((component) => (
+                    <tr key={component}>
+                      <td className="meta">{component.replace("dechow_", "· ")}</td>
+                      {detail.periods.map((p) => (
+                        <td key={String(p.period)}>{num(p[component])}</td>
                       ))}
                     </tr>
                   ))}

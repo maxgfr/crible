@@ -367,6 +367,86 @@ def test_fr003_greenblatt_undefined_on_nonpositive_capital_or_ev() -> None:
     assert pd.isna(out["greenblatt_earnings_yield"])   # enterprise value ≤ 0 → undefined
 
 
+# ------------------------------------------------------------- Dechow F-Score
+
+
+def _dechow_canonical(periods: int = 3, issuance: float = 0.0) -> pd.DataFrame:
+    """Identical periods → every Δ term is exactly 0 where defined, so the
+    logit collapses to intercept + soft-assets (+ issuance) — hand-computable."""
+    from crible.compute.canonical import CANONICAL_FIELDS
+
+    index = pd.Index([f"202{i + 3}" for i in range(periods)], name="period")
+    base = {f: [float("nan")] * periods for f in CANONICAL_FIELDS}
+    base.update(
+        {
+            "total_assets": [1000.0] * periods,
+            "current_assets": [400.0] * periods,
+            "cash_and_equivalents": [100.0] * periods,
+            "current_liabilities": [200.0] * periods,
+            "total_debt": [150.0] * periods,
+            "long_term_debt": [100.0] * periods,
+            "marketable_securities": [50.0] * periods,
+            "total_liabilities": [500.0] * periods,
+            "accounts_receivable": [80.0] * periods,
+            "inventory": [120.0] * periods,
+            "net_ppe": [300.0] * periods,
+            "revenue": [1000.0] * periods,
+            "net_income": [100.0] * periods,
+            "common_stock_issuance": [issuance] * periods,
+        }
+    )
+    return pd.DataFrame(base, index=index)
+
+
+def test_fr003_dechow_flat_company_matches_hand_computed_logit() -> None:
+    """All-flat: every Δ = 0, soft assets = (1000−300−100)/1000 = 0.6, no
+    issuance → logit = −7.893 + 1.979·0.6; F = sigmoid/0.0037."""
+    import math
+
+    from crible.compute.dechow import dechow_components
+
+    out = dechow_components(_dechow_canonical())
+    row = out.iloc[-1]  # the third period: every Δ term is defined and 0
+    for component in (
+        "dechow_rsst", "dechow_ch_rec", "dechow_ch_inv", "dechow_ch_cs", "dechow_ch_roa",
+    ):
+        assert row[component] == pytest.approx(0.0)
+    assert row["dechow_soft_assets"] == pytest.approx(0.6)
+    assert row["dechow_issuance"] == 0.0
+    logit = -7.893 + 1.979 * 0.6
+    assert row["dechow_f"] == pytest.approx((1.0 / (1.0 + math.exp(-logit))) / 0.0037)
+
+
+def test_fr003_dechow_issuance_dummy_and_early_periods() -> None:
+    import math
+
+    from crible.compute.dechow import dechow_components
+
+    out = dechow_components(_dechow_canonical(issuance=5.0))
+    # actual issuance flips the dummy and adds its published coefficient
+    logit = -7.893 + 1.979 * 0.6 + 1.029
+    assert out.iloc[-1]["dechow_f"] == pytest.approx((1.0 / (1.0 + math.exp(-logit))) / 0.0037)
+    # ch_cs needs two consecutive cash-sales figures → the first TWO periods
+    # of a company can never carry an F (NaN, never imputed)
+    assert out.iloc[0:2]["dechow_f"].isna().all()
+
+
+def test_fr003_dechow_components_move_the_hand_computed_way() -> None:
+    from crible.compute.dechow import dechow_components
+
+    canonical = _dechow_canonical()
+    canonical.loc["2025", "accounts_receivable"] = 130.0  # +50 vs 80
+    canonical.loc["2025", "inventory"] = 170.0  # +50 vs 120
+    out = dechow_components(canonical).loc["2025"]
+    assert out["dechow_ch_rec"] == pytest.approx(50.0 / 1000.0)
+    assert out["dechow_ch_inv"] == pytest.approx(50.0 / 1000.0)
+    # cash sales drop by the receivables jump: (1000−50)/1000 − 1
+    assert out["dechow_ch_cs"] == pytest.approx(950.0 / 1000.0 - 1.0)
+    # a missing balance input nulls F for that period — never imputed
+    canonical.loc["2025", "marketable_securities"] = float("nan")
+    assert pd.isna(dechow_components(canonical).loc["2025", "dechow_f"])
+
+
 # ------------------------------------------------- quick-win indicators (C1)
 
 

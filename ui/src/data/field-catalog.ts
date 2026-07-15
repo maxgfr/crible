@@ -94,6 +94,7 @@ const CATALOG: Record<string, CatalogEntry> = {
   ohlson_o: { label: "Ohlson O", group: "Scores" },
   montier_c: { label: "Montier C", group: "Scores" },
   mohanram_g: { label: "Mohanram G (6/8)", group: "Scores" },
+  dechow_f: { label: "Dechow F (Model 1)", group: "Scores" },
   // ranks & momentum (FR-015)
   composite_rank: { label: "Composite rank", group: "Ranks" },
   quality_rank: { label: "Quality rank", group: "Ranks" },

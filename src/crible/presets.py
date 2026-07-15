@@ -150,6 +150,13 @@ _PRESETS = [
         columns=("dividend_coverage", "weighted_dividend_yield", "fcf_margin", "net_income"),
     ),
     Preset(
+        id="dechow-low-risk",
+        name="Dechow low risk",
+        description="Below-normal modelled misstatement risk (F-Score under 1, Dechow 2011 Model 1)",
+        dsl="dechow_f < 1",
+        columns=("dechow_f", "beneish_m", "montier_c", "sloan_accruals"),
+    ),
+    Preset(
         id="mohanram-growth",
         name="Mohanram growth quality",
         description="At least 5 of the 6 available G-Score signals (adapted starting point — the published cutoff is 6-of-8)",

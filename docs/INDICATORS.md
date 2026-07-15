@@ -39,6 +39,7 @@ imputée** ; la colonne `missing_inputs` du snapshot nomme les champs absents.
 | `peg_ratio` | P/E ÷ 3y EPS CAGR (%) | > 0 | lower · plus bas | `<= 1` → growth at a reasonable price |
 | `shareholder_yield` | (dividends + net buybacks) / mkt cap | ~unbounded | higher · plus haut | — |
 | `mohanram_g` | Mohanram G (partial 6/8) | 0–6 | higher · plus haut | — (partial score, no published cutoff) |
+| `dechow_f` | Dechow F (Model 1) | ≥ 0 | lower · plus bas | `>= 1` above-normal · `>= 1.85` substantial |
 | `return_12_1` | 12-month return, last month skipped | ~unbounded | higher · plus haut | — |
 | `high_52w_proximity` | close / 52-week high | 0–1 | higher · plus haut | — |
 | `volatility_1y` | annualized σ of daily log returns | ≥ 0 | context | — |
@@ -543,6 +544,48 @@ transfère pas.
 > Piotroski instead. Variability signals need ≥3 usable periods. · Conçu pour les faibles
 > book-to-market ; sur la deep value, lire Piotroski. Les signaux de variabilité exigent ≥3
 > périodes utilisables.
+
+---
+
+## 18. Dechow F-Score — `dechow_f` (+ 7 components) — **Model 1, accounting core**
+
+**Formula**
+
+```
+logit = −7.893 + 0.790·rsst + 2.518·ch_rec + 1.191·ch_inv
+        + 1.979·soft_assets + 0.171·ch_cs − 0.932·ch_roa + 1.029·issue
+F = sigmoid(logit) / 0.0037          (0.0037 = the sample's misstatement base rate)
+```
+
+**EN** — Dechow, Ge, Larson & Sloan (2011, *Predicting Material Accounting Misstatements*)
+trained this logistic model on SEC AAER enforcement cases. F is the modelled misstatement
+probability relative to the unconditional base rate: **F ≥ 1 above-normal risk, ≥ 1.85
+substantial, ≥ 2.45 high** (published cutoffs). It completes the forensic family: Beneish
+(manipulation profile), Montier (red-flag count), Dechow (calibrated probability). crible ships
+**Model 1 only** — the financial-statement variant; Models 2–3 add off-balance-sheet and
+market variables (abnormal returns) that keyless data does not carry. Documented proxies:
+RSST's FIN component has no long-term-investments/preferred-stock split (neither is canonical),
+and the issuance dummy mirrors Piotroski's `fillna(0)` stance on `common_stock_issuance`
+(34.6 % populated; Dechow's variable also counts debt issuance).
+
+**FR** — Dechow, Ge, Larson & Sloan (2011) ont entraîné ce modèle logistique sur les dossiers
+d'exécution AAER de la SEC. F est la probabilité modélisée de manipulation rapportée au taux de
+base : **F ≥ 1 risque au-dessus de la normale, ≥ 1,85 substantiel, ≥ 2,45 élevé** (seuils
+publiés). Il complète la famille forensique : Beneish (profil de manipulation), Montier
+(compteur de drapeaux), Dechow (probabilité calibrée). crible ne publie que le **Model 1** — la
+variante purement comptable ; les Models 2–3 ajoutent du hors-bilan et des variables de marché
+absentes des données keyless. Écarts documentés : la composante FIN du RSST n'a ni
+investissements long terme ni actions de préférence (non canoniques), et le dummy d'émission
+suit la position `fillna(0)` de Piotroski sur `common_stock_issuance` (34,6 % renseigné ; la
+variable de Dechow compte aussi les émissions de dette).
+
+> **Caveat · Nuance** — `ch_cs` needs two consecutive cash-sales figures, so a company's first
+> TWO periods never carry an F. `marketable_securities` is yfinance-only today — audited-only
+> symbols keep `dechow_f` NaN until the EDGAR concept map gains a short-term-investments entry
+> (named fast-follow). · `ch_cs` exige deux chiffres consécutifs de ventes cash : les deux
+> premières périodes d'une société ne portent jamais de F. `marketable_securities` n'existe
+> aujourd'hui que via yfinance — les titres audité-seulement gardent `dechow_f` NaN tant que le
+> mapping EDGAR n'a pas d'entrée short-term-investments (suite nommée).
 
 ---
 
