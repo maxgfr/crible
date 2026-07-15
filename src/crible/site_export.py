@@ -50,6 +50,23 @@ def export_site(data_dir: Path | str, out_dir: Path | str, min_symbols: int = 50
         universe_rows = con.execute(
             f"SELECT count(*) FROM read_parquet('{universe.as_posix()}')"
         ).fetchone()[0]
+        # coverage honesty: how the covered companies split by region (the
+        # banner shows it; attach_universe embeds region in real snapshots —
+        # a snapshot without the column, e.g. a minimal fixture, reports {})
+        columns = {
+            r[0]
+            for r in con.execute(
+                f"DESCRIBE SELECT * FROM read_parquet('{snapshot.as_posix()}')"
+            ).fetchall()
+        }
+        snapshot_by_region: dict[str, int] = {}
+        if "region" in columns:
+            snapshot_by_region = dict(
+                con.execute(
+                    f"SELECT coalesce(region, 'unknown'), count(DISTINCT symbol)"
+                    f" FROM read_parquet('{snapshot.as_posix()}') GROUP BY 1 ORDER BY 1"
+                ).fetchall()
+            )
     finally:
         con.close()
     if snapshot_symbols < min_symbols:
@@ -78,6 +95,7 @@ def export_site(data_dir: Path | str, out_dir: Path | str, min_symbols: int = 50
         "universe_rows": universe_rows,
         "snapshot_rows": snapshot_rows,
         "snapshot_symbols": snapshot_symbols,
+        "snapshot_by_region": snapshot_by_region,
         "prices": prices,
         "sample": bootstrap_sample(),
         "commit": os.environ.get("GITHUB_SHA"),

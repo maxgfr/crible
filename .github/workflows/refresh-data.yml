@@ -11,7 +11,11 @@ name: refresh-data
 
 on:
   schedule:
-    - cron: "17 2 * * *"
+    # GitHub schedules drift ~3h under load (observed 05:09 for a 02:17
+    # cron): start just before midnight UTC so even a slow ~4h run has
+    # published before EU market open. One nightly is enough — every source
+    # (SEC bulk, filings.xbrl.org, FinanceDatabase) rebuilds daily at most.
+    - cron: "47 23 * * *"
   workflow_dispatch:
 
 permissions:

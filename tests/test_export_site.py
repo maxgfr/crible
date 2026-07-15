@@ -31,6 +31,8 @@ def make_snapshot(symbols: list[str]) -> pd.DataFrame:
             "period": ["2025"] * len(symbols),
             "revenue": [100.0] * len(symbols),
             "piotroski_f": [7] * len(symbols),
+            # attach_universe embeds region in every real snapshot
+            "region": ["europe" if s.endswith((".PA", ".DE")) else "us" for s in symbols],
         }
     )
 
@@ -61,6 +63,8 @@ def test_export_site_emits_all_artifacts_and_manifest(data_dir, tmp_path_factory
     assert manifest["universe_rows"] == 8
     assert manifest["snapshot_rows"] == 3
     assert manifest["snapshot_symbols"] == 3
+    # coverage honesty: covered companies split by region, symbols sum up
+    assert manifest["snapshot_by_region"] == {"europe": 2, "us": 1}
     assert manifest["prices"] is None  # no series in this fixture — enrichment, not a gate
     assert not list(out.glob("prices-*.parquet"))
     assert isinstance(manifest["sample"], list) and manifest["sample"]
