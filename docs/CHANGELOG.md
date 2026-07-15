@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased — 2026-07-15 (UI pass: presets → columns, drawer, shell)
+
+- **A preset pick surfaces its indicators** — every shipped preset carries a
+  curated `columns` set (published through `/api/presets` and `presets.json`);
+  picking one swaps the grid to identity + curated columns. Custom presets,
+  hand-typed queries and permalinks fall back to the DSL itself: the fields a
+  query references (tokenizer-extracted) union into the visible columns after
+  every successful screen. A test locks the invariant that a preset can never
+  hide the metric it filters on.
+- **Company drawer: colored verdicts + missing sections + resizable** — the
+  grid's verdict grammar (colors + non-color ✓/✗/! glyphs) moves to a shared
+  `ui/src/format.ts` and now applies inside the drawer (headline scores, rank
+  pillars, value rows), extended with the published value-toolkit thresholds
+  only (Graham MoS, NCAV/mktcap, FCF conversion, dividend cover). Two sections
+  the engine computed but never showed are in: **Cash quality** and **Key
+  ratios** (valuation / profitability / balance). The drawer is resizable — an
+  Expand/Shrink toggle plus a left-edge drag handle (keyboard: arrow keys),
+  both persisted.
+- **Shell cleanups** — the header company search spans the topbar (was a fixed
+  180px box); the theme control is a segmented three-way choice (auto / light
+  / dark — the old cycle could never reach all three); the Providers tab is
+  merged into Status as a section (`#/providers` permalinks redirect).
+- **Dead columns retired** — the 12 price-based ratios' always-NaN `_growth`
+  companions and the `net_current_asset_value` duplicate of `ncav` are no
+  longer generated (engine) nor offered (UI picker/autocomplete denylist while
+  old published data lingers); the incremental base cache is scrubbed so the
+  nightly cannot resurrect the old schema. The snapshot is 242 columns.
+
 ## Unreleased — 2026-07-15
 
 - **Release-only dataset distribution** — the orphan `data` branch is retired;
