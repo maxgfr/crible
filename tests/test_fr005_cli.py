@@ -55,6 +55,13 @@ def test_fr005_screen_csv_streams_rows_with_header(data_dir) -> None:
     assert "AAPL" not in result.output
 
 
+def test_fr005_screen_without_query_returns_the_full_snapshot(data_dir) -> None:
+    result = runner.invoke(app, ["screen", "--format", "csv"])
+    assert result.exit_code == 0, result.output
+    lines = [line for line in result.output.strip().splitlines() if line]
+    assert len(lines) == 5  # header + all 4 fixture rows — no query means no filter
+
+
 def test_fr005_fields_lists_the_dsl_whitelist_with_types(data_dir) -> None:
     result = runner.invoke(app, ["fields"])
     assert result.exit_code == 0, result.output

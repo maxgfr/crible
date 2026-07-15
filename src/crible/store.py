@@ -16,6 +16,14 @@ from crible.dsl.parser import DslError, parse
 MAX_LIMIT = 10_000
 
 
+def _compile_where(query: str, whitelist: set[str]) -> tuple[str, list]:
+    """A blank query means "no filter" — the full snapshot. The DSL grammar
+    itself still rejects empty input (golden-locked with the TS port)."""
+    if not query or not query.strip():
+        return "TRUE", []
+    return compile_query(parse(query), whitelist)
+
+
 def screen(
     con: duckdb.DuckDBPyConnection,
     query: str,
@@ -25,7 +33,7 @@ def screen(
     limit: int = 100,
     offset: int = 0,
 ) -> pd.DataFrame:
-    where, params = compile_query(parse(query), whitelist)
+    where, params = _compile_where(query, whitelist)
     order = compile_sort(sort, whitelist)
     if not isinstance(limit, int) or not isinstance(offset, int) or limit < 0 or offset < 0:
         raise DslError("limit and offset must be non-negative integers")
@@ -35,7 +43,7 @@ def screen(
 
 
 def screen_count(con: duckdb.DuckDBPyConnection, query: str, *, whitelist: set[str]) -> int:
-    where, params = compile_query(parse(query), whitelist)
+    where, params = _compile_where(query, whitelist)
     return con.execute(f"SELECT count(*) FROM snapshot_latest WHERE {where}", params).fetchone()[0]
 
 

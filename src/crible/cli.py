@@ -43,9 +43,7 @@ def _resolve_query(query: str | None, preset: str | None) -> str:
         if preset not in PRESETS:
             _fail(f"unknown preset {preset!r} — available: {', '.join(sorted(PRESETS))}")
         return PRESETS[preset].dsl
-    if not query:
-        _fail("provide a DSL query or --preset — e.g. crible screen \"piotroski_f >= 7\"")
-    return query
+    return query or ""  # no query = no filter: screen the full snapshot
 
 
 @app.command()

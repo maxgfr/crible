@@ -116,7 +116,10 @@ export function createStaticClient(options: StaticClientOptions = {}): DataClien
   ): Promise<{ rows: Record<string, unknown>[]; total: number }> => {
     const fields = await whitelist();
     try {
-      const [where, params] = compileQuery(parse(query), fields);
+      // blank query = no filter (the grammar itself rejects empty input)
+      const [where, params] = query.trim()
+        ? compileQuery(parse(query), fields)
+        : (["TRUE", []] as [string, (number | string)[]]);
       const order = compileSort(sort, fields);
       const r = await runner();
       const rows = await r.query(

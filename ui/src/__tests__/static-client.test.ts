@@ -103,6 +103,16 @@ describe("static client — screen", () => {
     expect(select?.sql).toContain("LIMIT 100 OFFSET 200");
   });
 
+  it("screens the full snapshot when the query is blank — no filter", async () => {
+    const { runner, calls } = scriptedRunner();
+    const result = await makeClient(runner).screen("   ", null, 1, 500);
+    expect(result.total).toBe(2);
+    expect(result.rows).toHaveLength(2);
+    const select = calls.find((c) => c.sql.includes("SELECT * FROM snapshot_latest"));
+    expect(select?.sql).toContain("WHERE TRUE");
+    expect(select?.params).toEqual([]);
+  });
+
   it("throws the same DslApiError detail shape as the API", async () => {
     const { runner } = scriptedRunner();
     const client = makeClient(runner);

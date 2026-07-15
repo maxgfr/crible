@@ -10,7 +10,7 @@ from hypothesis import strategies as st
 
 from crible.dsl.compiler import compile_query
 from crible.dsl.parser import DslError, parse
-from crible.store import screen
+from crible.store import screen, screen_count
 
 WHITELIST = {
     "symbol", "name", "country", "region", "sector", "exchange",
@@ -41,6 +41,18 @@ def make_con() -> duckdb.DuckDBPyConnection:
 
 
 # --------------------------------------------------------------- correctness
+
+
+def test_fr004_blank_query_means_no_filter() -> None:
+    """A blank query screens the whole snapshot. The grammar itself still
+    rejects empty input (golden-locked with the TS port) — the no-filter
+    mapping lives in the screening layer, not the parser."""
+    con = make_con()
+    for blank in ("", "   "):
+        assert len(screen(con, blank, whitelist=WHITELIST, limit=10, offset=0)) == 5
+        assert screen_count(con, blank, whitelist=WHITELIST) == 5
+    with pytest.raises(DslError):
+        parse("")
 
 
 def test_fr004_filters_sorts_and_paginates_exactly() -> None:

@@ -52,6 +52,12 @@ def test_fr006_post_screen_returns_rows_total_and_timing(client) -> None:
     assert body["tookMs"] >= 0
 
 
+def test_fr006_blank_query_screens_the_full_snapshot(client) -> None:
+    response = client.post("/api/screen", json={"query": ""})
+    assert response.status_code == 200
+    assert response.json()["total"] == 4
+
+
 def test_fr006_dsl_error_is_422_with_position_and_hint_never_5xx(client) -> None:
     response = client.post("/api/screen", json={"query": "piotroski > 7"})
     assert response.status_code == 422
