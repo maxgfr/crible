@@ -7,12 +7,22 @@ description: Use when the user wants to screen stocks OR operate the crible scre
 
 Inside the repo, run every command with `uv run crible …` (run `uv sync` once
 if the environment is missing). Outside the repo, crible is an installable
-tool: `uv tool install git+https://github.com/maxgfr/crible` gives a global
-`crible` command (or one-shot `uvx --from git+https://github.com/maxgfr/crible crible …`).
+tool — uv auto-provisions the required Python 3.12, and `bootstrap` pulls the
+FULL published dataset (zero crawl), so three commands stand up a working
+screener anywhere:
+
+```bash
+uv tool install git+https://github.com/maxgfr/crible
+crible --data-dir ~/crible-data bootstrap
+crible --data-dir ~/crible-data screen "piotroski_f >= 7" --sort -composite_rank
+```
+
+(One-shot alternative: `uvx --from git+https://github.com/maxgfr/crible crible …`.)
 
 The global `--data-dir` option (before the subcommand) selects the dataset
-location: `crible --data-dir ~/crible-data screen "…"`. Default:
-`$CRIBLE_DATA_DIR`, else `./data`.
+location. Default: `$CRIBLE_DATA_DIR`, else `./data` **relative to the
+current directory** — outside the repo, ALWAYS pass `--data-dir` (or export
+`CRIBLE_DATA_DIR`) so bootstrap and screen see the same dataset.
 
 ## 0. Make sure data exists
 
@@ -47,6 +57,8 @@ market cap → `market_cap`, dividend yield → `weighted_dividend_yield`.
 `field op value`, combined with `AND` / `OR` / `NOT` and parentheses.
 Operators: `> >= < <= = != <>` and `field IN (v1, v2, …)`.
 Strings are single-quoted: `country = 'FR'`. Numbers are bare: `piotroski_f >= 7`.
+**A blank query is valid and means NO filter** — `crible screen "" --sort
+-composite_rank` screens the whole covered universe (the hosted UI's default).
 
 ```bash
 uv run crible screen "piotroski_f >= 7 AND country IN ('FR','DE')" \
@@ -65,9 +77,30 @@ comma-separated for multi-key (`--sort "country,-piotroski_f"`).
 - **Scores**: `piotroski_f` is 0–9 (≥7 strong); `altman_z` > 2.99 = safe zone,
   < 1.81 = distress; `beneish_m` > **-1.78** flags possible earnings
   manipulation (so `beneish_m < -1.78` selects the clean ones).
+- **Distress & forensics (newer)**: `zmijewski_score` and `ohlson_o` < 0 =
+  safe (> 0 = modelled distress); `montier_c` counts 0–6 red flags (≤1 clean);
+  `dechow_f` < 1 = below-normal misstatement risk, ≥ 1.85 substantial;
+  `mohanram_g` is a PARTIAL 0–6 growth-quality score (6 of the paper's 8
+  signals — no published cutoff transfers).
+- **GARP & cash**: `peg_ratio` (positive-only; ≤ 1 = growth at a reasonable
+  price), `rule_of_40` (revenue growth + FCF margin, ≥ 0.4 passes),
+  `shareholder_yield` (dividends + net buybacks / market cap),
+  `sloan_accruals` (lower/negative is better), `cash_conversion_cycle` (days,
+  lower is better — negative means suppliers finance operations).
+- **TTM**: `ttm_revenue`/`ttm_net_income`/`ttm_operating_cashflow`/
+  `ttm_free_cash_flow` + `price_to_earnings_ttm`/`price_to_sales_ttm`/
+  `ttm_fcf_yield` — the last four discrete quarters (crawled symbols +
+  audited US issuers reporting discrete 10-Q quarters).
+- **Momentum (price-derived, latest period)**: `return_6m`, `return_12_1`
+  (12-month skipping the last month), `high_52w_proximity` (1.0 = at the
+  52-week high), `volatility_1y` (annualized).
 - **Ranks** (`composite_rank`, `quality_rank`, `value_rank`, `momentum_rank`)
   are 0–100 percentiles within region×sector peer groups; `return_6m` is the
   momentum input (decimal).
+- **3-year trajectory**: `revenue_cagr_3y` / `net_income_cagr_3y` (compound,
+  decimals; `peg_ratio` divides by exactly the latter).
+- The list above is a compass, not a catalog — `crible fields` prints every
+  filterable column.
 - **Identity fields**: `country` is ISO-2 uppercase (`'FR'`), `region` is one
   of `'europe' | 'us' | 'world'`, `sector` is GICS-like
   (`'Information Technology'`, `'Health Care'`, …).
@@ -121,7 +154,9 @@ uv run crible refresh --deadline 9000   # keyless pass: ESEF + EDGAR enrich, sel
 Flags: `--edgar-bulk` (download companyfacts.zip ~1.4 GB and ingest ALL
 resolved US issuers), `--fsds-quarters N` (backfill deep US history from the N
 most recent SEC FSDS quarters), `--esef-limit` / `--edgar-limit` (per-run
-caps, default 25), `--no-fetch-gleif` / `--no-fetch-fx` (skip those steps).
+caps, default 25), `--no-fetch-gleif` / `--no-fetch-fx` (skip those steps),
+`--max-minutes N` (WHOLE-RUN wall-clock guard: enrichment stages stop early so
+compute+publish always run; partial passes resume next run; 0 = unbounded).
 
 **Prices (dump-based, no API):**
 ```bash
@@ -143,3 +178,14 @@ uv run crible export-site --out site-data --min-symbols 50   # write the static 
 `docker compose up` runs the continuous crawl+compute loop as a service.
 After any raw change, `crible compute` is what refreshes ratios/ranks. Check
 `price_asof` in results — staleness is reported honestly, never imputed.
+
+## 6. Use from agents (MCP)
+
+`crible mcp` serves a READ-ONLY MCP tool surface over stdio — `screen`
+(the same DSL; blank = whole universe), `fields`, `presets`, `company`,
+`status`. No crawl/refresh tool is exposed. Register it in Claude Code after
+bootstrap:
+
+```bash
+claude mcp add crible -e CRIBLE_DATA_DIR=$HOME/crible-data -- crible mcp
+```

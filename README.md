@@ -67,22 +67,31 @@ freshness and provider health.
 
 ### Standalone CLI — no clone needed
 
-crible is a regular Python CLI (`[project.scripts]`); install it as a tool and run it anywhere:
+crible is a regular Python CLI (`[project.scripts]`); install it as a tool and run it anywhere
+(uv auto-provisions the required Python 3.12):
 
 ```bash
 uv tool install git+https://github.com/maxgfr/crible    # or one-shot: uvx --from git+https://github.com/maxgfr/crible crible …
-crible --data-dir ~/crible-data bootstrap                # pull the published dataset
+crible --data-dir ~/crible-data bootstrap                # pull the FULL published dataset — no crawl
 crible --data-dir ~/crible-data screen "price_to_earnings_ratio <= 15 AND region = 'europe'"
 crible --data-dir ~/crible-data fields                   # every filterable column + type
 ```
 
-`--data-dir` (or `CRIBLE_DATA_DIR`) selects the dataset location; the default is `./data`.
+`--data-dir` (or `CRIBLE_DATA_DIR`) selects the dataset location; the default is `./data`
+relative to the current directory — outside a clone, always pass it.
+
+Agents can screen through MCP — a read-only tool surface (`screen`, `fields`, `presets`,
+`company`, `status`) over stdio:
+
+```bash
+claude mcp add crible -e CRIBLE_DATA_DIR=$HOME/crible-data -- crible mcp
+```
 
 ### Start with data — zero crawl
 
-The nightly refresh publishes its open dataset twice: as assets on the rolling
-[`data-latest` release](https://github.com/maxgfr/crible/releases/tag/data-latest) and on the
-`data` branch. A fresh install can pull it and screen immediately:
+The nightly refresh publishes its open dataset as assets on the rolling
+[`data-latest` release](https://github.com/maxgfr/crible/releases/tag/data-latest).
+A fresh install can pull it and screen immediately:
 
 ```bash
 uv run crible bootstrap                      # data/ restored from the published dataset

@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased — 2026-07-15 (v3: synthesis & charts, TTM v2, MCP)
+
+- **Deterministic synthesis at the top of the company drawer** — the
+  composite-rank hero with five percentile rank bars and a Piotroski
+  sparkline, per-family verdict counters (solvency & forensics / value /
+  cash) and up to six attention points with in-drawer jump buttons — all
+  computed from the single `verdictKind` threshold table, never generated.
+- **Hand-rolled trend charts** — Revenue (bars), Net income & FCF and Margins
+  (lines) under the Statements table; one scale per chart, null = honest gap,
+  per-period hover tooltips; three new `--color-series-*` tokens validated by
+  the dataviz six-checks script on both themes.
+- **TTM v2 — audited quarters** — `edgar.facts_to_frames` emits DISCRETE
+  70–100-day quarterly frames (10-Qs + the Q4 re-reported inside 10-Ks; YTD
+  dropped, never differenced); the snapshot prefers audited quarters over
+  scraped and never mixes sources in a window.
+- **Audited reach** — EDGAR concept map gains short-term investments (Dechow
+  inputs on reconciled symbols) and the pretax-income tags (EBIT derivation →
+  Altman x3 / Greenblatt / interest coverage for audited-only US symbols).
+- **3-year CAGR columns** (`revenue_cagr_3y`, `net_income_cagr_3y`) — the
+  smoothed trajectory as filterable columns; `peg_ratio` now divides by
+  exactly the published earnings CAGR. Engine schema 7.
+- **MCP server** — `crible mcp` serves a read-only stdio tool surface
+  (`screen`/`fields`/`presets`/`company`/`status`) over the shared Runtime;
+  registration documented for Claude Code. `mcp` joins the core deps.
+- **Docs** — the crible-cli skill catches up (blank query, `--max-minutes`,
+  the v2/v3 indicator families, the uv install path, MCP); the stale home
+  copy documenting the removed `demo-refresh` is replaced.
+
 ## Unreleased — 2026-07-15 (v2: indicators, pipeline hardening, coverage)
 
 - **Six quick-win indicators** — cash conversion cycle + operating cycle
