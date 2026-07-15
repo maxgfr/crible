@@ -234,6 +234,7 @@ function mockPresetColumnsApi() {
             rows: [{
               symbol: "AIR.PA", name: "Airbus", country: "FR", sector: "Industrials",
               composite_rank: 91, quality_rank: 88, piotroski_f: 8, fcf_margin: 0.12,
+              market_cap_growth: null, // always-NaN column — must stay hidden
             }],
             total: 1, page: 1, tookMs: 1,
           }),
@@ -319,6 +320,15 @@ describe("presets popover", () => {
       expect(rtl.getByRole("button", { name: /^FCF margin/ })).toBeInTheDocument());
     // union path: never removes what was already visible
     expect(rtl.getByRole("button", { name: /^Piotroski F/ })).toBeInTheDocument();
+  });
+
+  it("the column picker never offers hidden (always-NaN / duplicate) columns", async () => {
+    mockPresetColumnsApi();
+    render(<App />);
+    await waitFor(() => expect(rtl.getAllByText("AIR.PA").length).toBeGreaterThan(0));
+    fireEvent.click(rtl.getByRole("button", { name: /^Columns/ }));
+    expect(rtl.getByText("fcf_margin")).toBeInTheDocument(); // real column offered
+    expect(rtl.queryByText("market_cap_growth")).not.toBeInTheDocument();
   });
 
   it("saves and deletes a custom preset inline", async () => {

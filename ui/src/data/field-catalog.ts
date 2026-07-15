@@ -137,6 +137,33 @@ export const STARTER_FILTERS: StarterFilter[] = [
   { field: "country", op: "=", value: "" },
 ];
 
+// Columns the published snapshot may still carry but the UI must not offer:
+// the price-based ratios' _growth companions are always NaN (price applies
+// to the latest period only, so pct_change never resolves), and
+// net_current_asset_value duplicates ncav. They stay hand-queryable — the
+// compiler whitelist is untouched; the engine stops generating them, which
+// retires this list once the published data catches up.
+export const HIDDEN_FIELDS = new Set([
+  "earnings_yield_growth",
+  "free_cash_flow_yield_growth",
+  "ev_to_ebit_growth",
+  "ev_to_ebitda_ratio_growth",
+  "ev_to_operating_cashflow_ratio_growth",
+  "ev_to_sales_ratio_growth",
+  "market_cap_growth",
+  "price_to_book_ratio_growth",
+  "price_to_cash_flow_ratio_growth",
+  "price_to_earnings_ratio_growth",
+  "price_to_free_cash_flow_ratio_growth",
+  "weighted_dividend_yield_growth",
+  "net_current_asset_value",
+  "net_current_asset_value_growth",
+]);
+
+export function isHiddenField(name: string): boolean {
+  return HIDDEN_FIELDS.has(name);
+}
+
 export function fieldLabel(name: string): string {
   return CATALOG[name]?.label ?? name.replaceAll("_", " ");
 }

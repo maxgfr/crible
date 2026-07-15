@@ -31,6 +31,7 @@ import { SearchBox } from "./components/SearchBox";
 import { StatusView } from "./components/StatusView";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { Wordmark } from "./components/Wordmark";
+import { isHiddenField } from "./data/field-catalog";
 import { fieldsInQuery } from "./dsl/fields";
 import { pushQueryHistory } from "./query-history";
 import { hashFor, parseHash, useHashRoute } from "./router";
@@ -151,7 +152,7 @@ export default function App() {
   useEffect(() => {
     runScreen(route.q ?? DEFAULT_QUERY, route.sort, 1);
     fields()
-      .then(setFieldInfos)
+      .then((fs) => setFieldInfos(fs.filter((f) => !isHiddenField(f.name))))
       .catch(() => {});
     status()
       .then((s) => {
@@ -196,7 +197,10 @@ export default function App() {
   }, [route]);
 
   const availableColumns = useMemo(
-    () => (result?.rows.length ? Object.keys(result.rows[0]) : DEFAULT_COLUMNS),
+    () =>
+      result?.rows.length
+        ? Object.keys(result.rows[0]).filter((c) => !isHiddenField(c))
+        : DEFAULT_COLUMNS,
     [result],
   );
   // symbol is the row's identity (and its keyboard path into the drawer) —

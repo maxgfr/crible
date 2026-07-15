@@ -4,7 +4,7 @@
 import { render, screen as rtl, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ResultsGrid } from "../components/ResultsGrid";
-import { GROUP_ORDER, STARTER_FILTERS, fieldGroup, fieldLabel } from "../data/field-catalog";
+import { GROUP_ORDER, STARTER_FILTERS, fieldGroup, fieldLabel, isHiddenField } from "../data/field-catalog";
 
 // the drawer pulls its data through ../data; mock it (and PriceChart, which
 // otherwise reaches for the price series) with a single self-contained company
@@ -64,6 +64,17 @@ describe("new scores — field catalog", () => {
     // magic_formula_rank belongs to Value, NOT Ranks, despite the _rank suffix
     expect(fieldGroup("magic_formula_rank")).toBe("Value");
     expect(GROUP_ORDER).toContain("Value");
+  });
+
+  it("hides the always-NaN price-ratio growths and the ncav duplicate", () => {
+    // price applies to the latest period only — these growths never resolve
+    expect(isHiddenField("market_cap_growth")).toBe(true);
+    expect(isHiddenField("price_to_earnings_ratio_growth")).toBe(true);
+    expect(isHiddenField("weighted_dividend_yield_growth")).toBe(true);
+    expect(isHiddenField("net_current_asset_value")).toBe(true); // ≡ ncav
+    // real growth columns and the canonical ncav stay offered
+    expect(isHiddenField("revenue_growth")).toBe(false);
+    expect(isHiddenField("ncav")).toBe(false);
   });
 
   it("ships the new starter chips", () => {
