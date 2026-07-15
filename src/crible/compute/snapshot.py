@@ -18,6 +18,7 @@ from crible.compute.extras import compute_extras
 from crible.compute.momentum import FEATURE_COLUMNS as MOMENTUM_COLUMNS
 from crible.compute.momentum import bars_features
 from crible.compute.ranks import attach_ranks
+from crible.compute.ttm import TTM_COLUMNS, ttm_from_quarterly, ttm_ratios
 from crible.compute.ratios import RATIO_DENYLIST, compute_ratios, price_dependent_ratio_columns
 from crible.compute.scores import all_scores
 from crible.ingest.raw import iter_raw_files
@@ -107,6 +108,21 @@ def build_symbol_snapshot(
             value = features.get(col, float("nan"))
             if pd.isna(value) and quote_features is not None:
                 value = quote_features.get(col, float("nan"))
+            out.iloc[-1, out.columns.get_loc(col)] = value
+    # TTM v1 — the last four quarters summed onto the latest row (columns,
+    # not rows). Scraped frames only: the audited providers are annual-only.
+    for col in TTM_COLUMNS:
+        out[col] = float("nan")
+    if len(out):
+        ttm = ttm_from_quarterly(frames)
+        latest_price = price.iloc[-1] if price is not None else float("nan")
+        latest_shares = canonical["shares_outstanding"].iloc[-1]
+        market_cap_latest = (
+            float(latest_price) * float(latest_shares)
+            if pd.notna(latest_price) and pd.notna(latest_shares)
+            else float("nan")
+        )
+        for col, value in {**ttm, **ttm_ratios(ttm, market_cap_latest)}.items():
             out.iloc[-1, out.columns.get_loc(col)] = value
     out.insert(0, "symbol", symbol)
     out.insert(1, "period", out.index.astype(str))
@@ -268,7 +284,8 @@ BASE_SCHEMA_NAME = "base-schema.json"
 # 3: momentum trio (return_12_1, high_52w_proximity, volatility_1y)
 # 4: Mohanram G (partial 6/8) — inputs + peer-relative signals + score
 # 5: Dechow F-Score (Model 1 accounting core) — 7 components + F
-ENGINE_SCHEMA_VERSION = 5
+# 6: TTM v1 — quarterly flow sums + P/E·P/S·FCF-yield (TTM) on the latest row
+ENGINE_SCHEMA_VERSION = 6
 
 
 def _newest_raw_stamp(data_dir: Path | str, symbol: str) -> float:

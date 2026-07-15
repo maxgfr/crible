@@ -100,6 +100,11 @@ const GROWTH_FIELDS = [
 ];
 // price-derived, latest period only (never back-dated) — one shared rule
 const MOMENTUM_FIELDS = ["return_6m", "return_12_1", "high_52w_proximity", "volatility_1y"];
+// trailing 12 months — quarterly sums + price ratios, crawled tier only
+const TTM_FIELDS = [
+  "ttm_revenue", "ttm_net_income", "ttm_operating_cashflow", "ttm_free_cash_flow",
+  "price_to_earnings_ttm", "price_to_sales_ttm", "ttm_fcf_yield",
+];
 
 // provenance ends at the SOURCE, not at a provider string: link the place
 // the numbers actually come from (the audited filings when the layer is
@@ -356,6 +361,27 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                   ))}
                 </tbody>
               </table>
+              {detail.periods[0].ttm_revenue != null && (
+                <>
+                  <h3>TTM — trailing 12 months</h3>
+                  <table>
+                    <tbody>
+                      {TTM_FIELDS.map((field) => (
+                        <tr key={field}>
+                          <td>{fieldLabel(field)}</td>
+                          <td>
+                            <Val column={field} value={detail.periods[0][field]} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="meta">
+                    Last four reported quarters — fresher than the fiscal-year rows above;
+                    covered for crawled symbols only.
+                  </p>
+                </>
+              )}
               <h3>Scores — full breakdown</h3>
               <table>
                 <tbody>

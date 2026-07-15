@@ -33,6 +33,10 @@ const CATALOG: Record<string, CatalogEntry> = {
   operating_cashflow: { label: "Operating cash flow", group: "Fundamentals" },
   free_cash_flow: { label: "Free cash flow", group: "Fundamentals" },
   shares_outstanding: { label: "Shares outstanding", group: "Fundamentals" },
+  ttm_revenue: { label: "Revenue (TTM)", group: "Fundamentals" },
+  ttm_net_income: { label: "Net income (TTM)", group: "Fundamentals" },
+  ttm_operating_cashflow: { label: "OCF (TTM)", group: "Fundamentals" },
+  ttm_free_cash_flow: { label: "FCF (TTM)", group: "Fundamentals" },
   // valuation (column names verified against the published snapshot schema)
   market_cap: { label: "Market cap", group: "Valuation" },
   price_to_earnings_ratio: { label: "P/E", group: "Valuation" },
@@ -46,6 +50,9 @@ const CATALOG: Record<string, CatalogEntry> = {
   weighted_dividend_yield: { label: "Dividend yield", group: "Valuation" },
   peg_ratio: { label: "PEG (3y)", group: "Valuation" },
   shareholder_yield: { label: "Shareholder yield", group: "Valuation" },
+  price_to_earnings_ttm: { label: "P/E (TTM)", group: "Valuation" },
+  price_to_sales_ttm: { label: "P/S (TTM)", group: "Valuation" },
+  ttm_fcf_yield: { label: "FCF yield (TTM)", group: "Valuation" },
   // profitability & health
   return_on_equity: { label: "ROE", group: "Profitability" },
   return_on_assets: { label: "ROA", group: "Profitability" },
