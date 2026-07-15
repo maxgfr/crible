@@ -367,6 +367,89 @@ def test_fr003_greenblatt_undefined_on_nonpositive_capital_or_ev() -> None:
     assert pd.isna(out["greenblatt_earnings_yield"])   # enterprise value ≤ 0 → undefined
 
 
+# ------------------------------------------------- quick-win indicators (C1)
+
+
+def _quickwin_canonical() -> pd.DataFrame:
+    """Four periods, hand-pickable numbers: revenue +10%/y, NI CAGR exactly
+    10% over 3 years (1.331^(1/3) = 1.1), flat balance-sheet items."""
+    from crible.compute.canonical import CANONICAL_FIELDS
+
+    periods = ["2022", "2023", "2024", "2025"]
+    base: dict[str, list[float]] = {f: [float("nan")] * 4 for f in CANONICAL_FIELDS}
+    base.update(
+        {
+            "revenue": [1000.0, 1100.0, 1210.0, 1331.0],
+            "cost_of_goods_sold": [600.0, 660.0, 726.0, 798.6],
+            "net_income": [100.0, 110.0, 121.0, 133.1],
+            "operating_cashflow": [120.0, 130.0, 140.0, 150.0],
+            "free_cash_flow": [100.0, 105.0, 110.0, 115.0],
+            "total_assets": [1000.0, 1000.0, 1000.0, 1000.0],
+            "inventory": [100.0] * 4,
+            "accounts_receivable": [50.0] * 4,
+            "accounts_payable": [80.0] * 4,
+            "dividends_paid": [-40.0, -44.0, -48.0, -52.0],
+            "shares_outstanding": [110.0, 110.0, 110.0, 100.0],
+            "total_equity": [500.0] * 4,
+            "total_debt": [200.0] * 4,
+            "cash_and_equivalents": [50.0] * 4,
+            "earnings_before_interest_and_taxes": [150.0] * 4,
+            "working_capital": [70.0] * 4,
+            "net_ppe": [300.0] * 4,
+        }
+    )
+    return pd.DataFrame(base, index=pd.Index(periods, name="period"))
+
+
+def test_fr003_quick_win_extras_are_analytically_exact() -> None:
+    canonical = _quickwin_canonical()
+    price = pd.Series([float("nan")] * 3 + [10.0], index=canonical.index)
+    out = compute_extras(canonical, price).loc["2025"]
+
+    # Rule of 40 = revenue growth + FCF margin
+    assert out["rule_of_40"] == pytest.approx(1331 / 1210 - 1 + 115 / 1331)
+    # Sloan accruals = (NI − OCF) / average TA — cash-rich earnings go negative
+    assert out["sloan_accruals"] == pytest.approx((133.1 - 150.0) / 1000.0)
+    # PEG = P/E over the 3y CAGR in % : (1000/133.1) / (10)
+    assert out["peg_ratio"] == pytest.approx((1000.0 / 133.1) / 10.0)
+    # shareholder yield = (dividends + buyback value) / market cap
+    assert out["shareholder_yield"] == pytest.approx((52.0 + 10.0 * 10.0) / 1000.0)
+
+    # price applies to the LATEST period only — older rows stay NaN
+    earlier = compute_extras(canonical, price).loc["2024"]
+    assert pd.isna(earlier["peg_ratio"]) and pd.isna(earlier["shareholder_yield"])
+
+
+def test_fr003_peg_undefined_for_shrinking_or_negative_earnings() -> None:
+    canonical = _quickwin_canonical()
+    canonical["net_income"] = [133.1, 121.0, 110.0, 100.0]  # shrinking → no PEG
+    price = pd.Series([float("nan")] * 3 + [10.0], index=canonical.index)
+    assert pd.isna(compute_extras(canonical, price).loc["2025", "peg_ratio"])
+
+    canonical["net_income"] = [-50.0, -40.0, -30.0, -20.0]  # negative → no PEG
+    assert pd.isna(compute_extras(canonical, price).loc["2025", "peg_ratio"])
+
+
+def test_fr003_reflection_wires_cycle_payout_and_roic() -> None:
+    from crible.compute.ratios import compute_ratios
+
+    canonical = _quickwin_canonical()
+    ratios = compute_ratios(canonical)
+    row = ratios.loc["2025"]
+
+    # CCC = DIO + DSO − DPO from the same published day components
+    dio = 365 * 100.0 / 798.6
+    dso = 365 * 50.0 / 1331.0
+    dpo = 365 * 80.0 / 798.6
+    assert row["cash_conversion_cycle"] == pytest.approx(dio + dso - dpo)
+    assert row["operating_cycle"] == pytest.approx(dio + dso)
+    assert row["dividend_payout_ratio"] == pytest.approx(52.0 / 133.1)
+    assert row["return_on_invested_capital"] == pytest.approx((133.1 - 52.0) / (500.0 + 200.0))
+    # the dividends alias must NOT wire the bogus total-dividends yield
+    assert "dividend_yield" not in ratios.columns
+    assert "dividend_capex_coverage_ratio" not in ratios.columns
+
+
 # ------------------------------------------------------------------- snapshot
 
 

@@ -86,6 +86,10 @@ def test_fr009_running_a_preset_is_byte_for_byte_its_dsl() -> None:
             "fcf_margin": [0.09, 0.01, 0.12],
             "fcf_conversion": [1.1, 0.4, 1.3],
             "dividend_coverage": [2.5, 0.8, 3.0],
+            "rule_of_40": [0.45, 0.1, 0.52],
+            "peg_ratio": [0.8, 2.5, 0.6],
+            "shareholder_yield": [0.07, 0.01, 0.09],
+            "sloan_accruals": [-0.02, 0.12, -0.05],
         }
     )
     con.register("snapshot_latest", frame)

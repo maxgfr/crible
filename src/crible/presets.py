@@ -150,6 +150,34 @@ _PRESETS = [
         columns=("dividend_coverage", "weighted_dividend_yield", "fcf_margin", "net_income"),
     ),
     Preset(
+        id="rule-of-40",
+        name="Rule of 40",
+        description="Growth + FCF margin over 40% — the SaaS heuristic, cash-based variant",
+        dsl="rule_of_40 >= 0.4",
+        columns=("rule_of_40", "revenue_growth", "fcf_margin", "market_cap"),
+    ),
+    Preset(
+        id="garp",
+        name="GARP (PEG ≤ 1)",
+        description="Growth at a reasonable price: P/E under the 3-year earnings CAGR (Lynch)",
+        dsl="peg_ratio > 0 AND peg_ratio <= 1",
+        columns=("peg_ratio", "price_to_earnings_ratio", "net_income_growth", "market_cap"),
+    ),
+    Preset(
+        id="shareholder-yield",
+        name="Shareholder yield",
+        description="Dividends plus net buybacks over 5% of market cap — cash actually returned",
+        dsl="shareholder_yield >= 0.05",
+        columns=("shareholder_yield", "weighted_dividend_yield", "dividend_payout_ratio", "market_cap"),
+    ),
+    Preset(
+        id="low-accruals",
+        name="Low accruals",
+        description="Earnings backed by cash: Sloan accruals at or below 5% of average assets",
+        dsl="sloan_accruals <= 0.05",
+        columns=("sloan_accruals", "income_quality_ratio", "fcf_conversion", "beneish_m"),
+    ),
+    Preset(
         id="all-indicators",
         name="All indicators",
         description=(

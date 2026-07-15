@@ -49,6 +49,9 @@ export function formatCell(column: string, value: unknown): FormattedCell {
     if (column === "fcf_conversion") return verdict(text, value < 1 ? "warn" : "");
     if (column === "dividend_coverage")
       return verdict(text, value >= 2 ? "good" : value < 1 ? "bad" : "");
+    if (column === "rule_of_40") return verdict(text, value >= 0.4 ? "good" : "");
+    // Lynch's GARP threshold — only a POSITIVE peg ≤ 1 passes
+    if (column === "peg_ratio") return verdict(text, value > 0 && value <= 1 ? "good" : "");
     if (column.endsWith("_growth")) {
       const goodWhenUp = !INVERTED_GROWTH.has(column);
       return {

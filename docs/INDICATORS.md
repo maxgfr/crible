@@ -31,6 +31,13 @@ imputée** ; la colonne `missing_inputs` du snapshot nomme les champs absents.
 | `fcf_margin` | FCF / revenue | ~unbounded | higher · plus haut | — |
 | `fcf_conversion` | FCF / net income | ~unbounded | higher · plus haut | `< 1` → weak cash conversion |
 | `dividend_coverage` | net income / dividends | ~unbounded | higher · plus haut | `< 1` → dividend not covered |
+| `cash_conversion_cycle` | DIO + DSO − DPO (days) | ~unbounded | lower · plus bas | — |
+| `dividend_payout_ratio` | dividends / net income | ≥ 0 | context | — |
+| `return_on_invested_capital` | (NI − div) / invested capital | ~unbounded | higher · plus haut | — |
+| `rule_of_40` | revenue growth + FCF margin | ~unbounded | higher · plus haut | `>= 0.4` → passes the rule |
+| `sloan_accruals` | (NI − OCF) / avg assets | ~unbounded | lower · plus bas | — |
+| `peg_ratio` | P/E ÷ 3y EPS CAGR (%) | > 0 | lower · plus bas | `<= 1` → growth at a reasonable price |
+| `shareholder_yield` | (dividends + net buybacks) / mkt cap | ~unbounded | higher · plus haut | — |
 
 Direction reminder: distress and manipulation scores are **risk** measures (lower is
 safer); value and quality metrics are **opportunity** measures (higher is better).
@@ -313,6 +320,146 @@ gagne (puisé dans les réserves ou la dette — risque de soutenabilité). Les 
 > **Caveat · Nuance** — Coverage is measured on net income, not free cash flow; a cash-based
 > payout ratio would use `free_cash_flow`. · La couverture est mesurée sur le résultat net, pas
 > le free cash flow ; un ratio basé cash utiliserait `free_cash_flow`.
+
+---
+
+## 10. Cash conversion cycle — `cash_conversion_cycle` (+ `operating_cycle`)
+
+**Formula**
+
+```
+DIO = 365 · average_inventory / cost_of_goods_sold
+DSO = 365 · average_accounts_receivable / revenue
+DPO = 365 · average_accounts_payable / cost_of_goods_sold
+cash_conversion_cycle = DIO + DSO − DPO          operating_cycle = DIO + DSO
+```
+
+**EN** — How many days cash is trapped in the working-capital loop: inventory sits, customers
+pay late, suppliers get paid. Lower is better; a NEGATIVE cycle (retailers, marketplaces) means
+suppliers finance the operations. Computed from the same published `days_of_*` components, so
+the composite can never diverge from its displayed inputs.
+
+**FR** — Combien de jours le cash reste piégé dans le cycle d'exploitation : les stocks dorment,
+les clients paient tard, les fournisseurs sont réglés. Plus bas = mieux ; un cycle NÉGATIF
+(distribution, places de marché) signifie que les fournisseurs financent l'exploitation. Calculé
+depuis les mêmes composantes `days_of_*` publiées — le composite ne peut pas diverger de ses
+entrées affichées.
+
+> **Caveat · Nuance** — Averages need a prior year: the first period is `NaN`. Compare within a
+> sector — cycles are structural. · Les moyennes exigent l'exercice précédent : la première
+> période est `NaN`. À comparer au sein d'un secteur — les cycles sont structurels.
+
+---
+
+## 11. Dividend payout & ROIC — `dividend_payout_ratio`, `return_on_invested_capital`
+
+**Formula**
+
+```
+dividend_payout_ratio = |dividends_paid| / net_income
+return_on_invested_capital = (net_income − |dividends_paid|) / (average_total_equity + average_total_debt)
+```
+
+**EN** — The payout ratio is the inverse view of `dividend_coverage` (a payout of 0.5 = coverage
+of 2): what share of earnings is distributed. ROIC measures what retained earnings earn on the
+capital actually invested (equity + debt, averaged).
+
+**FR** — Le payout est la vue inverse de `dividend_coverage` (payout 0,5 = couverture 2) : la
+part du résultat distribuée. Le ROIC mesure ce que les bénéfices conservés rapportent sur le
+capital réellement investi (fonds propres + dette, moyennés).
+
+---
+
+## 12. Rule of 40 — `rule_of_40`
+
+**Formula**
+
+```
+rule_of_40 = revenue_growth (YoY) + fcf_margin
+```
+
+**EN** — The SaaS heuristic (Feld, 2015) generalized: growth and profitability are exchangeable,
+their sum should exceed 40 % (`>= 0.4`). A company growing 50 % may burn 10 % of revenue; a
+mature one growing 5 % should convert 35 %+ into free cash flow. Here it uses the FCF-margin
+variant — the strictest, cash-based one.
+
+**FR** — L'heuristique SaaS (Feld, 2015) généralisée : croissance et rentabilité s'échangent,
+leur somme doit dépasser 40 % (`>= 0.4`). Une société qui croît de 50 % peut brûler 10 % du
+chiffre d'affaires ; une société mature à 5 % de croissance doit en convertir 35 %+ en free cash
+flow. Variante FCF-margin — la plus stricte, basée cash.
+
+> **Caveat · Nuance** — Designed for software/recurring-revenue models; read it as noise for
+> banks, insurers and cyclicals. · Conçue pour les modèles logiciels/récurrents ; à considérer
+> comme du bruit pour banques, assureurs et cycliques.
+
+---
+
+## 13. Sloan accruals — `sloan_accruals`
+
+**Formula**
+
+```
+sloan_accruals = (net_income − operating_cashflow) / average_total_assets
+```
+
+**EN** — The accrual anomaly (Sloan, 1996): earnings not backed by operating cash are the
+least persistent part of profit, and high-accrual firms historically underperform. Lower —
+ideally negative — is better. Deliberately deflated by AVERAGE total assets per the paper,
+unlike `beneish_tata` which uses ending assets (both are published; they answer at different
+granularities).
+
+**FR** — L'anomalie des accruals (Sloan, 1996) : les bénéfices non adossés au cash
+d'exploitation sont la part la moins persistante du profit, et les sociétés à accruals élevés
+sous-performent historiquement. Plus bas — idéalement négatif — c'est mieux. Déflaté par le
+total d'actifs MOYEN conformément au papier, contrairement à `beneish_tata` qui utilise l'actif
+de clôture (les deux sont publiés ; ils répondent à des granularités différentes).
+
+---
+
+## 14. PEG ratio — `peg_ratio`
+
+**Formula**
+
+```
+peg_ratio = (market_cap / net_income) / (3-year net-income CAGR × 100)
+            defined only when net_income > 0 at both endpoints and the CAGR > 0
+```
+
+**EN** — Lynch's growth-at-a-reasonable-price yardstick: a P/E is cheap or dear relative to the
+growth backing it. `<= 1` is the classic GARP threshold. crible uses the 3-year earnings CAGR
+(needs 4 annual periods — EDGAR's 8-year depth qualifies) rather than one noisy YoY print.
+
+**FR** — L'étalon « croissance à prix raisonnable » de Lynch : un P/E n'est cher ou bon marché
+que relativement à la croissance qui le soutient. `<= 1` est le seuil GARP classique. crible
+utilise le CAGR des bénéfices sur 3 ans (4 exercices requis — la profondeur EDGAR de 8 ans
+suffit) plutôt qu'une variation annuelle bruitée.
+
+> **Caveat · Nuance** — Price applies to the latest fiscal period only (like Altman x4): older
+> periods are `NaN`. Negative or shrinking earnings → no PEG, never a sign-flipped one. · Le
+> prix ne s'applique qu'au dernier exercice (comme Altman x4). Bénéfices négatifs ou en
+> décroissance → pas de PEG, jamais un ratio au signe inversé.
+
+---
+
+## 15. Shareholder yield — `shareholder_yield`
+
+**Formula**
+
+```
+buyback_value = (shares_prior − shares) × price
+shareholder_yield = (|dividends_paid| + buyback_value) / market_cap
+```
+
+**EN** — Total cash returned to shareholders: dividends plus net buybacks, as a yield on market
+cap. Buybacks are proxied by the share-count decline valued at the current price — issuance
+reads NEGATIVE, so serial diluters show a drag, not a bonus. `common_stock_issuance` (34.6 %
+populated) is deliberately not used; the share count (83 %) is the more reliable signal.
+
+**FR** — Le cash total rendu aux actionnaires : dividendes plus rachats nets, en rendement sur
+la capitalisation. Les rachats sont approximés par la baisse du nombre d'actions valorisée au
+prix courant — une émission compte NÉGATIVEMENT, donc les dilueurs en série affichent un frein,
+pas un bonus. `common_stock_issuance` (34,6 % renseigné) est volontairement écarté ; le nombre
+d'actions (83 %) est le signal le plus fiable.
 
 ---
 

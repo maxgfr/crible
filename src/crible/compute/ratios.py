@@ -24,8 +24,16 @@ from financetoolkit.ratios import (
 
 RATIO_MODULES = [profitability_model, liquidity_model, solvency_model, efficiency_model, valuation_model]
 
-# resolvable but never emitted: net_current_asset_value duplicates extras.ncav
-RATIO_DENYLIST = frozenset({"net_current_asset_value"})
+# Resolvable but never emitted: net_current_asset_value duplicates extras.ncav;
+# dividend_yield would be TOTAL dividends over the share price (bogus units —
+# weighted_dividend_yield is the real one); dividend_capex_coverage mixes the
+# negative canonical capex with positive dividends. The containment tool for
+# anything the `dividends` alias accidentally wires.
+RATIO_DENYLIST = frozenset({
+    "net_current_asset_value",
+    "dividend_yield",
+    "dividend_capex_coverage_ratio",
+})
 
 
 def _avg(series: pd.Series) -> pd.Series:
@@ -96,6 +104,26 @@ def build_inputs(canonical: pd.DataFrame, price: pd.Series | None = None) -> dic
     inputs["average_total_debt"] = _avg(c["total_debt"])
     inputs["average_total_liabilities"] = _avg(c["total_liabilities"])
     inputs["average_net_fixed_assets"] = _avg(c["net_ppe"])
+
+    # The composite cycle functions take the day-ratio SERIES as parameters,
+    # not raw fields — feed them the same published components reflection
+    # already emits, so cash_conversion_cycle / operating_cycle wire up and
+    # can never diverge from their displayed inputs.
+    dio = efficiency_model.get_days_of_inventory_outstanding(
+        inputs["average_inventory"], c["cost_of_goods_sold"]
+    )
+    dso = efficiency_model.get_days_of_sales_outstanding(
+        inputs["average_accounts_receivable"], c["revenue"]
+    )
+    dpo = efficiency_model.get_days_of_accounts_payable_outstanding(
+        c["cost_of_goods_sold"], inputs["average_accounts_payable"]
+    )
+    alias(["days_inventory", "days_of_inventory"], dio)
+    alias(["days_sales_outstanding", "days_of_sales_outstanding"], dso)
+    alias(["days_payables_outstanding"], dpo)
+    # total dividends under the param name the payout/ROIC functions expect;
+    # abs() tolerates either sign convention for the reported outflow
+    inputs["dividends"] = c["dividends_paid"].abs()
 
     if price is not None:
         market_cap = price * c["shares_outstanding"]

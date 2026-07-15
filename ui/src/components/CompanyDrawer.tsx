@@ -59,17 +59,19 @@ const STATEMENT_FIELDS = [
 // earnings backed by cash — the cash-quality preset's inputs + quality checks
 const CASH_QUALITY = [
   "ebitda_margin", "fcf_margin", "fcf_conversion", "income_quality_ratio",
-  "capex_coverage_ratio", "dividend_coverage",
+  "sloan_accruals", "rule_of_40", "capex_coverage_ratio", "dividend_coverage",
+  "dividend_payout_ratio",
 ];
 // the classic ratio families, grouped the way an analyst scans them
 const KEY_RATIOS: [string, string[]][] = [
   ["Valuation", [
-    "market_cap", "price_to_earnings_ratio", "price_to_book_ratio", "ev_to_ebitda_ratio",
-    "ev_to_sales_ratio", "earnings_yield", "free_cash_flow_yield", "weighted_dividend_yield",
+    "market_cap", "price_to_earnings_ratio", "peg_ratio", "price_to_book_ratio",
+    "ev_to_ebitda_ratio", "ev_to_sales_ratio", "earnings_yield", "free_cash_flow_yield",
+    "weighted_dividend_yield", "shareholder_yield",
   ]],
   ["Profitability", [
-    "gross_margin", "operating_margin", "net_profit_margin",
-    "return_on_assets", "return_on_equity", "return_on_capital_employed",
+    "gross_margin", "operating_margin", "net_profit_margin", "return_on_assets",
+    "return_on_equity", "return_on_capital_employed", "return_on_invested_capital",
   ]],
   ["Balance", [
     "current_ratio", "quick_ratio", "cash_ratio", "debt_to_equity_ratio",
@@ -78,7 +80,7 @@ const KEY_RATIOS: [string, string[]][] = [
   ["Efficiency", [
     "asset_turnover_ratio", "inventory_turnover_ratio", "days_of_sales_outstanding",
     "days_of_inventory_outstanding", "days_of_accounts_payable_outstanding",
-    "sga_to_revenue_ratio",
+    "cash_conversion_cycle", "sga_to_revenue_ratio",
   ]],
 ];
 // year-over-year trajectory (signed + colored; debt growth reads inverted)

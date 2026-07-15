@@ -241,7 +241,9 @@ BASE_SCHEMA_NAME = "base-schema.json"
 # Kept (non-dirty) base rows carry the schema they were built with: without
 # this guard a deploy that adds columns would ship them as NULL for every
 # unchanged symbol until its raw happens to change.
-ENGINE_SCHEMA_VERSION = 1
+# 2: quick-win indicators (CCC/operating cycle, payout, ROIC, rule of 40,
+#    Sloan accruals, PEG, shareholder yield)
+ENGINE_SCHEMA_VERSION = 2
 
 
 def _newest_raw_stamp(data_dir: Path | str, symbol: str) -> float:
