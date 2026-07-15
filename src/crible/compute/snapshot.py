@@ -236,6 +236,12 @@ def build_snapshot(data_dir: Path | str, symbols: list[str] | None = None) -> pd
 
 
 BASE_NAME = "base.parquet"
+BASE_SCHEMA_NAME = "base-schema.json"
+# Bump on EVERY commit that adds or removes per-symbol snapshot columns.
+# Kept (non-dirty) base rows carry the schema they were built with: without
+# this guard a deploy that adds columns would ship them as NULL for every
+# unchanged symbol until its raw happens to change.
+ENGINE_SCHEMA_VERSION = 1
 
 
 def _newest_raw_stamp(data_dir: Path | str, symbol: str) -> float:
@@ -264,7 +270,9 @@ def build_snapshot_incremental(data_dir: Path | str) -> pd.DataFrame | None:
     data_dir = Path(data_dir)
     base_path = data_dir / "snapshot" / BASE_NAME
     symbols = crawled_symbols(data_dir)
-    if not base_path.exists():
+    # no cache, or a cache built by a different engine schema (the nightly
+    # restores base.parquet from the last release) → full rebuild
+    if not base_path.exists() or _cached_schema_version(data_dir) != ENGINE_SCHEMA_VERSION:
         rows = build_symbol_rows(data_dir, symbols)
         _publish_base(rows, data_dir)
         return finalize_snapshot(rows, data_dir)
@@ -302,12 +310,27 @@ def _scrub_retired_columns(rows: pd.DataFrame) -> pd.DataFrame:
     return rows.drop(columns=[c for c in rows.columns if c in retired])
 
 
+def _cached_schema_version(data_dir: Path | str) -> int | None:
+    import json
+
+    path = Path(data_dir) / "snapshot" / BASE_SCHEMA_NAME
+    try:
+        return json.loads(path.read_text()).get("engine_schema_version")
+    except (OSError, ValueError):
+        return None
+
+
 def _publish_base(rows: pd.DataFrame, data_dir: Path | str) -> None:
+    import json
+
     directory = Path(data_dir) / "snapshot"
     directory.mkdir(parents=True, exist_ok=True)
     tmp = directory / f".tmp-{BASE_NAME}"
     rows.to_parquet(tmp, index=False)
     tmp.rename(directory / BASE_NAME)
+    (directory / BASE_SCHEMA_NAME).write_text(
+        json.dumps({"engine_schema_version": ENGINE_SCHEMA_VERSION})
+    )
 
 
 def publish_snapshot(snapshot: pd.DataFrame, data_dir: Path | str) -> Path:

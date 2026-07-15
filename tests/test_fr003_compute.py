@@ -531,6 +531,44 @@ def test_incremental_compute_recomputes_only_dirty_symbols(tmp_path, monkeypatch
     assert calls == []
 
 
+def test_incremental_full_rebuild_on_engine_schema_bump(tmp_path, monkeypatch) -> None:
+    """Kept (non-dirty) base rows carry the schema they were built with: a
+    version bump (a deploy adding indicator columns) must dirty everything
+    once, then stamp the rebuilt base so the next run is incremental again."""
+    import crible.compute.snapshot as snap
+    from crible.ingest.raw import write_raw_statement
+
+    frame = pd.DataFrame({"period": ["2024"], "TotalRevenue": [100.0]})
+    for sym in ("AAA", "BBB"):
+        write_raw_statement(
+            tmp_path, symbol=sym, provider="yfinance",
+            statement_type="income", freq="annual", frame=frame, fetched_at=1000.0,
+        )
+    snap.build_snapshot_incremental(tmp_path)  # base + schema stamp
+    assert (tmp_path / "snapshot" / "base-schema.json").exists()
+
+    calls: list[list[str]] = []
+    original = snap.build_symbol_rows
+    monkeypatch.setattr(
+        snap, "build_symbol_rows", lambda d, s: (calls.append(list(s)), original(d, s))[1]
+    )
+
+    # same engine version, nothing changed → no per-symbol work at all
+    assert snap.build_snapshot_incremental(tmp_path) is None
+    assert calls == []
+
+    # a deploy bumps the engine schema → every symbol rebuilds once
+    monkeypatch.setattr(snap, "ENGINE_SCHEMA_VERSION", snap.ENGINE_SCHEMA_VERSION + 1)
+    result = snap.build_snapshot_incremental(tmp_path)
+    assert sorted(calls[-1]) == ["AAA", "BBB"]
+    assert set(result["symbol"]) == {"AAA", "BBB"}
+
+    # the rebuilt base carries the new stamp → incremental again
+    calls.clear()
+    assert snap.build_snapshot_incremental(tmp_path) is None
+    assert calls == []
+
+
 def test_incremental_compute_rebuilds_all_when_the_price_distillate_refreshes(tmp_path, monkeypatch) -> None:
     """F8 — a refreshed prices-latest.parquet changes every symbol's baked-in
     price_quote, so incremental must rebuild all rows, not serve stale prices."""
