@@ -191,10 +191,10 @@ product, running on the published dataset.
 
 ## Status
 
-Built spec-first: the full SRD suite (requirements, ADRs, data model, design system,
-evidence-grounded) lives in [`srd/`](srd/). Implementation follows `srd/BUILD-PLAN.json`, TDD,
-every test named after the FR it proves. Continuous-improvement cycles (market + evaluation) are
-tracked in [`IMPROVE.md`](IMPROVE.md), `docs/market/` and `docs/improve/`.
+Built test-first: every behavior is proven by an FR-tagged test (`tests/test_fr004_dsl.py`
+proves FR-004, and so on), and the DSL compiler is locked to its TypeScript port by shared
+golden vectors. The keyless data-sourcing approach and the two dataset tiers are written up in
+[`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md); the improvement methodology in [`IMPROVE.md`](IMPROVE.md).
 
 ## Development
 

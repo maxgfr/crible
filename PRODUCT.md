@@ -41,4 +41,4 @@ Précis, souverain, incandescent. L'ambiance d'une salle des marchés après la 
 
 ## Accessibility & Inclusion
 
-WCAG 2.2 AA (spec `srd/design/ACCESSIBILITY.md`) : contraste ≥ 4.5:1 y compris texte secondaire à 13px, densité ≠ inaccessible (navigation clavier complète, focus visible ambre), `prefers-reduced-motion` neutralise les transitions, gain/perte jamais encodés par la couleur seule (signe et icône de tendance accompagnent).
+WCAG 2.2 AA : contraste ≥ 4.5:1 y compris texte secondaire à 13px, densité ≠ inaccessible (navigation clavier complète, focus visible ambre), `prefers-reduced-motion` neutralise les transitions, gain/perte jamais encodés par la couleur seule (signe et icône de tendance accompagnent).

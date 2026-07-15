@@ -59,7 +59,7 @@
   the audited layer for every resolved US listing (~10k issuers, 8 fiscal
   years of history), instead of 25 per night. Issuers without a Yahoo price
   carry the price-free indicators (Piotroski, Beneish, margins, growth) with
-  NULL valuation ratios — never imputed. `demo-refresh --edgar-bulk`.
+  NULL valuation ratios — never imputed. `crible refresh --edgar-bulk`.
 - **Starter filter chips** — the classic screener criteria (market cap, P/E,
   P/B, dividend yield, ROE, debt/equity, margins, growth, scores, ranks,
   region/sector/country) pinned as one-click editable chips on the builder.
@@ -108,5 +108,5 @@ account or key.
 
 ## Earlier
 
-Pre-release development is documented spec-first in `srd/` and the improvement
-cycles in `IMPROVE.md`.
+Pre-release development followed a test-first, FR-tagged discipline; the
+improvement methodology is documented in `IMPROVE.md`.

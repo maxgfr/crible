@@ -18,8 +18,8 @@ you need.
    asserted by both pytest and vitest. If you change the grammar, change both
    sides and regenerate the golden file — the parity tests will hold you to it.
 3. **Tests first.** The suite is FR-tagged (`tests/test_fr004_dsl.py` proves
-   FR-004, and so on — requirements live in `srd/`). New behavior comes with a
-   test that fails without it.
+   FR-004, and so on — the FR id is the requirement label). New behavior comes
+   with a test that fails without it.
 
 ## Development setup
 

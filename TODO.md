@@ -1,84 +1,57 @@
 # crible — TODO
 
-État : v1 zéro clé **construite, testée (140 pytest + 55 vitest), E2E réel validé** ;
-open-data hardening 2026-07-13 : provider EDGAR (US audité), fix réconciliation,
-`crible bootstrap` + release `data-latest`, query builder complet, catalogue 100 % keyless.
-Ce fichier liste ce qui reste. Rien ici n'est bloquant pour utiliser le screener aujourd'hui.
+État : v1 zéro clé **publique, testée (227 pytest + 62 vitest), E2E réel validé**.
+Sources bulk-first / local-first en place : universe FinanceDatabase, prix bulk
+(HuggingFace US + Stooq worldwide), fondamentaux audités SEC (companyfacts +
+FSDS), ESEF (EU), Companies House (UK), EDINET (JP, opt-in), FX BCE (`*_eur`).
+Le dataset ouvert est republié en nightly. Rien ici n'est bloquant pour utiliser
+le screener aujourd'hui — c'est de la dette de qualité et des extensions.
 
 ---
 
-## P1 — Complète des fonctionnalités déjà à moitié faites
+## P1 — Quick wins qualité (dette test / maintenabilité)
 
-- [ ] **Automatiser le fichier GLEIF ISIN→LEI** (enrichissement ESEF).
-  Le cycle ESEF est câblé mais reste idle tant que `data/isin-lei.csv` n'existe pas
-  (~200 Mo, non auto-téléchargé au boot par choix). Ajouter `crible ingest --fetch-gleif`
-  (télécharge le fichier de relations GLEIF le plus récent → `data/isin-lei.csv`).
+- [ ] **Parité de la règle « return 6 mois ».** La même règle est réimplémentée à
+  trois endroits (`compute/ranks.py`, `ingest/price_import.py` ×2), synchronisée
+  seulement par des commentaires. Ajouter un test golden de parité qui casse si
+  les trois divergent.
+- [ ] **Tester `compute_ratios` directement.** Le plus gros producteur de colonnes
+  est câblé par réflexion sous un `except Exception` global (`compute/ratios.py`),
+  sans test direct — un mapping cassé passe en silence. Test de caractérisation.
+- [ ] **Dé-dupliquer `run_loop` / `run_refresh`** (`ingest/service.py`) : l'entrypoint
+  Docker (`# pragma: no cover`) réimplémente la séquence de `run_refresh`. Extraire
+  la logique commune et la tester offline.
+- [ ] **Découper `build_symbol_snapshot`** (`compute/snapshot.py`, ~70 LOC /
+  5 responsabilités) en étapes nommées et testables.
+- [ ] **Casser le cycle d'import type-only de l'UI** (`ui/src/data/duckdb.ts` ↔
+  `static-client.ts`) — inoffensif au runtime, mais à isoler dans un module de types.
+- [ ] **EDINET : garder les rapports annuels rectificatifs** (訂正有報, docType 130) —
+  le filtre `{120}` les exclut aujourd'hui (`providers/edinet.py`). Opt-in / OFF par défaut.
+- [ ] **Vectoriser `reconcile`** (`compute/reconcile.py`) : la double boucle `.loc`
+  cellule-par-cellule fera surface à grande échelle.
 
-- [ ] **Watchdog anti-hang par requête dans le crawler.**
-  L'ADR-0004 promet un watchdog ; aujourd'hui on s'appuie sur les timeouts internes de
-  yfinance. Des pulls peuvent pendre (issues documentées). Envelopper `fetch_statements`
-  dans un timeout dur (thread + `.join(timeout)` ou signal), traiter comme un échec →
-  reschedule.
+## P2 — Robustesse / passage à l'échelle
 
-- [ ] **Refresh périodique de l'univers.**
-  FinanceDatabase n'est téléchargé qu'au premier boot ; `delisted` et les nouvelles
-  cotations ne bougent jamais. Ajouter un `refresh_universe` hebdo dans `run_loop`
-  (re-télécharge, upsert — le upsert idempotent existe déjà, cf. FR-001).
+- [ ] **Refresh périodique de l'univers.** FinanceDatabase n'est chargé qu'au premier
+  boot ; `delisted` et nouvelles cotations ne bougent jamais. Ajouter un
+  `refresh_universe` hebdo dans la boucle (l'upsert idempotent existe déjà, FR-001).
+- [ ] **Query builder : round-trip texte → builder** (aujourd'hui volontairement
+  one-way, le DSL reste le langage unique) et un knob de slimming régional de
+  l'univers dans `export-site` si le payload publié grossit un jour.
+- [ ] **Sortir le sweep Europe complet** (plusieurs semaines au débit keyless —
+  c'est le design, visible dans `crible status`). Rien à coder ; laisser tourner.
 
-## P2 — Écrans du design system non construits (spéc dans srd/design/SCREENS.md)
+## P3 — Dette de test résiduelle (assumée)
 
-- [x] **Écran « Ingest & coverage status »** dans la SPA. _(fait — `StatusView`, hash `#/status` ;
-  coverage %, histogramme fraîcheur SVG, jauge req/h, santé providers, ESEF matched/unmatched.)_
-
-- [x] **Écran « Providers & settings »** dans la SPA. _(fait — `ProvidersView`, `#/providers`,
-  endpoint `/api/providers` ; inventaire keyless/free-key/paid, pointeur `.env`, upgrade EODHD,
-  préférence de thème.)_
-
-- [x] **Toggle dark/light.** _(fait — toggle topbar, persistance `crible-theme`, défaut
-  `prefers-color-scheme`, script anti-FOUC dans `index.html` ; light = « paper terminal ».)_
-
-## P3 — Robustesse / passage à l'échelle
-
-- [ ] **Compute incrémental.**
-  Chaque cycle reconstruit tout le snapshot. OK à ~500 sociétés, à revisiter vers 20k+ :
-  ne recomputer que les symboles dont le raw a changé depuis le dernier snapshot.
-
-- [x] **EDGAR bulk (`companyfacts.zip`, ~1,4 Go nightly)** — _fait (2026-07-13) :
-  `run_edgar_bulk` + `demo-refresh --edgar-bulk`, activé dans le nightly ; tout le marché
-  US audité (~10k émetteurs, 8 exercices max) en un téléchargement._
-
-- [ ] **Normalisation FX (Frankfurter/ECB, keyless).**
-  Les ratios sont currency-neutral donc la valeur immédiate est modeste, mais les
-  comparaisons cross-devises de valeurs absolues (market cap, revenue) mériteraient des
-  colonnes normalisées (`market_cap_eur`…) : stockage des taux (api.frankfurter.dev ou
-  CSV BCE, citer la source), colonnes companion au snapshot, exposition whitelist/UI.
-
-- [ ] **Query builder : round-trip texte → builder** (aujourd'hui volontairement one-way,
-  le texte DSL reste le langage unique) et **knob de slimming de l'univers** dans
-  `export_site` (filtre régional) si le payload de la démo grossit un jour.
-
-- [ ] **Sortir le sweep Europe complet** (5-7 semaines au débit keyless — c'est le design,
-  visible dans `crible status`). Rien à coder ; juste laisser tourner.
-
-## P4 — Dette de test (documentée, assumée)
-
-- [ ] **Test comportemental de `run_loop`** (aujourd'hui `# pragma: no cover`, séquencement
-  couvert seulement par l'E2E live) : extraire la logique de séquencement, la tester offline.
-- [ ] **Test de rendu du `CompanyDrawer`** (l'API est testée, le JSX ne l'est pas).
+- [ ] **Rendu du `CompanyDrawer`** (l'API est testée, le JSX ne l'est pas).
 - [ ] **Beneish sur un cas réel publié** (type Enron 2000) en plus des vecteurs analytiques.
 
-## P5 — Reporté volontairement (décision explicite requise)
+## P4 — Reporté volontairement (décision explicite requise)
 
-- [ ] **E2E live en nightly CI** — manuel pour l'instant (dépense du vrai budget Yahoo).
-      NFR-009 a été aligné là-dessus.
-- [ ] **Publication GitHub** (privé → public) + semantic-release façon `feelc`/`andro`.
-      *Ne pas faire sans demande explicite de Maxime.*
+- [ ] **E2E live en nightly CI** — manuel pour l'instant (dépense du vrai budget de scraping) ;
+  le gate CI zéro-clé offline tourne à chaque push, NFR-009 est aligné là-dessus.
 
-_Décision 2026-07-13 (open data) : les plugins à clé SimFin/FMP/EODHD et la piste
-FinancialReports.eu sont **supprimés** — le catalogue livré est 100 % keyless ;
-le seam plugin (`providers/base.py`) reste pour d'éventuels plugins tiers._
-
-## Hors scope v1 (nonGoals du SRD — ne pas faire sans re-spec)
+## Hors scope v1 (non-goals — ne pas faire sans re-spec)
 
 Technique / chartisme · portefeuille · backtesting · exécution d'ordres · temps réel ·
 multi-utilisateur / auth · apps mobiles.

@@ -7,7 +7,7 @@ Identité « terminal phosphore » : un instrument financier souverain. Fond noi
 - Dark = thème primaire (`:root[data-theme="dark"]`, défaut) ; light = variante complète (`[data-theme="light"]`), persistée en localStorage, défaut initial via `prefers-color-scheme`.
 - Stratégie couleur : **Restrained** — neutres purs + ambre ≤ 10 % de la surface. Les couleurs sémantiques n'apparaissent que sur les données.
 
-## Color (OKLCH, source de vérité : srd/design/design-tokens.json)
+## Color (OKLCH, source de vérité : `ui/src/tokens.css`)
 
 | Rôle | Dark | Light | Usage |
 |---|---|---|---|
