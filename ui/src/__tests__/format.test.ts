@@ -3,7 +3,7 @@
 // un-thresholded ratios stay neutral — no coloring by taste.
 
 import { describe, expect, it } from "vitest";
-import { formatCell, formatNumber } from "../format";
+import { VERDICT_COLUMNS, formatCell, formatNumber, verdictKind } from "../format";
 
 describe("formatNumber", () => {
   it("scales billions/millions and keeps small numbers precise", () => {
@@ -51,6 +51,32 @@ describe("formatCell — the verdict table", () => {
     expect(cls("return_on_equity", 0.32)).toBe("");
     expect(cls("net_profit_margin", 0.01)).toBe("");
     expect(cls("debt_to_equity_ratio", 4)).toBe("");
+  });
+
+  it("verdictKind and formatCell always agree — one threshold table", () => {
+    const samples = [-5, -1.78, -1, 0, 0.4, 0.5, 1, 1.5, 1.81, 1.85, 2, 2.99, 3, 5, 7, 8];
+    for (const column of VERDICT_COLUMNS) {
+      for (const value of samples) {
+        const kind = verdictKind(column, value);
+        const cell = formatCell(column, value);
+        expect(cell.className).toBe(kind ? `num-${kind}` : "");
+        expect(cell.flag !== "").toBe(kind !== null);
+      }
+    }
+  });
+
+  it("verdictKind boundaries match the published cutoffs", () => {
+    expect(verdictKind("piotroski_f", 7)).toBe("good");
+    expect(verdictKind("piotroski_f", 3)).toBe("bad");
+    expect(verdictKind("piotroski_f", 5)).toBeNull();
+    expect(verdictKind("altman_z", 2.99)).toBeNull(); // strictly above
+    expect(verdictKind("altman_z", 1.81)).toBeNull(); // strictly below
+    expect(verdictKind("dechow_f", 1.85)).toBeNull();
+    expect(verdictKind("dechow_f", 1.86)).toBe("warn");
+    expect(verdictKind("peg_ratio", 1)).toBe("good");
+    expect(verdictKind("peg_ratio", -0.5)).toBeNull(); // negative PEG never passes
+    expect(verdictKind("revenue_growth", 0.5)).toBeNull(); // growth ≠ verdict
+    expect(verdictKind("unknown_column", 1)).toBeNull();
   });
 
   it("signs and colors growth without a glyph", () => {
