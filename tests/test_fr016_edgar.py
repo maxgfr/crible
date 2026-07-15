@@ -53,6 +53,12 @@ COMPANYFACTS = {
             "WeightedAverageNumberOfSharesOutstandingBasic": {
                 "units": {"shares": [_fact("2023-10-01", "2024-09-28", 15_343_783_000.0)]}
             },
+            "ShortTermInvestments": {
+                "units": {"USD": [_fact(None, "2024-09-28", 35_228_000_000.0)]}
+            },
+            "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest": {
+                "units": {"USD": [_fact("2023-10-01", "2024-09-28", 123_485_000_000.0)]}
+            },
         }
     },
 }
@@ -84,6 +90,10 @@ def test_fr016_companyfacts_map_to_canonical_annual_frames() -> None:
     assert income.loc["2024-09-28", "NetIncome"] == 93_736_000_000.0
     assert income.loc["2024-09-28", "BasicAverageShares"] == 15_343_783_000.0
     assert balance.loc["2024-09-28", "TotalAssets"] == 364_980_000_000.0
+    # short-term investments land under the yfinance vocabulary column
+    assert balance.loc["2024-09-28", "OtherShortTermInvestments"] == 35_228_000_000.0
+    # pretax income unlocks the canonical EBIT derivation for audited-only US
+    assert income.loc["2024-09-28", "PretaxIncome"] == 123_485_000_000.0
     # capex sign flips to the yfinance convention (negative outflow → FCF = ocf + capex)
     assert cashflow.loc["2024-09-28", "CapitalExpenditure"] == -9_447_000_000.0
     assert cashflow.loc["2024-09-28", "OperatingCashFlow"] == 118_254_000_000.0

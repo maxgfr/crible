@@ -57,6 +57,14 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
     "IncomeTaxExpenseBenefit": ("TaxProvision", "income"),
     "InterestExpense": ("InterestExpense", "income"),
     "WeightedAverageNumberOfSharesOutstandingBasic": ("BasicAverageShares", "income"),
+    # pretax income (standard us-gaap tags, continuing operations — a small
+    # documented deviation): unlocks the EBIT derivation (pretax + interest,
+    # canonical.py) → Altman x3, Greenblatt yield, interest coverage for
+    # audited-only US symbols
+    "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest":
+        ("PretaxIncome", "income"),
+    "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments":
+        ("PretaxIncome", "income"),
     # balance sheet (instant facts)
     "Assets": ("TotalAssets", "balance"),
     "AssetsCurrent": ("CurrentAssets", "balance"),
@@ -70,6 +78,12 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
     "CashAndCashEquivalentsAtCarryingValue": ("CashAndCashEquivalents", "balance"),
     "PropertyPlantAndEquipmentNet": ("NetPPE", "balance"),
     "Goodwill": ("Goodwill", "balance"),
+    # short-term investments — completes Dechow's RSST/FIN inputs on
+    # reconciled crawled symbols (audited-only Dechow still needs total_debt,
+    # deliberately unmapped). Ordered narrow-classic first.
+    "ShortTermInvestments": ("OtherShortTermInvestments", "balance"),
+    "MarketableSecuritiesCurrent": ("OtherShortTermInvestments", "balance"),
+    "AvailableForSaleSecuritiesCurrent": ("OtherShortTermInvestments", "balance"),
     # cash flow (duration facts)
     "NetCashProvidedByUsedInOperatingActivities": ("OperatingCashFlow", "cashflow"),
     "PaymentsToAcquirePropertyPlantAndEquipment": ("CapitalExpenditure", "cashflow"),
