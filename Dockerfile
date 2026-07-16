@@ -12,7 +12,7 @@ RUN npm ci --no-audit --no-fund
 COPY ui/ ./
 RUN npm run build
 
-FROM python:3.12.13-slim AS builder
+FROM python:3.14.6-slim AS builder
 COPY --from=uv /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -26,7 +26,7 @@ COPY README.md ./
 COPY src/ src/
 RUN uv sync --frozen --no-dev --no-editable
 
-FROM python:3.12.13-slim AS runtime
+FROM python:3.14.6-slim AS runtime
 ENV PYTHONUNBUFFERED=1 \
     CRIBLE_DATA_DIR=/data \
     PATH="/app/.venv/bin:$PATH"
