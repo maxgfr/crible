@@ -58,8 +58,12 @@ Prebuilt multi-arch images (amd64 + arm64 — VPS, Apple Silicon, ARM NAS) ship 
 release; `docker compose pull` fetches them instead of building locally:
 
 ```bash
-docker pull ghcr.io/maxgfr/crible:latest
+docker pull ghcr.io/maxgfr/crible:latest   # or pin a version: ghcr.io/maxgfr/crible:vX.Y.Z
 ```
+
+> Upgrading from `v0.1.0`? The image now runs as a non-root user (uid 1000).
+> Existing data volumes created by the old root image need a one-time
+> `docker compose run --rm --user root api chown -R 1000:1000 /data`.
 
 The first run bootstraps the universe and starts a rate-budgeted, Europe-first crawl; the
 screener shows live progress until the first rows land. See the **Status** view for coverage,
