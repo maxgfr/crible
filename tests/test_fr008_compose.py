@@ -20,16 +20,16 @@ def test_fr008_compose_defines_ingest_and_api_with_shared_volume_and_healthcheck
 
 
 def test_fr008_keyless_by_default_any_key_is_an_optional_passthrough() -> None:
-    # the keyless contract (2026-07-14): the stack runs with NO keys — any
-    # provider key is an OPTIONAL passthrough that DEFAULTS TO EMPTY (disabled),
-    # never required and never hardcoded. EDINET is the one free-key opt-in.
+    # the keyless contract (2026-07-14, hardened 2026-07-17: keyless-only —
+    # no keyed provider ships at all): the stack runs with NO keys — if a
+    # key passthrough ever reappears it must DEFAULT TO EMPTY (disabled),
+    # never be required and never hardcoded.
     import re
 
     compose = (ROOT / "docker-compose.yml").read_text()
     for line in compose.splitlines():
         if "_KEY" in line and not line.strip().startswith("#"):
             assert re.search(r"_KEY:\s*\$\{[A-Z_]+:-\}", line), f"key not empty-defaulted: {line!r}"
-    assert "CRIBLE_EDINET_KEY: ${CRIBLE_EDINET_KEY:-}" in compose
 
 
 def test_fr008_no_secrets_baked_into_the_image() -> None:

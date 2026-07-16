@@ -2,7 +2,7 @@
 
 crible's audited layer (figures from official filings that outrank scraped
 Yahoo values at reconciliation) is US EDGAR + EU ESEF today, and grows to SEC
-FSDS, UK Companies House and JP EDINET. They differ only in HOW they resolve a
+FSDS, UK Companies House, BR CVM and TW TWSE. They differ only in HOW they resolve a
 listing to a source id (CIK, LEI, company number…) and fetch its facts; the
 rest — writing provider-tagged raw, freshness bookkeeping, reconciliation — is
 identical. This module names that shared contract so each new source plugs in

@@ -227,22 +227,19 @@ def test_run_refresh_without_universe_source_or_last_good_fails(refresh_env) -> 
         )
 
 
-def test_run_refresh_wires_the_orphan_audited_cycles(refresh_env, monkeypatch) -> None:
-    """run_edinet and run_companies_house existed but were never CALLED (the
-    façade re-exported them into the void). The nightly now runs them; both
-    degrade to a RECORDED skip — no key / no operator CSV — instead of
-    silently not existing. Zero network either way."""
-    monkeypatch.delenv("CRIBLE_EDINET_KEY", raising=False)
+def test_run_refresh_wires_the_orphan_audited_cycles(refresh_env) -> None:
+    """run_companies_house existed but was never CALLED (the façade
+    re-exported it into the void). The nightly now runs it; it degrades to a
+    RECORDED skip — no operator CSV — instead of silently not existing.
+    Zero network either way."""
     result = run_refresh(
         deadline_seconds=60,
         fetch_universe=fixture_frame,
         provider=FakeYfProvider(),
         price_provider=FakePriceProvider(),
         edgar_client=FakeEdgarDirectory(),
-        edinet_days=3,
         companies_house_url="https://example.invalid/accounts.zip",
     )
-    assert "EDINET disabled" in result["edinet"]["skipped"]
     assert "uk-company-numbers" in result["companies_house"]["skipped"]
 
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — 2026-07-17 (keyless-only)
+
+- **Keyed sources removed — crible is now 100% keyless by contract.** The two
+  free-key opt-ins that shipped on 2026-07-16 (EDINET/Japan, OpenDART/Korea)
+  are gone: providers, enrich cycles, `--edinet-days`/`--dart-limit` flags,
+  CI secrets and compose passthrough. No secret may ever gate a data stage;
+  JP/KR fundamentals come from the scraped tier only. Rationale recorded in
+  `docs/DATA-SOURCES.md` § Rejected.
+
 ## Unreleased — 2026-07-15 (v3: synthesis & charts, TTM v2, MCP)
 
 - **Deterministic synthesis at the top of the company drawer** — the

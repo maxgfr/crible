@@ -73,9 +73,7 @@ from the mirror. This is the "self-hosted at the call level" contract.
 | **GLEIF ISIN→LEI** auto-fetch | The relationship file that unlocks the audited-EU (ESEF) layer | `crible ingest --fetch-gleif` streams it to the mirror; `crible refresh` self-heals it | Open data (CC0) | **fully-free** |
 | **ECB reference rates** via [Frankfurter](https://frankfurter.dev) | Daily FX rates → `*_eur` companion columns for cross-currency size screens | Keyless JSON, mirrored (`--fetch-fx`) | Open source, redistributable | **fully-free** |
 | **Companies House** (UK) Accounts Data Product | Audited UK accounts (iXBRL) — the **non-listed / non-IFRS backfill** (listed consolidated IFRS comes from filings.xbrl.org's GB slice, which outranks it at merge) | Keyless ZIP, mirrored; resolution via operator-provided `data/uk-company-numbers.csv` | **No explicit reuse licence** | **assumed-risk** |
-| **EDINET** (Japan) | Audited JP filings (XBRL) | **Free-key opt-in** (`CRIBLE_EDINET_KEY`) — API-only, never scraped; the project nightly opts in (2026-07-16) | PDL1.0 — redistributable **with attribution** | opt-in (keyed) |
 | [CVM open data](https://dados.cvm.gov.br/dataset/cia_aberta-doc-dfp) (Brazil) | **Audited** BR fundamentals — DFP annual statements 2010→, fixed chart of accounts (`CD_CONTA`), consolidated preferred, audit opinion included | Keyless yearly ZIPs at stable URLs, mirrored; `.SA` tickers resolved via the FCA `Codigo_Negociacao` register (`src/crible/providers/cvm.py`) | **ODbL** — attribution + share-alike: *Contém dados públicos da CVM* | **fully-free** |
-| [OpenDART](https://opendart.fss.or.kr) (South Korea) | **Audited** KR fundamentals — annual reports (11011) for all KOSPI/KOSDAQ listings, IFRS concept ids mapped like ESEF, consolidated (CFS) over separate (OFS), covered symbols re-polled monthly | **Free-key opt-in** (`CRIBLE_DART_KEY`, 20k req/day) — the keyless bulk archives exist but their download endpoint serves an error page to non-browser clients (probed 2026-07-16; dated TODO) (`src/crible/providers/dart.py`) | Korea Public Data Act — reuse-friendly incl. commercial; FSS disclaims accuracy | opt-in (keyed) |
 | [TWSE OpenAPI](https://openapi.twse.com.tw) (Taiwan) | **Audited** TW fundamentals — whole-market quarterly statements (~1k listed cos), snapshot-only: history ACCUMULATES forward in the raw layer from adoption (no back-history; income is cumulative YTD → Q4-only annual, Q1-Q3 balances quarterly). TWD has no ECB rate → `*_eur` NULL. TPEx (`.TWO`) = follow-up | Keyless JSON, mirrored daily (`src/crible/providers/twse.py`) | Taiwan OGDL v1 (CC-BY-4.0-compatible); the TWSE ToS explicitly carves these open-data feeds out of its anti-scraping clause. Attribution: *data from TWSE OpenAPI, Taiwan Stock Exchange* | **fully-free** |
 
 All audited sources implement one contract (`src/crible/providers/audited.py`
@@ -92,23 +90,26 @@ backfills the deep history.
   **TradingView scanner snapshots**, and **Companies House** (no licence
   stated). Carried as a documented, deliberate redistribution risk, isolated
   from the fully-free tier.
-- **EDINET** (audited Japan) — **policy change 2026-07-16: the project's own
-  nightly now opts in** via the `CRIBLE_EDINET_KEY` repository secret, so
-  `provider='edinet'` raw ships in the published dataset. Its PDL1.0 licence
-  makes that clean — redistributable **with attribution**: *this dataset
-  contains data from EDINET, Financial Services Agency of Japan, licensed
-  under the Public Data License v1.0.* Closer to fully-free than
-  assumed-risk; it keeps its own line because of the attribution duty.
-
-The **zero-key core is unchanged**: EDINET stays the only keyed provider and
-the code self-skips without the key — a fork without the secret runs fully
-keyless, and the CI test contract (empty environment, NFR-009) is untouched.
-Note: the site's `providers.json` is exported with an empty environment by
-construction, so it reports EDINET "disabled" even when the dataset carries
-its raw — the dataset-content authority is this ledger, not that file.
+**Keyless is the whole contract, not just the core (decision 2026-07-17).**
+crible carries **no keyed source at all**: every data stage — crawl,
+enrichment, prices, census — runs with an empty environment, which is also
+the CI test contract (NFR-009). The two keyed integrations that briefly
+existed (EDINET, OpenDART) were removed the day after they shipped — see
+*Rejected / iceboxed* below.
 
 ### Rejected / iceboxed this cycle
 
+- **EDINET (Japan) & OpenDART (South Korea)** — REMOVED 2026-07-17 (had
+  shipped 2026-07-16 as free-key opt-ins): both need a registered API key,
+  and the operator decision is that crible stays **100% keyless** — no
+  secret may ever gate a data stage. Licences were fine (PDL1.0 with
+  attribution / Korea Public Data Act); access model was the blocker. The
+  OpenDART keyless bulk endpoint serves an error page to non-browser
+  clients (probed 2026-07-16), so no keyless path exists for KR either.
+  JP/KR fundamentals now come only from the scraped tier (Yahoo crawl).
+  If a keyless bulk source appears for either market, it can re-enter via
+  the standard cycle pattern (`src/crible/ingest/enrich/br.py` is the
+  template).
 - **Deutsche Börse Public Dataset (AWS)** — REJECTED: non-commercial licence and
   the dataset is marked deprecated.
 - **NSE/BSE bhavcopy (India)** — ICEBOX: freely downloadable but redistribution

@@ -8,7 +8,7 @@ raw is a code table, not a heuristic. Rules, each pinned by a test:
 - ``ORDEM_EXERC == 'ÚLTIMO'`` only (drops the restated prior-year duplicate);
 - ``ESCALA_MOEDA == 'MIL'`` → ×1000 (values ship in BRL thousands);
 - consolidated (``_con``) members win; individual (``_ind``) only fills
-  companies absent from consolidated (the EDINET consolidation rule);
+  companies absent from consolidated (consolidated-first, like every audited source);
 - costs stored negative are NEGATED into crible's positive-cost convention
   (the EDGAR NEGATED_CONCEPTS precedent);
 - v1 is annual-only: the ITR quarterlies are cumulative windows (a later,

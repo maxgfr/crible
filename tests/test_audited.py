@@ -1,5 +1,5 @@
 """The AuditedBulkProvider seam (F4) — the shared contract every audited source
-(EDGAR, ESEF, and the Phase-2 sources FSDS/Companies House/EDINET) implements:
+(EDGAR, ESEF, and the later sources FSDS/Companies House/CVM/TWSE) implements:
 resolve the universe to source ids, fetch canonical frames, write them as
 provider-tagged raw that outranks the scraped base at reconciliation.
 """

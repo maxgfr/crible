@@ -45,23 +45,15 @@ def test_fr013_key_present_activates_keyed_plugin() -> None:
     assert [p.id for p in active] == ["stub"]
 
 
-def test_fr013_shipped_catalog_is_keyless_core_with_freekey_opt_ins() -> None:
+def test_fr013_shipped_catalog_is_keyless_only() -> None:
+    # keyless-only contract (2026-07-17): the keyed opt-ins (EDINET, DART)
+    # were REMOVED — a catalog entry that needs a key is a regression
     catalog = default_catalog()
-    assert [p.id for p in catalog] == ["yfinance", "edinet", "dart"]
+    assert [p.id for p in catalog] == ["yfinance"]
     inv = inventory(catalog, env={})
-    by_id = {p["id"]: p for p in inv}
-    # keyless core is always on
-    assert by_id["yfinance"] == {
-        "id": "yfinance", "kind": "keyless", "key_env_var": None, "enabled": True,
-    }
-    # EDINET and DART are the free-key opt-ins — OFF with an empty env, so a
-    # fork without the secrets and the CI contract stay keyless (NFR-009)
-    for pid, key_var in (("edinet", "CRIBLE_EDINET_KEY"), ("dart", "CRIBLE_DART_KEY")):
-        assert by_id[pid]["kind"] == "free-key"
-        assert by_id[pid]["key_env_var"] == key_var
-        assert by_id[pid]["enabled"] is False
-    # invariant: nothing keyed is enabled without its key
-    assert not any(p["enabled"] for p in inv if p["key_env_var"] is not None)
+    assert inv == [
+        {"id": "yfinance", "kind": "keyless", "key_env_var": None, "enabled": True},
+    ]
 
 
 def test_fr013_inventory_reports_keyed_stub_enabled_iff_key_present() -> None:

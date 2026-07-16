@@ -240,17 +240,15 @@ def build_symbol_rows(data_dir: Path | str, symbols: list[str]) -> pd.DataFrame:
                 scraped_provider = "defeatbeta"
         # the audited layer, per region (a listing realistically has one): US
         # companyfacts wins recent periods and FSDS backfills the deep history;
-        # ESEF (EU), Companies House (UK) and EDINET (JP) don't overlap it.
+        # ESEF (EU) and Companies House (UK) don't overlap it.
         audited = merge_audited(
             latest_raw_frames(data_dir, symbol, provider="edgar"),
             latest_raw_frames(data_dir, symbol, provider="edgar-fsds"),
             latest_raw_frames(data_dir, symbol, provider="esef"),
             latest_raw_frames(data_dir, symbol, provider="companies-house"),
-            latest_raw_frames(data_dir, symbol, provider="edinet"),
-            # regions don't overlap — relative order among BR/TW/KR is inert
+            # regions don't overlap — relative order between BR/TW is inert
             latest_raw_frames(data_dir, symbol, provider="cvm"),
             latest_raw_frames(data_dir, symbol, provider="twse"),
-            latest_raw_frames(data_dir, symbol, provider="dart"),
         )
         if not scraped and not audited:
             continue

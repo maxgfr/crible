@@ -3,7 +3,7 @@
 État : v1 zéro clé **publique, testée (227 pytest + 62 vitest), E2E réel validé**.
 Sources bulk-first / local-first en place : universe FinanceDatabase, prix bulk
 (HuggingFace US + Stooq worldwide), fondamentaux audités SEC (companyfacts +
-FSDS), ESEF (EU), Companies House (UK), EDINET (JP, opt-in), FX BCE (`*_eur`).
+FSDS), ESEF (EU), Companies House (UK), CVM (BR), TWSE (TW), FX BCE (`*_eur`).
 Le dataset ouvert est republié en nightly. Rien ici n'est bloquant pour utiliser
 le screener aujourd'hui — c'est de la dette de qualité et des extensions.
 
@@ -27,8 +27,6 @@ le screener aujourd'hui — c'est de la dette de qualité et des extensions.
   5 responsabilités) en étapes nommées et testables.
 - [ ] **Casser le cycle d'import type-only de l'UI** (`ui/src/data/duckdb.ts` ↔
   `static-client.ts`) — inoffensif au runtime, mais à isoler dans un module de types.
-- [ ] **EDINET : garder les rapports annuels rectificatifs** (訂正有報, docType 130) —
-  le filtre `{120}` les exclut aujourd'hui (`providers/edinet.py`). Opt-in / OFF par défaut.
 - [ ] **Vectoriser `reconcile`** (`compute/reconcile.py`) : la double boucle `.loc`
   cellule-par-cellule fera surface à grande échelle.
 

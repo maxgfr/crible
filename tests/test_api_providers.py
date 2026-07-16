@@ -17,16 +17,14 @@ def client(tmp_path, monkeypatch):
     return TestClient(create_app())
 
 
-def test_fr013_inventory_exposes_keyless_core_and_edinet_opt_in(client):
+def test_fr013_inventory_exposes_the_keyless_core(client):
     body = client.get("/api/providers").json()
     by_id = {p["id"]: p for p in body}
-    assert {"yfinance", "edinet"} <= set(by_id)
     assert by_id["yfinance"] == {
         "id": "yfinance", "kind": "keyless", "key_env_var": None, "enabled": True,
     }
-    # EDINET is the free-key opt-in, OFF without CRIBLE_EDINET_KEY
-    assert by_id["edinet"]["kind"] == "free-key"
-    assert by_id["edinet"]["enabled"] is False
+    # keyless-only contract (2026-07-17): no keyed provider ships at all
+    assert all(p["key_env_var"] is None for p in body)
 
 
 def test_fr013_inventory_is_derived_from_the_shared_catalog(client):

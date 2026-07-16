@@ -154,8 +154,8 @@ straight onto a Synology NAS, Unraid, or any Docker host:
   resilient *fallback*) · **audited** figures that outrank scraped values at reconciliation —
   US from [SEC EDGAR](https://www.sec.gov/search-filings/edgar-application-programming-interfaces)
   companyfacts **+ Financial Statement Data Sets** (deep history, public domain), EU from
-  [filings.xbrl.org](https://filings.xbrl.org) (ESEF), UK from **Companies House** (iXBRL) and
-  JP from **EDINET** (free-key opt-in, off by default). ECB rates via
+  [filings.xbrl.org](https://filings.xbrl.org) (ESEF), UK from **Companies House** (iXBRL),
+  BR from **CVM** (DFP, ODbL) and TW from the **TWSE OpenAPI**. ECB rates via
   [Frankfurter](https://frankfurter.dev) add `*_eur` columns for cross-currency screens.
 - **Local-first**: bulk archives are mirrored to `data/mirror/` with a *last-good* guarantee —
   ingestion reads the local mirror, degrades gracefully when a source is down, and a refresh can

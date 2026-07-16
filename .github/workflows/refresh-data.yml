@@ -1,7 +1,6 @@
-# Nightly dataset refresh — keyless core + ONE free-key opt-in (EDINET,
-# audited Japan, PDL1.0 with attribution): the run degrades to keyless when
-# the CRIBLE_EDINET_KEY secret is absent, and the test suite still passes
-# with an empty environment (NFR-009). Restores the last-good dataset from the rolling
+# Nightly dataset refresh — 100% keyless (no secret feeds any data stage;
+# keyed sources like EDINET/OpenDART were deliberately dropped 2026-07-17,
+# see docs/DATA-SOURCES.md). Restores the last-good dataset from the rolling
 # data-latest release, runs one bounded refresh pass (FinanceDatabase
 # universe + Yahoo fundamentals/prices + ESEF audited statements via a fresh
 # GLEIF mapping + EDGAR audited US statements), then publishes back as
@@ -40,11 +39,6 @@ jobs:
       # contain a URL — the SEC Akamai WAF 403s any User-Agent with an http(s)
       # link, which silently killed the whole EDGAR layer (diagnosed 2026-07-14).
       CRIBLE_SEC_USER_AGENT: "crible maxgolfier@gmail.com"
-      # audited Japan (EDINET) — free-key opt-in, PDL1.0 attribution in
-      # DATA-SOURCES.md; empty/absent secret = the stage self-skips
-      CRIBLE_EDINET_KEY: ${{ secrets.CRIBLE_EDINET_KEY }}
-      # audited Korea (OpenDART) — same free-key opt-in pattern
-      CRIBLE_DART_KEY: ${{ secrets.CRIBLE_DART_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -110,7 +104,7 @@ jobs:
         # raw, the sweep covers the ~8,850 matched EU listings in a handful
         # of nightlies, then settles to new-filings-only. The wall-clock
         # guard, not this count, is the real bound.
-        run: uv run crible refresh --deadline 7200 --max-minutes 240 --esef-limit 1500 --edgar-bulk --fsds-quarters 2 --edinet-days 7 --cvm-limit 1000 --twse-limit 3000 --dart-limit 3000
+        run: uv run crible refresh --deadline 7200 --max-minutes 240 --esef-limit 1500 --edgar-bulk --fsds-quarters 2 --cvm-limit 1000 --twse-limit 3000
 
       - name: Export the static site artifacts (min-symbols gate)
         run: uv run crible export-site --out site-data --min-symbols 50
