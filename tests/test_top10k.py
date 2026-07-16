@@ -110,3 +110,142 @@ def test_new_schema_matches_ensure_columns() -> None:
     before = con.execute("DESCRIBE companies").fetchall()
     ensure_cap_columns(con)
     assert con.execute("DESCRIBE companies").fetchall() == before
+
+
+# --- the cap table: precedence, EUR conversion, carryover -------------------
+
+NOW = 1_800_000_000.0  # 2027-01-15 — fixture asofs are relative to this
+FRESH = "2027-01-10"
+STALE = "2026-10-01"
+RATES = {"USD": 1.10, "KRW": 1500.0}
+
+
+def _uni(rows) -> pd.DataFrame:
+    defaults = {"isin": None, "country": "US", "market_cap_class": None}
+    return pd.DataFrame([{**defaults, "symbol": r.pop("symbol"), **r} for r in rows])
+
+
+def _census(rows) -> pd.DataFrame:
+    defaults = {"census_isin": None, "market_cap": float("nan"), "currency": "USD",
+                "census_volume": float("nan"), "census_country": "america", "cap_asof": FRESH}
+    return pd.DataFrame([{**defaults, "symbol": r.pop("symbol"), **r} for r in rows])
+
+
+def test_cap_precedence_census_snapshot_carryover() -> None:
+    from crible.universe_caps import build_cap_table
+
+    universe = _uni([{"symbol": "FRESH"}, {"symbol": "STALE"}, {"symbol": "PREV"},
+                     {"symbol": "NONE"}])
+    census = _census([
+        {"symbol": "FRESH", "market_cap": 110.0},
+        {"symbol": "STALE", "market_cap": 220.0, "cap_asof": STALE},
+    ])
+    snaps = pd.DataFrame(
+        [{"symbol": "STALE", "snap_cap": 330.0, "snap_currency": "USD", "snap_asof": "2027-01-05"}]
+    )
+    previous = pd.DataFrame(
+        [{"symbol": "PREV", "cap_eur": 42.0, "cap_asof": "2026-06-30",
+          "cap_source": "tradingview", "top10k": True}]
+    )
+    caps = build_cap_table(universe, census, snaps, previous, RATES, NOW).set_index("symbol")
+
+    assert caps.loc["FRESH", "cap_source"] == "tradingview"
+    assert round(caps.loc["FRESH", "cap_eur"], 6) == 100.0  # 110 USD / 1.10
+    assert caps.loc["STALE", "cap_source"] == "snapshot"  # stale census loses
+    assert caps.loc["STALE", "cap_eur"] == 300.0
+    assert caps.loc["PREV", "cap_source"] == "carryover"
+    assert caps.loc["PREV", "cap_asof"] == "2026-06-30"  # original asof travels
+    assert pd.isna(caps.loc["NONE", "cap_source"])
+    assert pd.isna(caps.loc["NONE", "cap_eur"])
+
+
+def test_missing_rate_yields_null_never_imputed() -> None:
+    from crible.universe_caps import build_cap_table
+
+    universe = _uni([{"symbol": "X.BK"}])
+    census = _census([{"symbol": "X.BK", "market_cap": 1e9, "currency": "THB"}])
+    caps = build_cap_table(universe, census, None, None, RATES, NOW).set_index("symbol")
+    assert pd.isna(caps.loc["X.BK", "cap_eur"]) and pd.isna(caps.loc["X.BK", "cap_source"])
+
+
+def test_grouping_prefers_universe_isin_then_census_then_symbol() -> None:
+    from crible.universe_caps import build_cap_table
+
+    universe = _uni([
+        {"symbol": "A.PA", "isin": "FR001"},
+        {"symbol": "B.DE", "isin": None},          # census ISIN fills in
+        {"symbol": "C.MI", "isin": None},          # no ISIN anywhere
+    ])
+    census = _census([
+        {"symbol": "B.DE", "census_isin": "FR001", "market_cap": 1.0},
+    ])
+    caps = build_cap_table(universe, census, None, None, RATES, NOW).set_index("symbol")
+    assert caps.loc["A.PA", "company_group"] == "FR001"
+    assert caps.loc["B.DE", "company_group"] == "FR001"  # deduped with A.PA
+    assert caps.loc["C.MI", "company_group"] == "sym:C.MI"
+
+
+def test_primary_listing_tie_breaks() -> None:
+    from crible.universe_caps import build_cap_table, pick_primary
+
+    universe = _uni([
+        # one group across two countries: the home venue beats the foreign one
+        {"symbol": "SAP.DE", "isin": "DE001", "country": "DE"},
+        {"symbol": "SAPUS", "isin": "DE001", "country": "DE"},
+        # one group, two same-country venues: TV caps are the COMPANY's (equal
+        # across venues) → volume decides, then symbol asc
+        {"symbol": "AA.L", "isin": "GB001", "country": "GB"},
+        {"symbol": "AB.L", "isin": "GB001", "country": "GB"},
+    ])
+    census = _census([
+        {"symbol": "SAP.DE", "market_cap": 100.0, "census_country": "germany"},
+        {"symbol": "SAPUS", "market_cap": 100.0, "census_country": "america",
+         "census_volume": 999.0},
+        {"symbol": "AA.L", "market_cap": 50.0, "census_country": "uk"},
+        {"symbol": "AB.L", "market_cap": 50.0, "census_country": "uk",
+         "census_volume": 10.0},
+    ])
+    caps = pick_primary(build_cap_table(universe, census, None, None, RATES, NOW))
+    primaries = set(caps.loc[caps["primary_listing"], "symbol"])
+    assert "SAP.DE" in primaries and "SAPUS" not in primaries  # home beats volume
+    assert "AB.L" in primaries and "AA.L" not in primaries  # volume breaks the cap tie
+    assert caps.groupby("company_group")["primary_listing"].sum().eq(1).all()
+
+
+def test_top10k_hysteresis_and_class_floor(monkeypatch) -> None:
+    import crible.universe_caps as uc
+
+    monkeypatch.setattr(uc, "TOP10K_SIZE", 2)
+    monkeypatch.setattr(uc, "TOP10K_EXIT_RANK", 3)
+
+    universe = _uni([
+        {"symbol": "R1"}, {"symbol": "R2"}, {"symbol": "R3"}, {"symbol": "R4"},
+        {"symbol": "FLOOR", "market_cap_class": "Mega Cap"},
+        {"symbol": "TINY", "market_cap_class": "Nano Cap"},
+    ])
+    census = _census([
+        {"symbol": "R1", "market_cap": 400.0}, {"symbol": "R2", "market_cap": 300.0},
+        {"symbol": "R3", "market_cap": 200.0}, {"symbol": "R4", "market_cap": 100.0},
+    ])
+    caps = uc.pick_primary(uc.build_cap_table(universe, census, None, None, RATES, NOW))
+
+    # no previous members: strict top-2 + the cap-less Mega floor
+    first = uc.assign_top10k(caps, previous_members=set()).set_index("symbol")
+    assert list(first.loc[["R1", "R2", "R3", "R4"], "top10k"]) == [True, True, False, False]
+    assert first.loc["FLOOR", "top10k"] and first.loc["FLOOR", "_floor"]
+    assert not first.loc["TINY", "top10k"]
+    assert first.loc["R3", "cap_rank_global"] == 3
+
+    # R3 was a member → stays at rank 3 (≤ exit bound); R4 stays out
+    second = uc.assign_top10k(caps, previous_members={"R3", "R4"}).set_index("symbol")
+    assert second.loc["R3", "top10k"]
+    assert not second.loc["R4", "top10k"]  # rank 4 > exit bound even as a previous member
+
+
+def test_no_ranking_means_no_floor_and_no_members() -> None:
+    from crible.universe_caps import assign_top10k, build_cap_table, pick_primary
+
+    universe = _uni([{"symbol": "A", "market_cap_class": "Mega Cap"}, {"symbol": "B"}])
+    caps = pick_primary(build_cap_table(universe, None, None, None, RATES, NOW))
+    out = assign_top10k(caps, previous_members=set())
+    assert not out["top10k"].any()  # pre-census: guaranteed no-op
