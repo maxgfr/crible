@@ -67,7 +67,7 @@ jobs:
       - name: Install the OpenGL runtime opencv needs
         run: sudo apt-get update && sudo apt-get install -y libgl1 libglib2.0-0
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.12
       - run: uv sync --extra captcha
 
