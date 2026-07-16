@@ -160,6 +160,18 @@ def test_import_prices_cli_age_gate(tmp_path, monkeypatch) -> None:
     assert "nothing to do" in again.output
 
 
+def test_age_gate_is_per_source(tmp_path) -> None:
+    """A fresh import from ONE dump must not age-gate the others."""
+    from crible.ingest.price_import import latest_import_age_days
+
+    _universe(tmp_path)
+    import_huggingface(tmp_path, shards=[_shard(tmp_path)])
+
+    assert latest_import_age_days(tmp_path, "huggingface") is not None
+    assert latest_import_age_days(tmp_path, "stooq") is None  # never imported
+    assert latest_import_age_days(tmp_path) is not None  # global view unchanged
+
+
 def test_import_prices_cli_missing_archive_fails(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
     result = runner.invoke(app, ["import-prices", str(tmp_path / "nope.zip")])

@@ -84,12 +84,17 @@ def load_prices_latest(data_dir: Path | str) -> pd.DataFrame:
     return table
 
 
-def latest_import_age_days(data_dir: Path | str) -> float | None:
+def latest_import_age_days(data_dir: Path | str, source: str | None = None) -> float | None:
     """Age of the newest import, from the table itself (file mtimes lie after
-    a git checkout)."""
+    a git checkout). With ``source``, only that dump's rows count — one dump's
+    fresh import must not silence another's schedule."""
     table = load_prices_latest(data_dir)
     if table.empty or "imported_at" not in table.columns:
         return None
+    if source is not None:
+        table = table[table["source"] == source]
+        if table.empty:
+            return None
     return (time.time() - float(table["imported_at"].max())) / 86400.0
 
 

@@ -212,7 +212,9 @@ def import_prices(
 
     data = config.data_dir()
     if max_age_days > 0:
-        age = latest_import_age_days(data)
+        # named dumps gate on their OWN rows; a Stooq path keeps the global gate
+        named = source if source == "huggingface" else None
+        age = latest_import_age_days(data, named)
         if age is not None and age < max_age_days:
             typer.echo(f"import is {age:.1f} days old (< {max_age_days:g}) — nothing to do")
             return
