@@ -87,6 +87,16 @@ Agents can screen through MCP — a read-only tool surface (`screen`, `fields`, 
 claude mcp add crible -e CRIBLE_DATA_DIR=$HOME/crible-data -- crible mcp
 ```
 
+The repo also ships a [`crible-cli` agent skill](.claude/skills/crible-cli/SKILL.md) that
+teaches coding agents the full CLI — screening syntax, data management, publishing. Install
+it once, globally, with the [skills CLI](https://skills.sh) (works for Claude Code and
+other agents; re-run `update` anytime to sync with this repo):
+
+```bash
+npx skills add maxgfr/crible -g     # install into ~/.claude/skills
+npx skills update -g -y             # pull the latest version from the repo
+```
+
 ### Start with data — zero crawl
 
 The nightly refresh publishes its open dataset as assets on the rolling
