@@ -38,6 +38,19 @@ DB_TABLES = {
     "statements": f"{DB_BASE}/stock_statement.parquet",
 }
 
+EVENTS_DIR = "events"
+
+# capital events keep their FULL history (tiny tables — MBs, not GBs);
+# split_factor stays the raw "1398:1000" string, never a lossy float
+_EVENT_SELECTS = {
+    "dividends": "symbol, CAST(report_date AS DATE) AS date, CAST(amount AS DOUBLE) AS amount",
+    "splits": "symbol, CAST(report_date AS DATE) AS date, split_factor",
+    "shares": (
+        "symbol, CAST(report_date AS DATE) AS date,"
+        " CAST(shares_outstanding AS BIGINT) AS shares_outstanding"
+    ),
+}
+
 
 def _connect(url: str) -> duckdb.DuckDBPyConnection:
     con = duckdb.connect()
@@ -90,7 +103,34 @@ def import_defeatbeta(data_dir: Path | str, tables: dict[str, str] | None = None
     series = series[series["symbol"].isin(known)]
     if len(series):
         write_series(data_dir, "defeatbeta", series.assign(source="defeatbeta"))
+    _import_events(data_dir, tables, known)
     log.info(
         "import-prices: %d symbols from defeatbeta (%d outside the universe)", len(fresh), skipped
     )
     return ImportReport(source="defeatbeta", imported=len(fresh), skipped_unknown=skipped)
+
+
+def _import_events(data_dir: Path | str, tables: dict[str, str], known: set[str]) -> None:
+    """Dividends, splits and shares outstanding → data/events/ (published;
+    the release restore→publish cycle is the last-good guarantee)."""
+    for name, select in _EVENT_SELECTS.items():
+        url = tables.get(name)
+        if url is None:
+            continue
+        con = _connect(url)
+        try:
+            frame = con.execute(f"SELECT {select} FROM read_parquet(?)", [url]).fetchdf()
+        finally:
+            con.close()
+        frame = frame[frame["symbol"].isin(known)].reset_index(drop=True)
+        if not len(frame):
+            continue
+        frame = frame.assign(date=pd.to_datetime(frame["date"]).dt.date, source="defeatbeta")
+        directory = Path(data_dir) / EVENTS_DIR
+        directory.mkdir(parents=True, exist_ok=True)
+        final = directory / f"defeatbeta-{name}.parquet"
+        tmp = directory / f".tmp-defeatbeta-{name}.parquet"
+        frame.to_parquet(tmp, index=False)
+        tmp.rename(final)
+        log.info("import-prices: %d defeatbeta %s events for %d symbols",
+                 len(frame), name, frame["symbol"].nunique())

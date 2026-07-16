@@ -42,6 +42,7 @@ paths=(data/raw data/universe.parquet data/snapshot)
 [ -f data/budget-state.json ] && paths+=(data/budget-state.json)
 [ -f data/prices-latest.parquet ] && paths+=(data/prices-latest.parquet)
 [ -d data/prices ] && paths+=(data/prices)
+[ -d data/events ] && paths+=(data/events)
 tar -czf "$tarball" "${paths[@]}"
 
 site_tarball="$workdir/site-data.tar.gz"

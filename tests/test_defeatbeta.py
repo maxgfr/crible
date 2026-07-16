@@ -39,6 +39,28 @@ def _tables(tmp_path) -> dict[str, str]:
     return {"prices": _prices_table(tmp_path)}
 
 
+def _tables_with_events(tmp_path) -> dict[str, str]:
+    tables = _tables(tmp_path)
+    events = {
+        "dividends": pd.DataFrame(
+            {"symbol": ["AAPL", "ZZUNKNOWN"], "report_date": ["2026-05-08", "2026-05-08"],
+             "amount": [0.26, 1.0]}
+        ),
+        "splits": pd.DataFrame(
+            {"symbol": ["AAPL"], "report_date": ["2020-08-31"], "split_factor": ["4:1"]}
+        ),
+        "shares": pd.DataFrame(
+            {"symbol": ["AAPL"], "report_date": ["2026-03-31"],
+             "shares_outstanding": [15_000_000_000]}
+        ),
+    }
+    for name, frame in events.items():
+        path = tmp_path / f"{name}.parquet"
+        frame.to_parquet(path, index=False)
+        tables[name] = str(path)
+    return tables
+
+
 def test_defeatbeta_import_distils_known_symbols(tmp_path) -> None:
     _universe(tmp_path)
     report = import_defeatbeta(tmp_path, tables=_tables(tmp_path))
@@ -66,6 +88,30 @@ def test_defeatbeta_import_persists_the_series_store(tmp_path) -> None:
     assert (series["source"] == "defeatbeta").all()
     assert series["adj_close"].isna().all()
     assert series["close"].notna().all() and series["volume"].notna().all()
+
+
+def test_defeatbeta_import_writes_the_events_store(tmp_path) -> None:
+    """Dividends/splits/shares land in data/events/ — universe-filtered, full
+    history, split_factor kept as the raw 'a:b' string."""
+    _universe(tmp_path)
+    import_defeatbeta(tmp_path, tables=_tables_with_events(tmp_path))
+
+    dividends = pd.read_parquet(tmp_path / "events" / "defeatbeta-dividends.parquet")
+    assert set(dividends["symbol"]) == {"AAPL"}  # ZZUNKNOWN dropped
+    assert list(dividends.columns) == ["symbol", "date", "amount", "source"]
+    assert dividends.loc[0, "amount"] == 0.26
+
+    splits = pd.read_parquet(tmp_path / "events" / "defeatbeta-splits.parquet")
+    assert splits.loc[0, "split_factor"] == "4:1"  # pre-window history kept
+
+    shares = pd.read_parquet(tmp_path / "events" / "defeatbeta-shares.parquet")
+    assert shares.loc[0, "shares_outstanding"] == 15_000_000_000
+
+
+def test_defeatbeta_import_without_event_tables_is_prices_only(tmp_path) -> None:
+    _universe(tmp_path)
+    import_defeatbeta(tmp_path, tables=_tables(tmp_path))
+    assert not (tmp_path / "events").exists()
 
 
 def test_defeatbeta_loses_price_ties_to_the_crawl_but_beats_the_dumps() -> None:
