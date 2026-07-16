@@ -108,6 +108,24 @@ def _queue_stats(con: duckdb.DuckDBPyConnection) -> dict:
                 """
             ).fetchall()
         )
+        stats["parked"] = con.execute(
+            "SELECT count(*) FROM crawl_tasks WHERE status = 'parked'"
+        ).fetchone()[0]
+        if "companies" in tables:
+            # marathon progress at a glance: crawled/total per region
+            stats["coverage_by_region"] = {
+                region: {"crawled": crawled_n, "total": total}
+                for region, crawled_n, total in con.execute(
+                    """
+                    SELECT c.region,
+                           count(t.last_crawled_at) FILTER (t.last_crawled_at IS NOT NULL),
+                           count(*)
+                    FROM companies c
+                    LEFT JOIN crawl_tasks t USING (symbol)
+                    GROUP BY c.region
+                    """
+                ).fetchall()
+            }
     return stats
 
 

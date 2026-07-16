@@ -114,3 +114,27 @@ def test_run_once_symbols_crawls_exactly_the_requested_set(service_env) -> None:
     assert outcome.failed == []
     # the targeted crawl leaves raw statements behind like any cycle
     assert list((config.data_dir() / "raw").glob("provider=yfinance/symbol=OVH.PA/*.parquet"))
+
+
+def test_status_reports_coverage_by_region_and_parked(service_env) -> None:
+    """The marathon plan needs progress visibility: crawled/total per region
+    plus the parked count land in the heartbeat (surfaced by `crible status`
+    and the workflows' step summaries)."""
+    import json
+
+    from crible import config as _config
+
+    frame = _frame(["AIR.PA", "MC.PA", "AAPL"])
+    frame.loc[frame["symbol"] == "AAPL", "country"] = "United States"
+    con = duckdb.connect(str(config.database_path()))
+    bootstrap_universe(con, frame)
+    con.close()
+    provider = FakeYfProvider()
+
+    run_once(limit=2, provider=provider)  # crawls the 2 highest-priority (EU)
+
+    status = json.loads((_config.data_dir() / "status.json").read_text())
+    coverage = status["coverage_by_region"]
+    assert coverage["europe"] == {"crawled": 2, "total": 2}
+    assert coverage["us"] == {"crawled": 0, "total": 1}
+    assert status["parked"] == 0
