@@ -160,6 +160,73 @@ def test_import_prices_cli_age_gate(tmp_path, monkeypatch) -> None:
     assert "nothing to do" in again.output
 
 
+def test_quote_only_source_never_clobbers_momentum(tmp_path) -> None:
+    """A quote-only row (tradingview: snapshot, no history, all-NaN features)
+    wins the close, but the dump's momentum features survive with their
+    provenance — dated, not imputed."""
+    from crible.ingest.price_import import _merge_and_publish
+
+    _universe(tmp_path)
+    import_huggingface(tmp_path, shards=[_shard(tmp_path)])  # asof 2026-12-01
+
+    quote = pd.DataFrame(
+        [{"symbol": "AAPL", "close": 999.0, "price_asof": "2026-12-15",
+          "source": "tradingview", "imported_at": 2_000_000.0}]
+    )
+    _merge_and_publish(tmp_path, quote)
+
+    row = load_prices_latest(tmp_path).set_index("symbol").loc["AAPL"]
+    assert row["close"] == 999.0 and row["source"] == "tradingview"
+    assert round(row["return_6m"], 6) == round(112.0 / 106.0 - 1.0, 6)  # survived
+    assert row["momentum_source"] == "huggingface"
+    assert row["momentum_asof"] == "2026-12-01"
+
+
+def test_stale_quote_only_row_loses_the_quote_entirely(tmp_path) -> None:
+    from crible.ingest.price_import import _merge_and_publish
+
+    _universe(tmp_path)
+    import_huggingface(tmp_path, shards=[_shard(tmp_path)])
+    stale = pd.DataFrame(
+        [{"symbol": "AAPL", "close": 1.0, "price_asof": "2026-01-02",
+          "source": "tradingview", "imported_at": 2_000_000.0}]
+    )
+    _merge_and_publish(tmp_path, stale)
+    row = load_prices_latest(tmp_path).set_index("symbol").loc["AAPL"]
+    assert row["close"] == 112.0 and row["source"] == "huggingface"
+
+
+def test_age_gate_sees_through_a_quote_only_takeover(tmp_path) -> None:
+    """After tradingview wins the quote, the dump still ages via its momentum
+    provenance — and the GLOBAL age ignores the quote-only channel so dump
+    schedules are never silenced by a daily snapshot."""
+    from crible.ingest.price_import import _merge_and_publish, latest_import_age_days
+
+    _universe(tmp_path)
+    import_huggingface(tmp_path, shards=[_shard(tmp_path)])
+    quote = pd.DataFrame(
+        [{"symbol": "AAPL", "close": 999.0, "price_asof": "2026-12-15",
+          "source": "tradingview", "imported_at": 2_000_000.0}]
+    )
+    _merge_and_publish(tmp_path, quote)
+
+    assert latest_import_age_days(tmp_path, "huggingface") is not None  # via momentum stamps
+    assert latest_import_age_days(tmp_path, "tradingview") is not None
+    # global: the only row's quote is tradingview-owned → no dump age known
+    assert latest_import_age_days(tmp_path) is None
+
+
+def test_load_backfills_momentum_provenance_for_legacy_files(tmp_path) -> None:
+    legacy = pd.DataFrame(
+        [{"symbol": "AAPL", "close": 5.0, "price_asof": "2026-06-01",
+          "return_6m": 0.1, "source": "stooq", "imported_at": 1.0}]
+    )
+    legacy.to_parquet(tmp_path / "prices-latest.parquet", index=False)
+    row = load_prices_latest(tmp_path).set_index("symbol").loc["AAPL"]
+    assert row["momentum_source"] == "stooq"
+    assert row["momentum_asof"] == "2026-06-01"
+
+
 def test_age_gate_is_per_source(tmp_path) -> None:
     """A fresh import from ONE dump must not age-gate the others."""
     from crible.ingest.price_import import latest_import_age_days

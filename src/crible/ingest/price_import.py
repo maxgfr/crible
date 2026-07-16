@@ -66,36 +66,83 @@ class ImportReport:
     skipped_unknown: int
 
 
+# the distillate row splits into two independently-merged parts: the QUOTE
+# (freshest price_asof wins) and the MOMENTUM features (freshest momentum_asof
+# wins AMONG rows that actually carry features) — so a quote-only source
+# (tradingview snapshots, no history) refreshes the close without clobbering
+# a dump's momentum. Provenance columns date the features honestly.
+QUOTE_COLUMNS = ["close", "price_asof", "source", "imported_at"]
+MOMENTUM_META = ["momentum_source", "momentum_asof", "momentum_imported_at"]
+
+# quote-only channels: excluded from the GLOBAL age gate (they refresh daily
+# and would silence every dump schedule) and never own the momentum part
+QUOTE_ONLY_SOURCES = {"tradingview"}
+
+
 def prices_latest_path(data_dir: Path | str) -> Path:
     return Path(data_dir) / PRICES_LATEST
+
+
+def _stamp_momentum_provenance(table: pd.DataFrame) -> pd.DataFrame:
+    """Feature-bearing rows without provenance inherit it from their quote —
+    keeps the series-backed importers (huggingface/stooq/defeatbeta) and
+    legacy files untouched while the merge below reads one contract."""
+    for col in FEATURE_COLUMNS:
+        if col not in table.columns:
+            table[col] = float("nan")
+    for col in (*QUOTE_COLUMNS, *MOMENTUM_META):
+        if col not in table.columns:
+            table[col] = None
+    if not len(table):
+        return table
+    has_features = table[FEATURE_COLUMNS].notna().any(axis=1)
+    needs = has_features & table["momentum_source"].isna()
+    table.loc[needs, "momentum_source"] = table.loc[needs, "source"]
+    table.loc[needs, "momentum_asof"] = table.loc[needs, "price_asof"]
+    table.loc[needs, "momentum_imported_at"] = table.loc[needs, "imported_at"]
+    return table
 
 
 def load_prices_latest(data_dir: Path | str) -> pd.DataFrame:
     path = prices_latest_path(data_dir)
     if not path.exists():
         return pd.DataFrame(
-            columns=["symbol", "close", "price_asof", *FEATURE_COLUMNS, "source", "imported_at"]
+            columns=[
+                "symbol", "close", "price_asof", *FEATURE_COLUMNS,
+                "source", "imported_at", *MOMENTUM_META,
+            ]
         )
     table = pd.read_parquet(path)
     # a pre-momentum file lacks the newer feature columns — backfill as NaN
     for col in FEATURE_COLUMNS:
         if col not in table.columns:
             table[col] = float("nan")
-    return table
+    return _stamp_momentum_provenance(table)
 
 
 def latest_import_age_days(data_dir: Path | str, source: str | None = None) -> float | None:
     """Age of the newest import, from the table itself (file mtimes lie after
     a git checkout). With ``source``, only that dump's rows count — one dump's
-    fresh import must not silence another's schedule."""
+    fresh import must not silence another's schedule; a dump that lost its
+    quote to a quote-only channel still ages via its momentum provenance."""
     table = load_prices_latest(data_dir)
     if table.empty or "imported_at" not in table.columns:
         return None
     if source is not None:
-        table = table[table["source"] == source]
-        if table.empty:
+        stamps = [float(v) for v in table.loc[table["source"] == source, "imported_at"].dropna()]
+        stamps += [
+            float(v)
+            for v in table.loc[
+                table["momentum_source"] == source, "momentum_imported_at"
+            ].dropna()
+        ]
+        if not stamps:
             return None
-    return (time.time() - float(table["imported_at"].max())) / 86400.0
+        return (time.time() - max(stamps)) / 86400.0
+    rows = table[~table["source"].isin(QUOTE_ONLY_SOURCES)]
+    if rows.empty:
+        return None
+    return (time.time() - float(rows["imported_at"].max())) / 86400.0
 
 
 def universe_symbols(data_dir: Path | str) -> set[str]:
@@ -106,14 +153,26 @@ def universe_symbols(data_dir: Path | str) -> set[str]:
 
 
 def _merge_and_publish(data_dir: Path | str, fresh: pd.DataFrame) -> None:
-    """Newest price_asof wins per symbol; atomic temp-then-rename."""
+    """Column-aware merge per symbol, atomic temp-then-rename.
+
+    Quote part: newest ``price_asof`` wins (any source). Momentum part:
+    newest ``momentum_asof`` wins among rows that CARRY features — a
+    quote-only row (all-NaN features) can never win it, so a tradingview
+    close never erases a dump's return_6m; the provenance columns keep the
+    features honestly dated instead of imputed."""
+    fresh = _stamp_momentum_provenance(fresh.copy())
     current = load_prices_latest(data_dir)
-    merged = (
-        pd.concat([current, fresh], ignore_index=True)
-        .sort_values("price_asof")
-        .drop_duplicates("symbol", keep="last")
-        .reset_index(drop=True)
+    combined = pd.concat([current, fresh], ignore_index=True)
+    quotes = (
+        combined.sort_values("price_asof", na_position="first")
+        .drop_duplicates("symbol", keep="last")[["symbol", *QUOTE_COLUMNS]]
     )
+    features = (
+        combined.dropna(subset=FEATURE_COLUMNS, how="all")
+        .sort_values("momentum_asof", na_position="first")
+        .drop_duplicates("symbol", keep="last")[["symbol", *FEATURE_COLUMNS, *MOMENTUM_META]]
+    )
+    merged = quotes.merge(features, on="symbol", how="left").reset_index(drop=True)
     path = prices_latest_path(data_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".parquet.tmp")
