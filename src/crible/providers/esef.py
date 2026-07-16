@@ -18,6 +18,7 @@ import pandas as pd
 log = logging.getLogger("crible.providers.esef")
 
 FILINGS_API = "https://filings.xbrl.org/api/filings"
+ENTITIES_API = "https://filings.xbrl.org/api/entities"
 
 # a full-year duration, with slack for 52/53-week fiscal calendars (as EDGAR)
 FULL_YEAR_DAYS = (320, 400)
@@ -167,6 +168,29 @@ class EsefClient:
         payload = response.json()
         count = int(payload.get("meta", {}).get("count", 0) or 0)
         return payload.get("data", []), count
+
+    def entities_index(
+        self, page_size: int = 100, page_number: int = 1
+    ) -> tuple[list[tuple[str, str]], int]:
+        """One page of the entities index as (LEI, name) pairs.
+
+        Feeds the name→LEI→ISIN backfill (FR-010 reach): every ESEF filer is
+        listed here even when FinanceDatabase ships its listing without an
+        ISIN. Rows without an identifier are dropped."""
+        params = {"page[size]": page_size, "page[number]": page_number}
+        response = self._http.get(ENTITIES_API, params=params)
+        response.raise_for_status()
+        payload = response.json()
+        count = int(payload.get("meta", {}).get("count", 0) or 0)
+        pairs = []
+        for row in payload.get("data", []):
+            attributes = row.get("attributes", {})
+            lei, name = attributes.get("identifier"), attributes.get("name")
+            # the live index also carries filers keyed by national codes
+            # (e.g. 8-digit Ukrainian EDRPOU) — only a real LEI can join GLEIF
+            if lei and name and len(lei) == 20 and lei.isalnum():
+                pairs.append((lei, name))
+        return pairs, count
 
     def filings_for_lei(self, lei: str) -> list[dict]:
         import json

@@ -151,7 +151,10 @@ def bootstrap_universe(con: duckdb.DuckDBPyConnection, frame: pd.DataFrame) -> B
             FROM staged_universe
             ON CONFLICT (symbol) DO UPDATE SET
                 name = excluded.name,
-                isin = excluded.isin,
+                -- upstream NULL means 'unknown', not 'no ISIN': a locally
+                -- backfilled ISIN (name→LEI→ISIN, FR-010) must survive the
+                -- nightly re-bootstrap; a real upstream value still wins
+                isin = coalesce(excluded.isin, companies.isin),
                 country = excluded.country,
                 country_name = excluded.country_name,
                 region = excluded.region,

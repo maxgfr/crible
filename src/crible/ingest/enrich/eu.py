@@ -11,6 +11,45 @@ from crible.ingest.enrich._base import (
     update_heartbeat,
 )
 
+# entities-index paging cap for the name→LEI→ISIN backfill: ~10k ESEF filers
+# at 200/page fits well inside it; filings.xbrl.org is not budget-bound
+ENTITY_PAGE_SIZE = 200
+MAX_ENTITY_PAGES = 100
+
+
+def _backfill_nameless_isins(con: duckdb.DuckDBPyConnection, client, mapping: dict[str, str]) -> int:
+    """Name→LEI→ISIN backfill (FR-010 reach) — best-effort, never kills the
+    sweep. Runs only while ISIN-less EU rows exist; conservative matching
+    lives in crible.ingest.enrich.backfill."""
+    from crible.ingest.enrich.backfill import backfill_missing_isins
+
+    nameless = con.execute(
+        "SELECT count(*) FROM companies"
+        " WHERE region = 'europe' AND NOT delisted AND isin IS NULL"
+    ).fetchone()[0]
+    if not nameless or not hasattr(client, "entities_index"):
+        return 0
+    try:
+        entities: list[tuple[str, str]] = []
+        page = 1
+        while page <= MAX_ENTITY_PAGES:
+            pairs, count = client.entities_index(page_size=ENTITY_PAGE_SIZE, page_number=page)
+            entities.extend(pairs)
+            if not pairs or page * ENTITY_PAGE_SIZE >= count:
+                break
+            page += 1
+        report = backfill_missing_isins(con, entities=entities, mapping=mapping)
+        if report["backfilled"]:
+            log.info(
+                "esef backfill: %d ISIN(s) recovered by name (%d ambiguous, %d without ISIN)",
+                report["backfilled"], report["ambiguous"], report["no_isin_for_lei"],
+            )
+        return report["backfilled"]
+    except Exception as exc:  # noqa: BLE001 — enrichment reach, never a gate
+        log.warning("esef backfill failed: %s — resuming next run", exc)
+        return 0
+
+
 def run_esef_cycle(limit: int = 5, client=None, mapping: dict[str, str] | None = None) -> dict:
     """FR-010 — the ESEF enrichment cycle: EU companies whose ISIN resolves to
     an LEI (GLEIF file at data/isin-lei.csv, operator-provided) get audited
@@ -143,9 +182,15 @@ def run_esef_sweep(
                 log.warning("esef sweep: %s — resuming next run", outage)
             return outcome
 
+    if client is None:
+        from crible.providers.esef import EsefClient
+
+        client = EsefClient()
+
     con = _connect()
     try:
         con.execute(ESEF_SCHEMA)
+        outcome["backfilled"] = _backfill_nameless_isins(con, client, mapping)
         rows = con.execute(
             "SELECT symbol, isin FROM companies"
             " WHERE region = 'europe' AND NOT delisted AND isin IS NOT NULL"
@@ -166,10 +211,6 @@ def run_esef_sweep(
             keys={s: lei for lei, symbols in by_lei.items() for s in symbols},
         )
 
-        if client is None:
-            from crible.providers.esef import EsefClient
-
-            client = EsefClient()
         from crible.ingest.raw import write_raw_statement
 
         cutoff = time.time() - ESEF_REFRESH_SECONDS
