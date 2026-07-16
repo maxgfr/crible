@@ -5,7 +5,7 @@
 
 FROM ghcr.io/astral-sh/uv:0.11.29 AS uv
 
-FROM node:24.18.0-alpine AS ui
+FROM node:26.5.0-alpine AS ui
 WORKDIR /build
 COPY ui/package.json ui/package-lock.json ./
 RUN npm ci --no-audit --no-fund
