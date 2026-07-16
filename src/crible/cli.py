@@ -432,6 +432,11 @@ def refresh(
         0, "--twse-limit",
         help="Audited Taiwan: max TWSE listings enriched this run (0=off; keyless, OGDL)",
     ),
+    dart_limit: int = typer.Option(
+        0, "--dart-limit",
+        help="Audited Korea: max OpenDART listings enriched this run (0=off;"
+        " free-key opt-in, self-skips without CRIBLE_DART_KEY)",
+    ),
 ) -> None:
     """One bounded keyless refresh pass (the nightly dataset run)."""
     from crible.ingest.service import run_refresh
@@ -442,7 +447,7 @@ def refresh(
         fetch_gleif=fetch_gleif, fetch_fx=fetch_fx,
         max_seconds=max_minutes * 60 if max_minutes > 0 else None,
         edinet_days=edinet_days, companies_house_url=ch_accounts_url,
-        cvm_limit=cvm_limit, twse_limit=twse_limit,
+        cvm_limit=cvm_limit, twse_limit=twse_limit, dart_limit=dart_limit,
     )
     typer.echo(json.dumps(result, indent=2, default=str))
 

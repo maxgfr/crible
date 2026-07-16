@@ -43,6 +43,8 @@ jobs:
       # audited Japan (EDINET) — free-key opt-in, PDL1.0 attribution in
       # DATA-SOURCES.md; empty/absent secret = the stage self-skips
       CRIBLE_EDINET_KEY: ${{ secrets.CRIBLE_EDINET_KEY }}
+      # audited Korea (OpenDART) — same free-key opt-in pattern
+      CRIBLE_DART_KEY: ${{ secrets.CRIBLE_DART_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -108,7 +110,7 @@ jobs:
         # raw, the sweep covers the ~8,850 matched EU listings in a handful
         # of nightlies, then settles to new-filings-only. The wall-clock
         # guard, not this count, is the real bound.
-        run: uv run crible refresh --deadline 7200 --max-minutes 240 --esef-limit 1500 --edgar-bulk --fsds-quarters 2 --edinet-days 7 --cvm-limit 1000 --twse-limit 3000
+        run: uv run crible refresh --deadline 7200 --max-minutes 240 --esef-limit 1500 --edgar-bulk --fsds-quarters 2 --edinet-days 7 --cvm-limit 1000 --twse-limit 3000 --dart-limit 3000
 
       - name: Export the static site artifacts (min-symbols gate)
         run: uv run crible export-site --out site-data --min-symbols 50
