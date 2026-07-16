@@ -36,7 +36,7 @@ MAX_ROWS_PER_COUNTRY = 80_000
 REQUEST_JITTER_S = (1.0, 3.0)
 
 SCAN_COLUMNS = [
-    "name", "close", "currency", "market_cap_basic",
+    "name", "description", "close", "currency", "market_cap_basic",
     "exchange", "type", "subtype", "isin",
 ]
 
@@ -278,9 +278,12 @@ def import_tradingview(
         log.info("tradingview unmatched listings by venue:\n%s", unmapped.to_string())
 
     census = table[[
-        "symbol", "tv_symbol", "name", "isin", "market_cap_basic", "currency",
+        "symbol", "tv_symbol", "description", "isin", "market_cap_basic", "currency",
         "close", "country", "tv_exchange", "match_method",
-    ]].rename(columns={"market_cap_basic": "market_cap", "tv_exchange": "exchange"})
+    ]].rename(
+        columns={"market_cap_basic": "market_cap", "tv_exchange": "exchange",
+                 "description": "name"}
+    )
     census = census.assign(asof=asof, source="tradingview", imported_at=now)
     _write_census(data_dir, census.reset_index(drop=True))
 
