@@ -8,9 +8,8 @@
 # the markets where the universe has real coverage (us/de/uk/fr/jp/it) — NOT
 # Hong Kong (its ~17k warrants/CBBCs are not in the universe: a manual HK run
 # matched 1,287 of 17k, the rest genuinely absent, not a mapping defect).
-# stooq-download is NOT scheduled: it never publishes (licensed data → a
-# throwaway artifact), so a cron on it would produce nothing consumable — the
-# useful Stooq path is this pipeline.
+# This is the ONLY Stooq path — the `crible stooq-download` command (below,
+# with --import) does the captcha-clearing + import in one step.
 #
 # NOTE: use a per-country STOCK code (d_us/uk/jp/hk/pl/hu_txt) — d_world_txt is
 # instruments only (no individual stocks) and imports nothing for the universe.
