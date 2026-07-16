@@ -94,3 +94,46 @@ class PriceRefresher:
             )
             outcome.refreshed.append(symbol)
         return outcome
+
+
+def price_gap_symbols(data_dir: Path | str, limit: int | None = None) -> list[str]:
+    """Audited-but-never-priced symbols — the top-up set for leftover budget.
+
+    A symbol is a price gap when the raw layer holds fundamentals for it
+    (any non-``prices`` statement, e.g. an ESEF/EDGAR filing) but NO price
+    source covers it: no raw ``prices-*`` bars from the crawl and no row in
+    the ``prices-latest.parquet`` dump distillate. These are exactly the
+    listings whose price ratios stay NULL forever — e.g. the ~1.8k FR
+    companies with audited ESEF statements that Stooq's bulk dumps (no
+    French dump exists) and the budget-bound crawl never reach.
+    """
+    root = Path(data_dir) / "raw"
+    with_fundamentals: set[str] = set()
+    with_raw_prices: set[str] = set()
+    for symbol_dir in root.glob("provider=*/symbol=*"):
+        if not symbol_dir.is_dir():
+            continue
+        symbol = symbol_dir.name.split("=", 1)[1]
+        for file in symbol_dir.iterdir():
+            if file.name.startswith("prices-"):
+                with_raw_prices.add(symbol)
+            else:
+                with_fundamentals.add(symbol)
+
+    dumped: set[str] = set()
+    latest = Path(data_dir) / "prices-latest.parquet"
+    if latest.exists():
+        dumped = set(pd.read_parquet(latest, columns=["symbol"])["symbol"])
+
+    gaps = sorted(with_fundamentals - with_raw_prices - dumped)
+
+    # same ordering contract as the crawl queue: priority ASC, then symbol —
+    # Europe-first, so the audited-EU price gap (the FR case) drains first
+    universe = Path(data_dir) / "universe.parquet"
+    if universe.exists() and gaps:
+        frame = pd.read_parquet(universe, columns=["symbol", "crawl_priority"])
+        priority = dict(zip(frame["symbol"], frame["crawl_priority"]))
+        fallback = max(priority.values(), default=0) + 1
+        gaps.sort(key=lambda s: (priority.get(s, fallback), s))
+
+    return gaps[:limit] if limit is not None else gaps

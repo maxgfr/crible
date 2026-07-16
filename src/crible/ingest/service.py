@@ -213,9 +213,17 @@ def run_once(limit: int = 50, budget=None, provider=None) -> CrawlOutcome:
         con.close()
 
 
-def run_price_refresh(budget: TokenBucket, provider=None) -> dict:
-    """FR-011 — daily price refresh for the priority set within the budget."""
-    from crible.ingest.prices import PriceRefresher
+def run_price_refresh(budget: TokenBucket, provider=None, topup_limit: int = 500) -> dict:
+    """FR-011 — daily price refresh for the priority set within the budget.
+
+    After the sample, audited-but-never-priced symbols (``price_gap_symbols``:
+    ESEF/EDGAR fundamentals in raw, no price from any source) ride whatever
+    budget is left, Europe-first — 1 request each, so a full nightly bucket
+    prices ~330 of the ~1.8k French ESEF listings the crawl (7 req/symbol)
+    and Stooq (no FR bulk dump) never reach. The sample always goes first:
+    the gap top-up can only spend what the sample left over.
+    """
+    from crible.ingest.prices import PriceRefresher, price_gap_symbols
 
     if provider is None:
         provider = _YfPriceAdapter()
@@ -225,8 +233,15 @@ def run_price_refresh(budget: TokenBucket, provider=None) -> dict:
         data_dir=config.data_dir(),
         fetch_timeout=config.fetch_timeout(),
     )
-    outcome = refresher.refresh(bootstrap_sample())
-    return {"refreshed": len(outcome.refreshed), "skipped": len(outcome.skipped), "aborted": outcome.aborted}
+    sample = bootstrap_sample()
+    gaps = [s for s in price_gap_symbols(config.data_dir(), limit=topup_limit) if s not in set(sample)]
+    outcome = refresher.refresh(sample + gaps)
+    return {
+        "refreshed": len(outcome.refreshed),
+        "skipped": len(outcome.skipped),
+        "aborted": outcome.aborted,
+        "topup_candidates": len(gaps),
+    }
 
 
 class _YfPriceAdapter:
