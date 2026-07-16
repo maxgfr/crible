@@ -1,8 +1,10 @@
 # Proof/utility workflow: fetch a CAPTCHA-gated Stooq bulk archive headlessly in
 # CI. Shows that `crible stooq-download` clears Stooq's proof-of-work +
 # image-captcha with a lightweight ONNX model (ddddocr) on a stock runner.
-# Manual only — it downloads licensed data, so it never publishes on its own;
-# to refresh prices, add `--import` + a compute/publish step (see import-prices).
+# Manual only, DELIBERATELY not scheduled — it downloads licensed data and
+# never publishes (a throwaway artifact), so a cron would produce nothing
+# consumable. The scheduled Stooq refresh lives in import-prices.yml (which
+# chains --import → compute → publish).
 
 name: stooq-download
 

@@ -1,8 +1,17 @@
-# On-demand price refresh: pull the HuggingFace (US) dump AND a Stooq
-# per-country stock dump — windowed OHLCV series + per-symbol distillate
-# (ADR-0007) — recompute the snapshot with them, republish. The weekly HF pull
-# already runs inside refresh-data; this dispatch exists to force one anytime
-# and to add Stooq coverage.
+# Price refresh: pull the HuggingFace (US) dump AND a Stooq per-country stock
+# dump — windowed OHLCV series + per-symbol distillate (ADR-0007) — recompute
+# the snapshot with them, republish. The weekly HF pull already runs inside
+# refresh-data; this workflow adds the Stooq (EU/JP/world) prices refresh-data
+# does not fetch.
+#
+# Weekly schedule: one useful Stooq market per week, ROTATED by ISO week across
+# the markets where the universe has real coverage (us/de/uk/fr/jp/it) — NOT
+# Hong Kong (its ~17k warrants/CBBCs are not in the universe: a manual HK run
+# matched 1,287 of 17k, the rest genuinely absent, not a mapping defect).
+# stooq-download is NOT scheduled: it never publishes (licensed data → a
+# throwaway artifact), so a cron on it would produce nothing consumable — the
+# useful Stooq path is this pipeline.
+#
 # NOTE: use a per-country STOCK code (d_us/uk/jp/hk/pl/hu_txt) — d_world_txt is
 # instruments only (no individual stocks) and imports nothing for the universe.
 # Stooq is CAPTCHA-gated — `crible stooq-download` clears the proof-of-work +
@@ -13,6 +22,9 @@
 name: import-prices
 
 on:
+  schedule:
+    # Monday 06:13 UTC — clear of the nightly refresh (23:47 + up to 4h)
+    - cron: "13 6 * * 1"
   workflow_dispatch:
     inputs:
       stooq_dataset:
@@ -60,11 +72,24 @@ jobs:
       - name: Import the HuggingFace price dump (US — series + distillate)
         run: uv run crible import-prices huggingface
 
+      # a scheduled run gets NO dispatch input — rotate a useful market by ISO
+      # week; a manual dispatch uses its input (empty input = skip Stooq)
+      - name: Pick the Stooq market
+        id: stooq
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            markets=(d_us_txt d_de_txt d_uk_txt d_fr_txt d_jp_txt d_it_txt)
+            week=$(date -u +%V)
+            echo "dataset=${markets[$((10#$week % ${#markets[@]}))]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "dataset=${{ inputs.stooq_dataset }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Fetch the Stooq worldwide dump (proof-of-work + OCR captcha)
-        if: ${{ inputs.stooq_dataset != '' }}
+        if: ${{ steps.stooq.outputs.dataset != '' }}
         continue-on-error: true # prices are an enrichment, never a gate
         run: |
-          uv run crible stooq-download "${{ inputs.stooq_dataset }}" \
+          uv run crible stooq-download "${{ steps.stooq.outputs.dataset }}" \
             --out "${RUNNER_TEMP}/stooq.zip" --import
 
       - name: Recompute the snapshot with the fresh quotes
