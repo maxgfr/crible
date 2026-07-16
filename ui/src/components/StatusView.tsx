@@ -2,13 +2,14 @@
 // vs budget gauge, provider health, last-cycle failures, ESEF matching.
 // Hand-rolled SVG on tokens (no chart lib); skeletons while loading;
 // the no-heartbeat state teaches instead of showing nothing. The page
-// also hosts the Providers section (inventory + appearance) — whatever
-// state the crawl is in, that section never disappears.
+// also hosts the Appearance section — whatever state the crawl is in,
+// that section never disappears. (The provider inventory is deliberately
+// NOT in the UI: sources are an operator concern, docs/DATA-SOURCES.md.)
 
 import { useEffect, useState } from "react";
 import { status, type StatusResponse } from "../data";
 import type { ThemePref } from "../theme";
-import { ProvidersSection } from "./ProvidersSection";
+import { AppearanceSection } from "./AppearanceSection";
 
 interface Props {
   pref: ThemePref;
@@ -107,7 +108,7 @@ export function StatusView({ pref, onPref }: Props) {
       ) : (
         <Observatory data={data} fetchedAt={fetchedAt} />
       )}
-      <ProvidersSection pref={pref} onPref={onPref} />
+      <AppearanceSection pref={pref} onPref={onPref} />
     </section>
   );
 }

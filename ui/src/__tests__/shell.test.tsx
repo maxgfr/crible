@@ -53,8 +53,10 @@ describe("shell & navigation", () => {
     render(<App />);
     window.location.hash = "#/providers";
     await waitFor(() => expect(rtl.getByRole("heading", { name: /status/i })).toBeInTheDocument());
-    // the merged page carries the Providers section (old permalinks keep working)
-    expect(rtl.getByRole("heading", { name: /providers/i })).toBeInTheDocument();
+    // old permalinks keep working, but the provider table is GONE from the
+    // UI — only the appearance prefs remain on the merged page
+    expect(rtl.getByRole("heading", { name: /appearance/i })).toBeInTheDocument();
+    expect(rtl.queryByRole("heading", { name: /providers/i })).not.toBeInTheDocument();
     window.location.hash = "#/status";
     await waitFor(() => expect(rtl.getByRole("heading", { name: /status/i })).toBeInTheDocument());
   });

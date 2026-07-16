@@ -4,7 +4,7 @@
 
 import { fireEvent, render, screen as rtl, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ProvidersSection } from "../components/ProvidersSection";
+import { AppearanceSection } from "../components/AppearanceSection";
 import { StatusView } from "../components/StatusView";
 
 function jsonResponse(body: unknown, status = 200) {
@@ -67,54 +67,30 @@ describe("StatusView (T-019)", () => {
     expect(rtl.getByText(/docker compose up/)).toBeInTheDocument();
   });
 
-  it("is one merged page: observatory, provider inventory and theme prefs coexist", async () => {
-    mockApi({
-      "/api/providers": [
-        { id: "yfinance", kind: "keyless", key_env_var: null, enabled: true },
-      ],
-    });
+  it("is one merged page: observatory and theme prefs coexist — NO provider table", async () => {
+    mockApi();
     render(<StatusView pref="dark" onPref={() => {}} />);
     await waitFor(() => expect(rtl.getByText(/2\.4\s?%/)).toBeInTheDocument());
-    expect(rtl.getByRole("heading", { name: /providers/i })).toBeInTheDocument();
-    expect(rtl.getByText(/filings\.xbrl\.org/)).toBeInTheDocument();
+    expect(rtl.getByRole("heading", { name: /appearance/i })).toBeInTheDocument();
+    // users never see the provider inventory (operator concern, DATA-SOURCES.md)
+    expect(rtl.queryByRole("heading", { name: /providers/i })).not.toBeInTheDocument();
+    expect(rtl.queryByText(/\.env/)).not.toBeInTheDocument();
     expect(rtl.getByRole("radio", { name: /auto/i })).toBeInTheDocument();
   });
 
-  it("keeps the Providers section even when the crawl has no heartbeat", async () => {
+  it("keeps the Appearance section even when the crawl has no heartbeat", async () => {
     mockApi({ "/api/status": { universe: 0, snapshot: false } });
     render(<StatusView pref="dark" onPref={() => {}} />);
     await waitFor(() => expect(rtl.getByText(/no crawl heartbeat/i)).toBeInTheDocument());
-    expect(rtl.getByRole("heading", { name: /providers/i })).toBeInTheDocument();
+    expect(rtl.getByRole("heading", { name: /appearance/i })).toBeInTheDocument();
     expect(rtl.getByRole("radio", { name: /auto/i })).toBeInTheDocument();
   });
 });
 
-describe("ProvidersSection (T-020)", () => {
-  it("lists keyless built-ins and any keyed plugin with its state", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        jsonResponse([
-          { id: "yfinance", kind: "keyless", key_env_var: null, enabled: true },
-          // third-party plugin through the seam — the shipped catalog is keyless-only
-          { id: "stub", kind: "free-key", key_env_var: "STUB_KEY", enabled: false },
-        ]),
-      ),
-    );
-    render(<ProvidersSection pref="dark" onPref={() => {}} />);
-    await waitFor(() => expect(rtl.getByText("yfinance")).toBeInTheDocument());
-    expect(rtl.getByText("stub")).toBeInTheDocument();
-    expect(rtl.getByText("STUB_KEY")).toBeInTheDocument();
-    expect(rtl.getAllByText(/off — no key/i).length).toBeGreaterThan(0);
-    // built-ins always present even before fetch resolves
-    expect(rtl.getByText(/esef/i)).toBeInTheDocument();
-    expect(rtl.getByText(/\.env/)).toBeInTheDocument();
-  });
-
+describe("AppearanceSection (T-020)", () => {
   it("exposes the theme preference, auto included", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse([])));
     const onPref = vi.fn();
-    render(<ProvidersSection pref="dark" onPref={onPref} />);
+    render(<AppearanceSection pref="dark" onPref={onPref} />);
     fireEvent.click(rtl.getByRole("radio", { name: /paper terminal/i }));
     expect(onPref).toHaveBeenCalledWith("light");
     fireEvent.click(rtl.getByRole("radio", { name: /auto/i }));

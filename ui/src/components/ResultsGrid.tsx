@@ -53,6 +53,15 @@ export function ResultsGrid({ rows, columns, selected, onSelect, sort, onSort, h
               );
             }
             const { text, className, flag } = formatCell(name, value);
+            if (name === "name") {
+              // compact identity column: truncate, full name on hover —
+              // the numbers are what the grid is for
+              return (
+                <span className="cell-name" title={text}>
+                  {text}
+                </span>
+              );
+            }
             return (
               <span className={className}>
                 {text}

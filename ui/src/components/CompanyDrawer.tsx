@@ -11,7 +11,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { company, type CompanyDetail } from "../data";
+import { company, requestFetch, STATIC_MODE, type CompanyDetail } from "../data";
 import { fieldLabel } from "../data/field-catalog";
 import { formatCell, formatNumber } from "../format";
 import { PriceChart } from "./PriceChart";
@@ -194,10 +194,32 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
   const [dragging, setDragging] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
 
+  // FR-012 — after an on-demand fetch is queued, poll until the ingest
+  // service has crawled + computed (one loop cycle, ~1-3 min), then swap the
+  // drawer content in place. Gives up after ~6 min (rate-limit, bad symbol).
+  const [fetchState, setFetchState] = useState<"idle" | "queued" | "failed">("idle");
+
   useEffect(() => {
     setDetail("loading");
+    setFetchState("idle");
     company(symbol).then(setDetail);
   }, [symbol]);
+
+  useEffect(() => {
+    if (fetchState !== "queued") return;
+    const poll = setInterval(async () => {
+      const fresh = await company(symbol);
+      if (fresh && fresh.periods.length > 0) {
+        setDetail(fresh);
+        setFetchState("idle");
+      }
+    }, 20_000);
+    const giveUp = setTimeout(() => setFetchState("failed"), 6 * 60_000);
+    return () => {
+      clearInterval(poll);
+      clearTimeout(giveUp);
+    };
+  }, [fetchState, symbol]);
 
   // dialog semantics: focus moves in on open and back out on close
   useEffect(() => {
@@ -270,10 +292,39 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
           </h2>
           <PriceChart symbol={symbol} />
           {detail.periods.length === 0 ? (
-            <p className="meta">
-              Not crawled yet — universe metadata only. It is queued by region priority; watch
-              coverage progress in the <a href="#/status">Status view</a>.
-            </p>
+            <div className="teach">
+              <p className="meta">
+                Not crawled yet — universe metadata only. It is queued by region priority; watch
+                coverage progress in the <a href="#/status">Status view</a>.
+              </p>
+              {!STATIC_MODE && fetchState === "idle" && (
+                <button
+                  className="fetch-now"
+                  onClick={async () => {
+                    try {
+                      await requestFetch(symbol);
+                      setFetchState("queued");
+                    } catch {
+                      setFetchState("failed");
+                    }
+                  }}
+                >
+                  Fetch this company now
+                </button>
+              )}
+              {fetchState === "queued" && (
+                <p className="meta" role="status">
+                  Queued — the ingest service is fetching it (budget-charged). This drawer
+                  refreshes by itself in a minute or two…
+                </p>
+              )}
+              {fetchState === "failed" && (
+                <p className="meta" role="status">
+                  Nothing landed — the crawl may be rate-limited or the source empty. Try again
+                  later.
+                </p>
+              )}
+            </div>
           ) : (
             <>
               <SynthesisBlock latest={detail.periods[0]} periods={detail.periods} />
