@@ -195,8 +195,8 @@ def bootstrap(
 def import_prices(
     source: str = typer.Argument(
         ...,
-        help="'huggingface' or 'defeatbeta' (US dumps, plain HTTPS) or a path"
-        " to a Stooq bulk zip (worldwide, manual download)",
+        help="'huggingface'/'defeatbeta' (US dumps), 'tradingview' (worldwide"
+        " daily snapshot + cap census) or a path to a Stooq bulk zip",
     ),
     max_age_days: float = typer.Option(
         0, "--max-age-days", help="Skip when the last import is younger than this (0 = always run)"
@@ -216,7 +216,7 @@ def import_prices(
     from crible.ingest.state import update_heartbeat
 
     data = config.data_dir()
-    named_dumps = ("huggingface", "defeatbeta")
+    named_dumps = ("huggingface", "defeatbeta", "tradingview")
     if max_age_days > 0:
         # named dumps gate on their OWN rows; a Stooq path keeps the global gate
         named = source if source in named_dumps else None
@@ -230,13 +230,21 @@ def import_prices(
         from crible.ingest.defeatbeta import import_defeatbeta
 
         report = import_defeatbeta(data)
+    elif source == "tradingview":
+        from crible.ingest.tradingview import import_tradingview
+
+        report = import_tradingview(data)
     else:
         path = Path(source)
         if not path.exists():
             _fail(f"no such archive: {path} — download it manually from stooq.com/db/h/")
         report = import_stooq(data, path)
     imports = _heartbeat_section("imports")
-    imports[report.source] = {"symbols": report.imported, "imported_at": time.time()}
+    entry = {"symbols": report.imported, "imported_at": time.time()}
+    if hasattr(report, "countries_ok"):
+        entry["countries_ok"] = report.countries_ok
+        entry["countries_failed"] = list(report.countries_failed)
+    imports[report.source] = entry
     update_heartbeat(imports=imports)
     typer.echo(
         f"imported {report.imported} symbols from {report.source}"
