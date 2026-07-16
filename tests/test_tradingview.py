@@ -36,8 +36,8 @@ def _row(country, exchange, ticker, *, close=10.0, cap=1e9, isin=None,
          type_="stock", subtype="common", currency="EUR"):
     return {
         "name": ticker, "description": f"{ticker} Corp", "close": close,
-        "currency": currency, "market_cap_basic": cap, "exchange": exchange,
-        "type": type_, "subtype": subtype, "isin": isin,
+        "currency": currency, "market_cap_basic": cap, "volume": 1000.0,
+        "exchange": exchange, "type": type_, "subtype": subtype, "isin": isin,
         "tv_symbol": f"{exchange}:{ticker}", "tv_exchange": exchange,
         "tv_ticker": ticker, "country": country,
     }

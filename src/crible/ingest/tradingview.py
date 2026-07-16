@@ -37,7 +37,7 @@ REQUEST_JITTER_S = (1.0, 3.0)
 
 SCAN_COLUMNS = [
     "name", "description", "close", "currency", "market_cap_basic",
-    "exchange", "type", "subtype", "isin",
+    "volume", "exchange", "type", "subtype", "isin",
 ]
 
 CAPS_DIR = "caps"
@@ -279,7 +279,7 @@ def import_tradingview(
 
     census = table[[
         "symbol", "tv_symbol", "description", "isin", "market_cap_basic", "currency",
-        "close", "country", "tv_exchange", "match_method",
+        "close", "volume", "country", "tv_exchange", "match_method",
     ]].rename(
         columns={"market_cap_basic": "market_cap", "tv_exchange": "exchange",
                  "description": "name"}

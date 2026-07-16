@@ -73,9 +73,39 @@ CREATE TABLE IF NOT EXISTS companies (
     currency         VARCHAR,
     market_cap_class VARCHAR,
     delisted         BOOLEAN DEFAULT FALSE,
-    updated_at       TIMESTAMP DEFAULT now()
+    updated_at       TIMESTAMP DEFAULT now(),
+    cap_eur          DOUBLE,
+    cap_asof         VARCHAR,
+    cap_source       VARCHAR,
+    company_group    VARCHAR,
+    primary_listing  BOOLEAN,
+    cap_rank_global  INTEGER,
+    top10k           BOOLEAN
 )
 """
+
+# the numeric-cap census layer (universe_caps.py) — kept out of the
+# bootstrap upsert's SET list so a nightly re-bootstrap never clobbers them
+CAP_COLUMNS = {
+    "cap_eur": "DOUBLE",
+    "cap_asof": "VARCHAR",
+    "cap_source": "VARCHAR",
+    "company_group": "VARCHAR",
+    "primary_listing": "BOOLEAN",
+    "cap_rank_global": "INTEGER",
+    # no DEFAULT: DuckDB re-applies column defaults to conflicting rows on
+    # the INSERT..SELECT upsert path, which would reset membership on every
+    # nightly re-bootstrap (observed 2026-07-16). NULL means "not a member";
+    # readers coalesce to FALSE.
+    "top10k": "BOOLEAN",
+}
+
+
+def ensure_cap_columns(con: duckdb.DuckDBPyConnection) -> None:
+    """Migrate a pre-census ``companies`` table in place (long-lived
+    self-hosted DuckDB files; CI databases are fresh every run)."""
+    for column, dtype in CAP_COLUMNS.items():
+        con.execute(f"ALTER TABLE companies ADD COLUMN IF NOT EXISTS {column} {dtype}")
 
 
 class UniverseSourceError(RuntimeError):
@@ -136,6 +166,7 @@ def bootstrap_universe(con: duckdb.DuckDBPyConnection, frame: pd.DataFrame) -> B
     ]
 
     con.execute(SCHEMA)
+    ensure_cap_columns(con)
     con.register("staged_universe", staged)
     con.execute("BEGIN")
     try:
@@ -200,7 +231,10 @@ def restore_universe_from_parquet(con: duckdb.DuckDBPyConnection, path) -> int:
 
     The parquet is a straight COPY of the table, so rows are inserted as-is;
     routing through ``bootstrap_universe`` would re-map the already-ISO country
-    codes through ``region_for`` and mis-tag every row as world.
+    codes through ``region_for`` and mis-tag every row as world. ``BY NAME``:
+    a last-good parquet written by an OLDER schema (fewer columns) must keep
+    restoring after a widening — positional insert would break the first
+    nightly after every schema change.
     """
     from pathlib import Path
 
@@ -208,8 +242,10 @@ def restore_universe_from_parquet(con: duckdb.DuckDBPyConnection, path) -> int:
     if not file.exists():
         raise UniverseSourceError(f"no last-good universe parquet at {file}")
     con.execute(SCHEMA)
+    ensure_cap_columns(con)
     con.execute(
-        f"INSERT OR REPLACE INTO companies SELECT * FROM read_parquet('{file.as_posix()}')"
+        f"INSERT OR REPLACE INTO companies BY NAME"
+        f" SELECT * FROM read_parquet('{file.as_posix()}')"
     )
     return con.execute("SELECT count(*) FROM companies").fetchone()[0]
 
