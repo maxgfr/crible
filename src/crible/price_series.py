@@ -23,8 +23,9 @@ SERIES_COLUMNS = [
     "symbol", "date", "open", "high", "low", "close", "adj_close", "volume", "source",
 ]
 # tie-break when two sources end on the same date: the crawled bars are the
-# canonical layer (the snapshot itself prefers them over the distillate)
-SOURCE_PRIORITY = {"yfinance": 0, "stooq": 1, "huggingface": 2}
+# canonical layer (the snapshot itself prefers them over the distillate);
+# among dumps, defeatbeta refreshes ~weekly and outranks the slower rotations
+SOURCE_PRIORITY = {"yfinance": 0, "defeatbeta": 1, "stooq": 2, "huggingface": 3}
 
 SHARD_PATTERN = "prices-*.parquet"
 MAX_SHARD_BYTES = 95 * 1024 * 1024  # git refuses files >100 MB — fail early

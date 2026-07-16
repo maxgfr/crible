@@ -194,7 +194,9 @@ def bootstrap(
 @app.command("import-prices")
 def import_prices(
     source: str = typer.Argument(
-        ..., help="'huggingface' (US dump, plain HTTPS) or a path to a Stooq bulk zip (worldwide, manual download)"
+        ...,
+        help="'huggingface' or 'defeatbeta' (US dumps, plain HTTPS) or a path"
+        " to a Stooq bulk zip (worldwide, manual download)",
     ),
     max_age_days: float = typer.Option(
         0, "--max-age-days", help="Skip when the last import is younger than this (0 = always run)"
@@ -203,32 +205,57 @@ def import_prices(
     """Import a price DUMP (no API): the windowed OHLCV series into
     data/prices/ plus the per-symbol distillate (last close, as-of date,
     trailing 6-month return) into data/prices-latest.parquet (ADR-0007)."""
+    import time
+
     from crible import config
     from crible.ingest.price_import import (
         import_huggingface,
         import_stooq,
         latest_import_age_days,
     )
+    from crible.ingest.state import update_heartbeat
 
     data = config.data_dir()
+    named_dumps = ("huggingface", "defeatbeta")
     if max_age_days > 0:
         # named dumps gate on their OWN rows; a Stooq path keeps the global gate
-        named = source if source == "huggingface" else None
+        named = source if source in named_dumps else None
         age = latest_import_age_days(data, named)
         if age is not None and age < max_age_days:
             typer.echo(f"import is {age:.1f} days old (< {max_age_days:g}) — nothing to do")
             return
     if source == "huggingface":
         report = import_huggingface(data)
+    elif source == "defeatbeta":
+        from crible.ingest.defeatbeta import import_defeatbeta
+
+        report = import_defeatbeta(data)
     else:
         path = Path(source)
         if not path.exists():
             _fail(f"no such archive: {path} — download it manually from stooq.com/db/h/")
         report = import_stooq(data, path)
+    imports = _heartbeat_section("imports")
+    imports[report.source] = {"symbols": report.imported, "imported_at": time.time()}
+    update_heartbeat(imports=imports)
     typer.echo(
         f"imported {report.imported} symbols from {report.source}"
         f" ({report.skipped_unknown} outside the universe) — run `crible compute` to refresh ratios"
     )
+
+
+def _heartbeat_section(key: str) -> dict:
+    """Current value of one status.json key (update_heartbeat merges shallow)."""
+    from crible import config
+
+    path = config.data_dir() / "status.json"
+    if not path.exists():
+        return {}
+    try:
+        value = json.loads(path.read_text()).get(key, {})
+    except json.JSONDecodeError:
+        return {}
+    return value if isinstance(value, dict) else {}
 
 
 @app.command("solve-captcha")
