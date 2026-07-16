@@ -414,6 +414,16 @@ def refresh(
         0, "--fsds-quarters",
         help="Backfill deep US history from the N most recent SEC FSDS quarters (0=off)",
     ),
+    edinet_days: int = typer.Option(
+        0, "--edinet-days",
+        help="Audited Japan: scan the last N EDINET filing days (0=off;"
+        " free-key opt-in, self-skips without CRIBLE_EDINET_KEY)",
+    ),
+    ch_accounts_url: str = typer.Option(
+        "", "--ch-accounts-url",
+        help="Companies House Accounts Data Product ZIP URL (empty=off;"
+        " also needs the operator's data/uk-company-numbers.csv)",
+    ),
 ) -> None:
     """One bounded keyless refresh pass (the nightly dataset run)."""
     from crible.ingest.service import run_refresh
@@ -423,6 +433,7 @@ def refresh(
         edgar_bulk=edgar_bulk, fsds_quarters=fsds_quarters,
         fetch_gleif=fetch_gleif, fetch_fx=fetch_fx,
         max_seconds=max_minutes * 60 if max_minutes > 0 else None,
+        edinet_days=edinet_days, companies_house_url=ch_accounts_url,
     )
     typer.echo(json.dumps(result, indent=2, default=str))
 

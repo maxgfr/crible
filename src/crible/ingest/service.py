@@ -21,8 +21,10 @@ from crible.ingest.backoff import BackoffPolicy
 from crible.ingest.budget import TokenBucket
 from crible.ingest.crawler import Crawler, CrawlOutcome
 from crible.ingest.enrichment import (  # re-exported for the CLI/tests/site_export
+    run_companies_house,
     run_edgar_bulk,
     run_edgar_cycle,
+    run_edinet,
     run_esef_cycle,
     run_esef_sweep,
     run_fsds,
@@ -487,6 +489,8 @@ def run_refresh(
     edgar_client=None,
     cycle_limit: int = 10,
     max_seconds: float | None = None,
+    edinet_days: int = 0,
+    companies_house_url: str = "",
 ) -> dict:
     """One bounded, resumable refresh pass — the nightly dataset run.
 
@@ -628,6 +632,29 @@ def run_refresh(
         except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
             log.warning("fsds cycle failed: %s", exc)
             result["fsds"] = {"outage": str(exc)}
+    if edinet_days > 0:
+        # JP audited layer — free-key opt-in (CRIBLE_EDINET_KEY); run_edinet
+        # self-skips without the key, so the run degrades to keyless. Annual
+        # reports cluster around June (March FY-ends): coverage accumulates
+        # from the daily windows, the raw layer being immutable.
+        try:
+            from datetime import date, timedelta
+
+            days = [
+                (date.today() - timedelta(days=offset)).isoformat()
+                for offset in range(1, edinet_days + 1)
+            ]
+            result["edinet"] = run_edinet(days)
+        except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
+            log.warning("edinet cycle failed: %s", exc)
+            result["edinet"] = {"outage": str(exc)}
+    if companies_house_url:
+        # UK non-listed backfill — needs the operator CSV (self-skips without)
+        try:
+            result["companies_house"] = run_companies_house(url=companies_house_url)
+        except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
+            log.warning("companies-house cycle failed: %s", exc)
+            result["companies_house"] = {"outage": str(exc)}
     budget_left = stage_budget()
     if budget_left is not None and budget_left <= 0:
         # inside the compute reserve — prices are an enrichment, never a gate

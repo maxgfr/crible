@@ -89,12 +89,20 @@ backfills the deep history.
   **TradingView scanner snapshots**, and **Companies House** (no licence
   stated). Carried as a documented, deliberate redistribution risk, isolated
   from the fully-free tier.
-- **EDINET** is off by default and never part of the published dataset unless the
-  operator opts in; when it is, its PDL1.0 attribution requirement applies.
+- **EDINET** (audited Japan) — **policy change 2026-07-16: the project's own
+  nightly now opts in** via the `CRIBLE_EDINET_KEY` repository secret, so
+  `provider='edinet'` raw ships in the published dataset. Its PDL1.0 licence
+  makes that clean — redistributable **with attribution**: *this dataset
+  contains data from EDINET, Financial Services Agency of Japan, licensed
+  under the Public Data License v1.0.* Closer to fully-free than
+  assumed-risk; it keeps its own line because of the attribution duty.
 
-The **zero-key core is unchanged**: EDINET is the only keyed provider, opt-in and
-off by default, so the shipped catalog and the CI contract (empty environment,
-NFR-009) stay keyless.
+The **zero-key core is unchanged**: EDINET stays the only keyed provider and
+the code self-skips without the key — a fork without the secret runs fully
+keyless, and the CI test contract (empty environment, NFR-009) is untouched.
+Note: the site's `providers.json` is exported with an empty environment by
+construction, so it reports EDINET "disabled" even when the dataset carries
+its raw — the dataset-content authority is this ledger, not that file.
 
 ### Rejected / iceboxed this cycle
 

@@ -227,6 +227,25 @@ def test_run_refresh_without_universe_source_or_last_good_fails(refresh_env) -> 
         )
 
 
+def test_run_refresh_wires_the_orphan_audited_cycles(refresh_env, monkeypatch) -> None:
+    """run_edinet and run_companies_house existed but were never CALLED (the
+    façade re-exported them into the void). The nightly now runs them; both
+    degrade to a RECORDED skip — no key / no operator CSV — instead of
+    silently not existing. Zero network either way."""
+    monkeypatch.delenv("CRIBLE_EDINET_KEY", raising=False)
+    result = run_refresh(
+        deadline_seconds=60,
+        fetch_universe=fixture_frame,
+        provider=FakeYfProvider(),
+        price_provider=FakePriceProvider(),
+        edgar_client=FakeEdgarDirectory(),
+        edinet_days=3,
+        companies_house_url="https://example.invalid/accounts.zip",
+    )
+    assert "EDINET disabled" in result["edinet"]["skipped"]
+    assert "uk-company-numbers" in result["companies_house"]["skipped"]
+
+
 def test_run_refresh_restores_queue_from_raw_and_advances(refresh_env) -> None:
     """A nightly Actions run starts from a fresh operational DB (only the raw
     parquet layer travels in the published dataset). The queue freshness must
