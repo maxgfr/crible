@@ -220,9 +220,13 @@ def restore_queue_from_raw(con: duckdb.DuckDBPyConnection, data_dir) -> int:
 
 
 def run_bootstrap() -> BootstrapReport:
+    from crible.universe_caps import apply_cap_census
+
     con = _connect()
     try:
         report = refresh_universe(con)
+        # BEFORE the queue seeds: the census override writes crawl_priority
+        apply_cap_census(con, config.data_dir())
         queue = CrawlQueue(con)
         queue.seed_from_universe()
         prioritize_sample(con, bootstrap_sample())
@@ -244,8 +248,11 @@ def maybe_refresh_universe(
     forever. A source outage is logged and retried next interval, never fatal."""
     if now - last_refresh < interval:
         return last_refresh
+    from crible.universe_caps import apply_cap_census
+
     try:
         refresh_universe(con, fetch=fetch) if fetch else refresh_universe(con)
+        apply_cap_census(con, config.data_dir())
         CrawlQueue(con).seed_from_universe()
         log.info("universe refreshed (periodic)")
     except UniverseSourceError as exc:
@@ -476,6 +483,13 @@ def run_refresh(
                 con, data / "universe.parquet"
             )
             result["universe_restored"] = True
+        # BEFORE the crawler seeds the queue AND before export_universe_parquet
+        # overwrites the carryover source: top10k primaries take the head
+        from crible.universe_caps import apply_cap_census
+
+        census_report = apply_cap_census(con, data)
+        if census_report is not None:
+            result["top10k_members"] = census_report.member_groups
         # resume the rolling budget window where the previous run left it —
         # chained CI runs must never double-spend the hour (NFR-007)
         from crible.ingest.budget import load_bucket, save_bucket

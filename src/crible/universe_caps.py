@@ -23,13 +23,18 @@ count is reported, never hidden).
 
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import duckdb
 import pandas as pd
 
 from crible.providers.fx import to_eur
+
+log = logging.getLogger("crible.universe_caps")
 
 CENSUS_MAX_AGE_DAYS = 30
 TOP10K_SIZE = 10_000
@@ -237,3 +242,108 @@ def assign_top10k(caps: pd.DataFrame, previous_members: set[str]) -> pd.DataFram
         _floor=caps["company_group"].isin(floor_groups & member_groups),
     )
     return caps
+
+
+def _priorities(caps: pd.DataFrame) -> pd.Series:
+    """Member PRIMARY listings take the global tiers 0-7 (cap deciles; floor
+    members slot by class); everything else keeps the regional formula
+    shifted up one stride — the durable seam is companies.crawl_priority,
+    which seed_from_universe copies on every run."""
+    from crible.universe import CAP_RANK, REGION_PRIORITY, UNKNOWN_CAP_RANK
+
+    base = (
+        caps["region"].map(REGION_PRIORITY).fillna(REGION_PRIORITY["world"]).astype(int) * 8
+        + caps["market_cap_class"].map(CAP_RANK).fillna(UNKNOWN_CAP_RANK).astype(int)
+        + BASE_PRIORITY_SHIFT
+    )
+    member_primary = caps["top10k"].fillna(False) & caps["primary_listing"].fillna(False)
+    ranked = member_primary & caps["cap_rank_global"].notna()
+    tier = ((caps["cap_rank_global"].astype("Float64") - 1) * 8 // TOP10K_SIZE).clip(upper=7)
+    floor_tier = caps["market_cap_class"].map(FLOOR_TIERS).fillna(FLOOR_TIERS["Large Cap"])
+    priority = base.astype("Float64")
+    priority = priority.mask(ranked, tier)
+    priority = priority.mask(member_primary & ~ranked, floor_tier)
+    return priority.astype("int64")
+
+
+def _load_or_fetch_rates(data_dir: Path | str) -> dict[str, float]:
+    from crible.providers.fx import fetch_rates, load_rates
+
+    try:
+        return fetch_rates(data_dir)  # mirrored ≤24h; a fresh runner needs it
+    except Exception:  # noqa: BLE001 — offline: last-good mirror or EUR-only
+        return load_rates(data_dir) or {}
+
+
+def apply_cap_census(
+    con: duckdb.DuckDBPyConnection,
+    data_dir: Path | str,
+    *,
+    now: float | None = None,
+    rates: dict[str, float] | None = None,
+) -> CapCensusReport | None:
+    """The one entry point: census + snapshot + carryover → cap layer +
+    top10k membership + the crawl-priority override, written into
+    ``companies``. Returns None — and writes NOTHING — while neither a
+    census nor previous caps exist (the pre-TradingView no-op guarantee).
+
+    Call it after every ``refresh_universe`` (the upsert rewrites
+    crawl_priority) and BEFORE the queue seeds; in run_refresh it must also
+    run before ``export_universe_parquet`` overwrites the carryover source.
+    """
+    now = time.time() if now is None else now
+    census = load_census(data_dir)
+    previous = load_previous_caps(data_dir)
+    if census is None and previous is None:
+        return None
+    if rates is None:
+        rates = _load_or_fetch_rates(data_dir)
+
+    universe = con.execute(
+        "SELECT symbol, isin, country, region, market_cap_class,"
+        " coalesce(delisted, FALSE) AS delisted FROM companies"
+    ).fetchdf()
+    active = universe[~universe["delisted"].astype(bool)].drop(columns=["delisted"])
+    if not len(active):
+        return None
+
+    caps = build_cap_table(
+        active[["symbol", "isin", "country", "market_cap_class"]],
+        census, snapshot_caps(data_dir), previous, rates, now,
+    )
+    caps = pick_primary(caps)
+    previous_members: set[str] = set()
+    if previous is not None:
+        members = previous["top10k"].fillna(False).astype(bool)
+        previous_members = set(previous.loc[members, "symbol"])
+    caps = assign_top10k(caps, previous_members)
+    caps = caps.merge(active[["symbol", "region"]], on="symbol", how="left")
+    caps["crawl_priority"] = _priorities(caps)
+
+    updates = caps[["symbol", *CAP_UPDATE_COLUMNS, "crawl_priority"]]
+    con.register("cap_updates", updates)
+    try:
+        con.execute(
+            """
+            UPDATE companies SET
+                cap_eur = u.cap_eur, cap_asof = u.cap_asof, cap_source = u.cap_source,
+                company_group = u.company_group, primary_listing = u.primary_listing,
+                cap_rank_global = u.cap_rank_global, top10k = u.top10k,
+                crawl_priority = u.crawl_priority
+            FROM cap_updates u WHERE companies.symbol = u.symbol
+            """
+        )
+    finally:
+        con.unregister("cap_updates")
+
+    report = CapCensusReport(
+        listings=len(updates),
+        ranked_groups=int(caps.loc[caps["cap_rank_global"].notna(), "company_group"].nunique()),
+        member_groups=int(caps.loc[caps["top10k"], "company_group"].nunique()),
+        floor_groups=int(caps.loc[caps["_floor"], "company_group"].nunique()),
+    )
+    log.info(
+        "cap census: %d listings, %d ranked groups, %d top10k members (%d via class floor)",
+        report.listings, report.ranked_groups, report.member_groups, report.floor_groups,
+    )
+    return report

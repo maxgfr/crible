@@ -242,6 +242,85 @@ def test_top10k_hysteresis_and_class_floor(monkeypatch) -> None:
     assert not second.loc["R4", "top10k"]  # rank 4 > exit bound even as a previous member
 
 
+def test_apply_cap_census_end_to_end(tmp_path, monkeypatch) -> None:
+    """Census parquet on disk → cap layer + membership + priority override in
+    companies; the queue re-seed propagates it; a fresh DB carries the
+    membership over through the exported universe.parquet."""
+    import time as _time
+    from datetime import date
+
+    import crible.universe_caps as uc
+    from crible.ingest.queue import CrawlQueue
+    from crible.ingest.service import prioritize_sample
+
+    monkeypatch.setattr(uc, "TOP10K_SIZE", 1)
+    monkeypatch.setattr(uc, "TOP10K_EXIT_RANK", 1)
+
+    con = duckdb.connect()
+    frame = pd.DataFrame([
+        {"symbol": "TOP.PA", "name": "Top", "country": "France", "sector": "T",
+         "industry": "T", "exchange": "PAR", "currency": "EUR",
+         "market_cap": "Mega Cap", "isin": "FR001"},
+        {"symbol": "MID.DE", "name": "Mid", "country": "Germany", "sector": "T",
+         "industry": "T", "exchange": "GER", "currency": "EUR",
+         "market_cap": "Nano Cap", "isin": "DE001"},
+        {"symbol": "NOCAP", "name": "No", "country": "United States", "sector": "T",
+         "industry": "T", "exchange": "NMS", "currency": "USD",
+         "market_cap": None, "isin": None},
+    ])
+    bootstrap_universe(con, frame)
+
+    (tmp_path / "caps").mkdir(parents=True)
+    asof = date.today().isoformat()
+    pd.DataFrame([
+        {"symbol": "TOP.PA", "isin": "FR001", "market_cap": 1e12, "currency": "EUR",
+         "volume": 1.0, "country": "france", "asof": asof},
+        {"symbol": "MID.DE", "isin": "DE001", "market_cap": 10.0, "currency": "EUR",
+         "volume": 1.0, "country": "germany", "asof": asof},
+    ]).to_parquet(tmp_path / "caps" / "tradingview.parquet", index=False)
+
+    report = uc.apply_cap_census(con, tmp_path, rates={}, now=_time.time())
+    assert report is not None and report.member_groups == 1 and report.ranked_groups == 2
+
+    rows = dict(con.execute(
+        "SELECT symbol, crawl_priority FROM companies"
+    ).fetchall())
+    assert rows["TOP.PA"] == 0          # rank-1 member primary → tier 0
+    assert rows["MID.DE"] == 0 + 5 + 8  # europe nano, shifted base
+    assert rows["NOCAP"] == 8 + 6 + 8   # us unknown-class, shifted base
+    top = con.execute("SELECT top10k, cap_eur FROM companies WHERE symbol='TOP.PA'").fetchone()
+    assert top == (True, 1e12)
+
+    # the queue re-seed copies the override and keeps the -1 sentinel
+    queue = CrawlQueue(con)
+    prioritize_sample(con, ["NOCAP"])
+    queue.seed_from_universe()
+    task_prio = dict(con.execute("SELECT symbol, priority FROM crawl_tasks").fetchall())
+    assert task_prio["TOP.PA"] == 0 and task_prio["NOCAP"] == -1
+
+    # carryover: export → fresh DB, census file gone → membership survives
+    export_universe_parquet(con, tmp_path)
+    (tmp_path / "caps" / "tradingview.parquet").unlink()
+    fresh = duckdb.connect()
+    bootstrap_universe(fresh, frame)  # nightly re-bootstrap resets priorities
+    report2 = uc.apply_cap_census(fresh, tmp_path, rates={}, now=_time.time())
+    assert report2 is not None and report2.member_groups == 1
+    carried = fresh.execute(
+        "SELECT top10k, cap_source, crawl_priority FROM companies WHERE symbol='TOP.PA'"
+    ).fetchone()
+    assert carried == (True, "carryover", 0)
+
+
+def test_apply_cap_census_is_a_noop_before_any_census(tmp_path) -> None:
+    from crible.universe_caps import apply_cap_census
+
+    con = duckdb.connect()
+    bootstrap_universe(con, _fd_frame())
+    before = con.execute("SELECT crawl_priority FROM companies").fetchone()
+    assert apply_cap_census(con, tmp_path, rates={}) is None
+    assert con.execute("SELECT crawl_priority FROM companies").fetchone() == before
+
+
 def test_no_ranking_means_no_floor_and_no_members() -> None:
     from crible.universe_caps import assign_top10k, build_cap_table, pick_primary
 

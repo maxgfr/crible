@@ -169,6 +169,9 @@ def crawled_symbols(data_dir: Path | str) -> list[str]:
 
 UNIVERSE_COLUMNS = [
     "name", "country", "country_name", "region", "sector", "industry", "exchange", "currency", "isin",
+    # the cap-census layer (universe_caps.py): screenable via the DSL
+    # (top10k = true) and self-contained for every reader (ADR-0003)
+    "top10k", "primary_listing", "cap_eur", "cap_rank_global", "company_group",
 ]
 
 
