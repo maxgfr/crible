@@ -217,8 +217,8 @@ product, running on the published dataset.
   runs the same worldwide crawl from the same code.
 - **Daily price series**: alongside the fundamentals, the site ships the crawled daily OHLCV
   series (~400-day window) as size-bounded Parquet shards — worldwide, not US-only (the
-  yfinance Europe/US crawl plus optional Stooq worldwide dumps) — so the company drawer draws a
-  real 1-year price chart, not just derived ratios.
+  yfinance Europe/US crawl, the weekly defeatbeta US dump plus optional Stooq worldwide
+  dumps) — so the company drawer draws a real 1-year price chart, not just derived ratios.
 - **Last-good guarantee**: a refresh that fails or covers too few symbols never publishes —
   the site keeps the previous dataset, and its Status view shows data freshness honestly.
 

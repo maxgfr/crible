@@ -69,6 +69,13 @@ jobs:
         continue-on-error: true # prices are an enrichment, never a gate
         run: uv run crible import-prices huggingface --max-age-days 6
 
+      # BEFORE the refresh: the crawl's dump-covered deferral reads this
+      # store, so fresh coverage must land first (assumed-risk tier, like
+      # Stooq — see docs/DATA-SOURCES.md)
+      - name: Weekly defeatbeta dump (US prices + events — series + distillate)
+        continue-on-error: true # prices are an enrichment, never a gate
+        run: uv run crible import-prices defeatbeta --max-age-days 6
+
       - name: Bounded keyless refresh (crawl → ESEF → EDGAR bulk + FSDS → FX → prices → prune → compute)
         # deadline trimmed to 2h: the EDGAR bulk sweep (~10k US issuers from
         # one public-domain archive) takes the reclaimed time; ESEF cadence

@@ -85,9 +85,9 @@ backfills the deep history.
 - **Fully-free** — SEC EDGAR companyfacts + **FSDS**, ESEF, GLEIF, FinanceDatabase,
   ECB/Frankfurter FX. Public-domain or openly-licensed; republishable without
   permission ("free to access and reuse").
-- **Assumed-risk** — Yahoo prices, the Stooq/HuggingFace price dumps, and now
-  **Companies House** (no licence stated). Carried as a documented, deliberate
-  redistribution risk, isolated from the fully-free tier.
+- **Assumed-risk** — Yahoo prices, the Stooq/HuggingFace/defeatbeta dumps, and
+  now **Companies House** (no licence stated). Carried as a documented,
+  deliberate redistribution risk, isolated from the fully-free tier.
 - **EDINET** is off by default and never part of the published dataset unless the
   operator opts in; when it is, its PDL1.0 attribution requirement applies.
 
@@ -136,10 +136,36 @@ has no bars (staleness stays visible via `price_asof`).
 |---|---|---|---|---|
 | [paperswithbacktest/Stocks-Daily-Price](https://huggingface.co/datasets/paperswithbacktest/Stocks-Daily-Price) | ~7k US listings, daily, full history | 4 parquet shards, plain HTTPS, **no key/API** — pulled weekly by the nightly | Refreshed ~monthly (2026-07-09 at audit time) | License "other" (unspecified) — series published as an assumed risk |
 | [Stooq bulk archives](https://stooq.com/db/h/) | Worldwide (US, DE, UK, JP, PL…), daily, decades | **`crible stooq-download <dataset> --import`** clears the two anti-bot layers headlessly (SHA-256 proof-of-work + a 4-char image captcha, OCR'd by the optional `captcha` extra; verified 2026-07-13) — or manual download then `crible import-prices <zip>` | Daily | No published license — series published as an assumed risk. Stooq bars are pre-adjusted, so `adj_close` stays NULL |
+| [defeatbeta/yahoo-finance-data](https://huggingface.co/datasets/defeatbeta/yahoo-finance-data) | ~12k US listings (incl. OTC/ETF), daily, full history + dividends/splits/shares outstanding + statements | One parquet per table, plain HTTPS, **no key/API** — `crible import-prices defeatbeta` (weekly in the nightly + Monday workflow) | Refreshed ~weekly (update time in the dataset's `spec.json`; prices to 2026-07-15 at audit time, evaluated 2026-07-16) | Labeled ODC-BY, but the data is **Yahoo-derived, re-scraped by a single maintainer** — that label cannot cleanse Yahoo's exchange-licensed terms, so it lands in the assumed-risk tier like Stooq. Split-adjusted bars only → `adj_close` stays NULL |
 
 The `import-prices` workflow (manual dispatch) forces a HuggingFace refresh +
 snapshot recompute + republish anytime; the nightly refresh pulls it weekly
 on its own.
+
+### defeatbeta — additional + fallback, never audited-tier (2026-07-16)
+
+The [defeat-beta/defeatbeta-api](https://github.com/defeat-beta/defeatbeta-api)
+project's HF dataset was evaluated as a data source and adopted with a strictly
+bounded role — **additional + fallback**:
+
+- **Prices + capital events (the real value)** — fills the documented "audited
+  US fundamentals but no prices" gap in bulk, without rate limits. Dividends,
+  splits and shares outstanding land in `data/events/defeatbeta-*.parquet`
+  (published, full history). Every symbol it prices drops out of the Yahoo
+  top-up AND defers its marathon slot (`defer_covered_symbols`, 30 days,
+  re-applied nightly — self-healing if the dump dies), so the crawl budget
+  flows to Europe and the world, which defeatbeta does not cover.
+- **Fundamentals (last resort only)** — `crible import-fundamentals defeatbeta`
+  fills ONLY symbols with no audited raw and no crawled yfinance statements
+  (`fundamentals_gap_symbols`). The snapshot tags them `provider=defeatbeta`;
+  audited values still reconcile on top (the reconcile seam is source-agnostic).
+- **Bus factor, stated plainly** — a single maintainer re-scraping Yahoo
+  ("I will update the data regularly"): treated as a degradable enrichment.
+  No mirror; the last-good guarantee is the data-latest restore→publish cycle,
+  and the crawl deferral expires on its own within 30 days.
+- **Not a dependency** — the tables are read directly over DuckDB httpfs
+  (`src/crible/ingest/defeatbeta.py`); the `defeatbeta-api` Python package is
+  not installed. Zero-key contract unchanged.
 
 ## Removed sources (open-data cleanup, 2026-07-13)
 

@@ -74,6 +74,17 @@ jobs:
       - name: Import the HuggingFace price dump (US — series + distillate)
         run: uv run crible import-prices huggingface
 
+      - name: Import the defeatbeta dump (US prices + capital events)
+        continue-on-error: true # prices are an enrichment, never a gate
+        run: uv run crible import-prices defeatbeta
+
+      # last-resort fundamentals: ONLY symbols with no audited raw and no
+      # crawled yfinance statements (assumed-risk tier, provider=defeatbeta
+      # provenance; audited data reconciles on top)
+      - name: Import defeatbeta fundamentals for unserved symbols
+        continue-on-error: true # an enrichment, never a gate
+        run: uv run crible import-fundamentals defeatbeta
+
       # a scheduled run gets NO dispatch input — rotate a useful market by ISO
       # week; a manual dispatch uses its input (empty input = skip Stooq)
       - name: Pick the Stooq market
