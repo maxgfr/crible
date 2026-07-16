@@ -393,6 +393,60 @@ def test_fr010_index_sweep_enriches_known_filers_and_skips_the_rest(tmp_path, mo
     assert again["enriched"] == []
 
 
+LEI_BARC = "LEIBARC000000000001X"  # fixture ISIN GB0031348658 (BARC.L)
+
+
+def test_fr010_sweep_covers_the_gb_slice(tmp_path, monkeypatch) -> None:
+    """filings.xbrl.org serves 2,885 GB filings under the same ESEF system
+    (UK listed IFRS, fully-free) and the sweep walks the UNFILTERED index —
+    this test forbids a future EU-only country filter from silently dropping
+    the United Kingdom (which EUROPE_COUNTRIES deliberately includes)."""
+    from crible.ingest.service import run_esef_sweep
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+
+    class GbIndexClient:
+        def filings_index(self, page_size: int = 100, page_number: int = 1):
+            if page_number > 1:
+                return [], 1
+            return [{"attributes": {"json_url": f"/{LEI_BARC}/2025-12-31/barc.json",
+                                    "country": "GB"}}], 1
+
+        def fetch_xbrl_json(self, filing):
+            return XBRL_JSON
+
+    outcome = run_esef_sweep(
+        limit=10, client=GbIndexClient(), mapping={"GB0031348658": LEI_BARC}
+    )
+    assert outcome["enriched"] == ["BARC.L"]
+    assert list(tmp_path.glob("raw/provider=esef/symbol=BARC.L/*.parquet"))
+
+
+def test_esef_outranks_companies_house_and_ch_backfills(tmp_path) -> None:
+    """merge_audited argument order IS the precedence: filings.xbrl.org wins
+    every period it reports; Companies House keeps the rest."""
+    from crible.compute.snapshot import build_snapshot
+    from crible.ingest.raw import write_raw_statement
+
+    pd.DataFrame({"symbol": ["BARC.L"]}).to_parquet(tmp_path / "universe.parquet", index=False)
+    write_raw_statement(
+        tmp_path, symbol="BARC.L", provider="companies-house", statement_type="income",
+        freq="annual",
+        frame=pd.DataFrame({"period": ["2024-12-31", "2025-12-31"],
+                            "TotalRevenue": [111.0, 222.0]}),
+        fetched_at=1.0,
+    )
+    write_raw_statement(
+        tmp_path, symbol="BARC.L", provider="esef", statement_type="income",
+        freq="annual",
+        frame=pd.DataFrame({"period": ["2025-12-31"], "TotalRevenue": [999.0]}),
+        fetched_at=2.0,
+    )
+    snapshot = build_snapshot(tmp_path, symbols=["BARC.L"]).set_index("period")
+    assert snapshot.loc["2025-12-31", "revenue"] == 999.0  # esef wins the period
+    assert snapshot.loc["2024-12-31", "revenue"] == 111.0  # CH backfills the rest
+
+
 def test_fr010_sweep_freshness_survives_a_fresh_operational_db(tmp_path, monkeypatch) -> None:
     """The CI amnesia fix: crible.duckdb never travels in the published
     dataset, so every nightly starts blank — the raw layer must re-seed
