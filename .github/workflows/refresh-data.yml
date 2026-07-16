@@ -108,7 +108,7 @@ jobs:
         # raw, the sweep covers the ~8,850 matched EU listings in a handful
         # of nightlies, then settles to new-filings-only. The wall-clock
         # guard, not this count, is the real bound.
-        run: uv run crible refresh --deadline 7200 --max-minutes 240 --esef-limit 1500 --edgar-bulk --fsds-quarters 2 --edinet-days 7 --cvm-limit 1000
+        run: uv run crible refresh --deadline 7200 --max-minutes 240 --esef-limit 1500 --edgar-bulk --fsds-quarters 2 --edinet-days 7 --cvm-limit 1000 --twse-limit 3000
 
       - name: Export the static site artifacts (min-symbols gate)
         run: uv run crible export-site --out site-data --min-symbols 50

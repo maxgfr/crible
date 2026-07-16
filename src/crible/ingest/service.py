@@ -29,6 +29,7 @@ from crible.ingest.enrichment import (  # re-exported for the CLI/tests/site_exp
     run_esef_cycle,
     run_esef_sweep,
     run_fsds,
+    run_twse,
 )
 from crible.ingest.queue import CrawlQueue
 from crible.ingest.state import connect as _connect
@@ -493,6 +494,7 @@ def run_refresh(
     edinet_days: int = 0,
     companies_house_url: str = "",
     cvm_limit: int = 0,
+    twse_limit: int = 0,
 ) -> dict:
     """One bounded, resumable refresh pass — the nightly dataset run.
 
@@ -664,6 +666,13 @@ def run_refresh(
         except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
             log.warning("cvm cycle failed: %s", exc)
             result["cvm"] = {"outage": str(exc)}
+    if twse_limit > 0:
+        # audited Taiwan — keyless snapshot JSONs, forward accumulation
+        try:
+            result["twse"] = run_twse(limit=twse_limit, time_budget_seconds=stage_budget())
+        except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
+            log.warning("twse cycle failed: %s", exc)
+            result["twse"] = {"outage": str(exc)}
     budget_left = stage_budget()
     if budget_left is not None and budget_left <= 0:
         # inside the compute reserve — prices are an enrichment, never a gate
