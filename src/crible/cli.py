@@ -122,6 +122,11 @@ def ingest(
     once: bool = typer.Option(False, "--once", help="Run a single crawl cycle"),
     loop: bool = typer.Option(False, "--loop", help="Run the continuous crawl loop"),
     limit: int = typer.Option(50, "--limit", help="Symbols per cycle for --once"),
+    symbols: str = typer.Option(
+        "", "--symbols",
+        help="Comma-separated symbols to crawl NOW with --once (e.g. OVH.PA,MC.PA)"
+        " — targeted, bypasses the queue's priority order",
+    ),
     fetch_gleif: bool = typer.Option(
         False, "--fetch-gleif", help="Download the GLEIF ISIN→LEI file (unlocks audited EU)"
     ),
@@ -138,8 +143,11 @@ def ingest(
     if bootstrap:
         report = run_bootstrap()
         typer.echo(f"universe: {report.loaded} rows loaded ({report.by_region})")
+    if symbols and not once:
+        _fail("--symbols requires --once (a targeted single crawl)")
     if once:
-        outcome = run_once(limit=limit)
+        targeted = [s.strip() for s in symbols.split(",") if s.strip()] or None
+        outcome = run_once(limit=limit, symbols=targeted)
         typer.echo(f"crawled: {len(outcome.fetched)} ok, {len(outcome.failed)} failed")
     if loop:
         run_loop()

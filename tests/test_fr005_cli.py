@@ -174,3 +174,22 @@ def test_fr005_compute_is_incremental_and_skips_when_unchanged(tmp_path, monkeyp
     second = runner.invoke(app, ["compute"])
     assert second.exit_code == 0, second.output
     assert "unchanged" in second.output.lower()  # no raw change → no republish
+
+
+def test_cli_ingest_symbols_targets_exactly_that_set(data_dir, monkeypatch) -> None:
+    """`crible ingest --once --symbols OVH.PA,MC.PA` wires the comma list
+    through to the targeted crawl (whitespace-tolerant, order preserved)."""
+    calls: dict = {}
+
+    def fake_run_once(limit=50, budget=None, provider=None, symbols=None):
+        calls["symbols"] = symbols
+        from crible.ingest.crawler import CrawlOutcome
+
+        return CrawlOutcome(fetched=list(symbols or []), failed=[])
+
+    monkeypatch.setattr("crible.ingest.service.run_once", fake_run_once)
+    result = runner.invoke(app, ["ingest", "--once", "--symbols", "OVH.PA, MC.PA"])
+
+    assert result.exit_code == 0, result.output
+    assert calls["symbols"] == ["OVH.PA", "MC.PA"]
+    assert "2 ok" in result.output

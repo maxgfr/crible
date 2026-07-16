@@ -195,11 +195,19 @@ def _make_crawler(con: duckdb.DuckDBPyConnection, provider=None, budget=None) ->
     )
 
 
-def run_once(limit: int = 50, budget=None, provider=None) -> CrawlOutcome:
+def run_once(limit: int = 50, budget=None, provider=None, symbols: list[str] | None = None) -> CrawlOutcome:
+    """One crawl cycle — or, with ``symbols``, a targeted crawl of exactly
+    that set (in order), bypassing the queue's priority/due-ness. The budget
+    is still charged per fetch: targeting never busts the hourly cap."""
     con = _connect()
     try:
         crawler = _make_crawler(con, provider=provider, budget=budget)
-        outcome = crawler.run_cycle(limit=limit)
+        if symbols:
+            outcome = CrawlOutcome()
+            for symbol in symbols:
+                (outcome.fetched if crawler.crawl_symbol(symbol) else outcome.failed).append(symbol)
+        else:
+            outcome = crawler.run_cycle(limit=limit)
         update_heartbeat(
             requests_last_hour=crawler.budget.used_in_window(),
             budget_per_hour=crawler.budget.capacity,

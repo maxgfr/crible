@@ -99,3 +99,18 @@ def test_run_once_reuses_a_caller_owned_budget(service_env) -> None:
     # not reset each cycle. With the F1 bug the caller's budget is ignored (0).
     assert budget.used_in_window() == 4
     assert len(provider.calls) == 4
+
+
+def test_run_once_symbols_crawls_exactly_the_requested_set(service_env) -> None:
+    """`ingest --once --symbols OVH.PA` — a targeted crawl outside the queue's
+    priority order: the requested symbols are fetched now, nothing else is."""
+    _seed_universe(["AIR.PA", "MC.PA", "OVH.PA", "SAP.DE"])
+    provider = FakeYfProvider()
+
+    outcome = run_once(limit=50, provider=provider, symbols=["OVH.PA", "MC.PA"])
+
+    assert provider.calls == ["OVH.PA", "MC.PA"]
+    assert outcome.fetched == ["OVH.PA", "MC.PA"]
+    assert outcome.failed == []
+    # the targeted crawl leaves raw statements behind like any cycle
+    assert list((config.data_dir() / "raw").glob("provider=yfinance/symbol=OVH.PA/*.parquet"))
