@@ -51,3 +51,46 @@ class TokenBucket:
     def used_in_window(self) -> int:
         self._evict()
         return len(self._stamps)
+
+
+def save_bucket(bucket: TokenBucket, path, wall_now: float | None = None) -> None:
+    """Persist the rolling window as WALL-CLOCK stamps (monotonic origins do
+    not survive a process boundary). Published with the dataset so chained
+    CI runs resume the window instead of double-spending it (NFR-007)."""
+    import json
+    from pathlib import Path
+
+    bucket._evict()
+    wall = time.time() if wall_now is None else wall_now
+    offset = wall - bucket._now()
+    Path(path).write_text(json.dumps({
+        "window_seconds": bucket.window,
+        "stamps": [round(s + offset, 3) for s in bucket._stamps],
+    }))
+
+
+def load_bucket(
+    path,
+    capacity: int = DEFAULT_CAPACITY,
+    window_seconds: float = DEFAULT_WINDOW_SECONDS,
+    now: Callable[[], float] = time.monotonic,
+    wall_now: float | None = None,
+) -> TokenBucket:
+    """Rebuild a bucket from a saved state; stamps outside the window are
+    dropped. A missing or corrupt file starts a fresh bucket — the state is
+    an optimisation, never a gate."""
+    import json
+    from pathlib import Path
+
+    bucket = TokenBucket(capacity=capacity, window_seconds=window_seconds, now=now)
+    try:
+        state = json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return bucket
+    wall = time.time() if wall_now is None else wall_now
+    offset = wall - bucket._now()
+    horizon = wall - bucket.window
+    for stamp in sorted(state.get("stamps", [])):
+        if isinstance(stamp, (int, float)) and stamp > horizon:
+            bucket._stamps.append(stamp - offset)
+    return bucket

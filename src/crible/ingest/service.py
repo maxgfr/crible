@@ -199,6 +199,12 @@ def run_once(limit: int = 50, budget=None, provider=None, symbols: list[str] | N
     """One crawl cycle — or, with ``symbols``, a targeted crawl of exactly
     that set (in order), bypassing the queue's priority/due-ness. The budget
     is still charged per fetch: targeting never busts the hourly cap."""
+    from crible.ingest.budget import load_bucket, save_bucket
+
+    budget_state = config.data_dir() / "budget-state.json"
+    if budget is None:
+        # standalone invocations minutes apart must share ONE rolling hour
+        budget = load_bucket(budget_state)
     con = _connect()
     try:
         crawler = _make_crawler(con, provider=provider, budget=budget)
@@ -208,6 +214,7 @@ def run_once(limit: int = 50, budget=None, provider=None, symbols: list[str] | N
                 (outcome.fetched if crawler.crawl_symbol(symbol) else outcome.failed).append(symbol)
         else:
             outcome = crawler.run_cycle(limit=limit)
+        save_bucket(crawler.budget, budget_state)
         update_heartbeat(
             requests_last_hour=crawler.budget.used_in_window(),
             budget_per_hour=crawler.budget.capacity,
@@ -396,7 +403,12 @@ def run_refresh(
                 con, data / "universe.parquet"
             )
             result["universe_restored"] = True
-        crawler = _make_crawler(con, provider=provider)  # CrawlQueue() re-seeds
+        # resume the rolling budget window where the previous run left it —
+        # chained CI runs must never double-spend the hour (NFR-007)
+        from crible.ingest.budget import load_bucket, save_bucket
+
+        budget_state = data / "budget-state.json"
+        crawler = _make_crawler(con, provider=provider, budget=load_bucket(budget_state))
         prioritize_sample(con, bootstrap_sample())
         # AFTER prioritizing: fresh raw wins over the sample's due-now reset,
         # so the nightly advances into new symbols instead of re-crawling
@@ -412,6 +424,7 @@ def run_refresh(
                 break  # nothing due — the queue is drained for this run
         result["fetched"] = fetched
         result["failed"] = failed
+        save_bucket(crawler.budget, budget_state)  # crash-safe: enrichment may die
         stats = _queue_stats(con)
     finally:
         con.close()
@@ -455,6 +468,7 @@ def run_refresh(
         except Exception as exc:  # noqa: BLE001
             log.warning("price refresh failed: %s", exc)
             result["prices"] = {"error": str(exc)}
+        save_bucket(crawler.budget, budget_state)  # prices spend the window too
 
     result["pruned"] = prune_raw(data)
     result["snapshot_rows"] = run_compute()

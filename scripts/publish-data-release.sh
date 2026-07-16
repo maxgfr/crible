@@ -37,6 +37,9 @@ trap 'rm -rf "$workdir"' EXIT
 tarball="$workdir/crible-data.tar.gz"
 paths=(data/raw data/universe.parquet data/snapshot)
 [ -f data/status.json ] && paths+=(data/status.json)
+# the rolling budget window rides along so chained CI crawls resume it
+# instead of double-spending the hour (NFR-007)
+[ -f data/budget-state.json ] && paths+=(data/budget-state.json)
 [ -f data/prices-latest.parquet ] && paths+=(data/prices-latest.parquet)
 [ -d data/prices ] && paths+=(data/prices)
 tar -czf "$tarball" "${paths[@]}"
