@@ -52,3 +52,23 @@ addopts = "-q"
 [tool.ruff]
 line-length = 110
 target-version = "py312"
+
+[tool.semantic_release]
+# Automated releases from green pushes to main (.github/workflows/release.yml).
+# Conventional commits drive the bump; `data-latest` is not a semver tag and
+# is therefore invisible to semantic-release.
+version_toml = ["pyproject.toml:project.version"]
+version_variables = ["src/crible/__init__.py:__version__"]
+tag_format = "v{version}"
+commit_message = "chore(release): v{version} [skip ci]"
+commit_author = "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+major_on_zero = false
+allow_zero_version = true
+
+[tool.semantic_release.branches.main]
+match = "main"
+
+[tool.semantic_release.changelog]
+# docs/CHANGELOG.md stays hand-written; generated notes go to the GitHub
+# Release only (the workflow passes changelog: false).
+exclude_commit_patterns = ["^chore\\(release\\):"]

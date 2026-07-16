@@ -1,23 +1,70 @@
-# Release on tag vX.Y.Z — multi-arch Docker image to GHCR (amd64 for the
-# classic VPS path, arm64 for e.g. Hetzner CAX / Apple Silicon / Pi NAS),
-# then a GitHub Release whose notes are the latest CHANGELOG section.
+# Automated releases: every green push to main is analyzed by
+# python-semantic-release — conventional commits decide the bump (feat →
+# minor, fix/perf → patch; docs/ci/chore/refactor → no release). When a
+# release is cut, the SAME workflow builds the multi-arch Docker image
+# (amd64 for the classic VPS path, arm64 for Hetzner CAX / Apple Silicon /
+# Pi NAS) — it must live here because a tag pushed with GITHUB_TOKEN never
+# triggers other workflows (GitHub recursion protection).
 # Only GITHUB_TOKEN is used: the zero-key contract extends to CI.
+# Out of scope: the rolling `data-latest` release (data channel, ADR-0006) —
+# it is not a semver tag, semantic-release never touches it.
 
 name: release
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Compute the next version without releasing (no-op mode)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
   packages: write
 
+# queue releases, never cancel one mid-flight
+concurrency:
+  group: release
+
 jobs:
+  version:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.psr.outputs.released }}
+      version: ${{ steps.psr.outputs.version }}
+      tag: ${{ steps.psr.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          # semantic-release walks the history since the last v* tag
+          fetch-depth: 0
+      - name: Semantic release — bump, tag, GitHub Release
+        id: psr
+        uses: python-semantic-release/python-semantic-release@v10
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          changelog: "false"
+          no_operation_mode: ${{ inputs.dry_run == true }}
+
   docker:
+    needs: version
+    if: needs.version.outputs.released == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # build the bumped commit, not the pre-release SHA
+          ref: ${{ needs.version.outputs.tag }}
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -30,20 +77,14 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}:${{ needs.version.outputs.tag }}
             ghcr.io/${{ github.repository }}:latest
-
-  release:
-    runs-on: ubuntu-latest
-    needs: docker
-    steps:
-      - uses: actions/checkout@v4
-      - name: Create the GitHub Release from the CHANGELOG
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          awk '/^## /{n++} n==1' docs/CHANGELOG.md > /tmp/notes.md
-          gh release create "${{ github.ref_name }}" \
-            --title "${{ github.ref_name }}" \
-            --notes-file /tmp/notes.md
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=Self-hosted fundamental stock screener
+            org.opencontainers.image.version=${{ needs.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT

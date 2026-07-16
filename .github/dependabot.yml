@@ -1,0 +1,13 @@
+# Keeps the patch-pinned Docker bases (Dockerfile) and the pinned GitHub
+# Actions fresh. Monthly: low churn, the pins exist for reproducibility,
+# not for chasing every patch the day it ships.
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

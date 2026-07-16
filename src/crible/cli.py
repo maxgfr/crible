@@ -15,12 +15,27 @@ from crible.runtime import Runtime, SnapshotMissingError
 app = typer.Typer(name="crible", help="Self-hosted fundamental stock screener.", no_args_is_help=True)
 
 
+def _print_version(value: bool) -> None:
+    if value:
+        from crible import __version__
+
+        typer.echo(__version__)
+        raise typer.Exit()
+
+
 @app.callback()
 def _configure(
     data_dir: Path = typer.Option(
         None,
         "--data-dir",
         help="Data directory for this invocation (default: $CRIBLE_DATA_DIR or ./data)",
+    ),
+    version: bool = typer.Option(
+        False,
+        "--version",
+        help="Print the crible version and exit",
+        callback=_print_version,
+        is_eager=True,
     ),
 ) -> None:
     import logging

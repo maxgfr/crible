@@ -68,6 +68,21 @@ instead of starting over.
 - Data sources must be open data / keyless to qualify for the core; keyed
   sources go through the provider plugin seam (`src/crible/providers/`).
 
+## Releases
+
+Code releases are fully automated (`.github/workflows/release.yml`): after every
+green `ci` run on `main`, python-semantic-release reads the conventional commits
+since the last `vX.Y.Z` tag and decides the bump — `feat` → minor, `fix`/`perf` →
+patch, `docs`/`ci`/`chore`/`refactor`/`test` → no release (while the project is
+0.x, breaking changes also bump the minor: `major_on_zero = false`). A release
+bumps `pyproject.toml` + `crible.__version__` (`chore(release): vX.Y.Z` commit),
+tags, publishes a GitHub Release with generated notes and pushes the multi-arch
+image to `ghcr.io/maxgfr/crible` (`:vX.Y.Z` + `:latest`). Nothing to do by hand —
+your commit type IS the release decision.
+
+`docs/CHANGELOG.md` stays hand-written (narrative), and the rolling `data-latest`
+release is the separate data channel — semantic-release never touches either.
+
 ## Reporting bugs / proposing features
 
 Use the issue templates. For security issues, see [SECURITY.md](SECURITY.md) —
