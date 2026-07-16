@@ -8,8 +8,15 @@ import pandas as pd
 from typer.testing import CliRunner
 
 from crible.cli import app
-from crible.ingest.defeatbeta import import_defeatbeta
+from crible.compute.snapshot import build_snapshot
+from crible.ingest.defeatbeta import (
+    ITEM_TO_YF,
+    fundamentals_gap_symbols,
+    import_defeatbeta,
+    import_defeatbeta_fundamentals,
+)
 from crible.ingest.price_import import load_prices_latest
+from crible.ingest.raw import write_raw_statement
 from crible.price_series import _resolve
 
 runner = CliRunner()
@@ -129,6 +136,116 @@ def test_defeatbeta_loses_price_ties_to_the_crawl_but_beats_the_dumps() -> None:
 
     against_dump = _resolve(pd.concat([bars("huggingface"), bars("defeatbeta")]), 400)
     assert set(against_dump["source"]) == {"defeatbeta"}
+
+
+def _statements_table(tmp_path, symbols=("AAPL",)) -> str:
+    """defeatbeta's LONG stock_statement schema, deviant names included."""
+    rows = []
+    for symbol in symbols:
+        for period in ("2024-12-31", "2025-12-31"):
+            year = float(period[:4])
+            for finance_type, item, value in (
+                ("income_statement", "total_revenue", 400.0 + year),
+                ("income_statement", "net_income", 56.0),
+                ("income_statement", "basic_average_shares", 10.0),
+                ("income_statement", "ebit", 80.0),
+                ("income_statement", "selling_gen_admin", 30.0),
+                ("balance_sheet", "total_assets", 900.0),
+                ("balance_sheet", "net_ppe", 250.0),
+                ("balance_sheet", "stockholders_equity", 300.0),
+                ("cash_flow", "operating_cash_flow", 90.0),
+                ("cash_flow", "capital_expenditure", -20.0),
+            ):
+                rows.append(
+                    {"symbol": symbol, "report_date": period, "item_name": item,
+                     "item_value": value, "finance_type": finance_type,
+                     "period_type": "annual"}
+                )
+    path = tmp_path / "stock_statement.parquet"
+    pd.DataFrame(rows).to_parquet(path, index=False)
+    return str(path)
+
+
+def test_item_map_covers_the_deviant_names() -> None:
+    assert ITEM_TO_YF["total_revenue"] == "TotalRevenue"
+    assert ITEM_TO_YF["ebit"] == "EBIT"
+    assert ITEM_TO_YF["normalized_ebitda"] == "NormalizedEBITDA"
+    assert ITEM_TO_YF["net_ppe"] == "NetPPE"
+    assert ITEM_TO_YF["selling_gen_admin"] == "SellingGeneralAndAdministration"
+    assert ITEM_TO_YF["cash_flow_from_continuing_operating_activities"] == (
+        "CashFlowFromContinuingOperatingActivities"
+    )
+
+
+def test_fundamentals_pivot_to_yfinance_vocabulary(tmp_path) -> None:
+    _universe(tmp_path)
+    report = import_defeatbeta_fundamentals(tmp_path, table=_statements_table(tmp_path))
+    assert report.imported == 1
+
+    directory = tmp_path / "raw" / "provider=defeatbeta" / "symbol=AAPL"
+    income = pd.read_parquet(sorted(directory.glob("income-annual-*.parquet"))[-1])
+    assert income.loc[income["period"] == "2025-12-31", "TotalRevenue"].iloc[0] == 2425.0
+    assert {"EBIT", "SellingGeneralAndAdministration", "BasicAverageShares"} <= set(income.columns)
+    balance = pd.read_parquet(sorted(directory.glob("balance-annual-*.parquet"))[-1])
+    assert "NetPPE" in balance.columns
+
+
+def test_fundamentals_import_targets_gap_symbols_only(tmp_path) -> None:
+    """AAPL has crawled yfinance statements, BRK-B has audited EDGAR raw —
+    neither is a gap symbol; only the unserved listing gets defeatbeta raw."""
+    pd.DataFrame({"symbol": ["AAPL", "BRK-B", "GAP1"]}).to_parquet(
+        tmp_path / "universe.parquet", index=False
+    )
+    frame = pd.DataFrame({"period": ["2025-12-31"], "TotalRevenue": [1.0]})
+    write_raw_statement(tmp_path, symbol="AAPL", provider="yfinance", statement_type="income",
+                        freq="annual", frame=frame, fetched_at=1.0)
+    write_raw_statement(tmp_path, symbol="BRK-B", provider="edgar", statement_type="income",
+                        freq="annual", frame=frame, fetched_at=1.0)
+
+    assert fundamentals_gap_symbols(tmp_path) == ["GAP1"]
+    report = import_defeatbeta_fundamentals(
+        tmp_path, table=_statements_table(tmp_path, symbols=("AAPL", "GAP1"))
+    )
+    assert report.imported == 1
+    assert not (tmp_path / "raw" / "provider=defeatbeta" / "symbol=AAPL").exists()
+    assert (tmp_path / "raw" / "provider=defeatbeta" / "symbol=GAP1").exists()
+
+
+def test_snapshot_falls_back_to_defeatbeta_fundamentals(tmp_path) -> None:
+    """A defeatbeta-only symbol gets real canonical fields + ratios, tagged
+    provider=defeatbeta; a symbol with yfinance statements ignores them."""
+    _universe(tmp_path)
+    import_defeatbeta_fundamentals(tmp_path, table=_statements_table(tmp_path))
+
+    snapshot = build_snapshot(tmp_path, symbols=["AAPL"]).set_index("period")
+    row = snapshot.loc["2025-12-31"]
+    assert row["provider"] == "defeatbeta"
+    assert row["revenue"] == 2425.0
+    assert row["net_income"] == 56.0
+
+    # crawled yfinance statements present → they stay the base
+    yf = pd.DataFrame({"period": ["2025-12-31"], "TotalRevenue": [9999.0]})
+    write_raw_statement(tmp_path, symbol="AAPL", provider="yfinance", statement_type="income",
+                        freq="annual", frame=yf, fetched_at=2.0)
+    snapshot = build_snapshot(tmp_path, symbols=["AAPL"]).set_index("period")
+    row = snapshot.loc["2025-12-31"]
+    assert row["provider"] == "yfinance"
+    assert row["revenue"] == 9999.0
+
+
+def test_audited_reconciles_on_top_of_defeatbeta(tmp_path) -> None:
+    """EDGAR values outrank the defeatbeta fallback and are recorded as
+    audited provenance — the reconcile seam is source-agnostic."""
+    _universe(tmp_path)
+    import_defeatbeta_fundamentals(tmp_path, table=_statements_table(tmp_path))
+    audited = pd.DataFrame({"period": ["2025-12-31"], "TotalRevenue": [3000.0]})
+    write_raw_statement(tmp_path, symbol="AAPL", provider="edgar", statement_type="income",
+                        freq="annual", frame=audited, fetched_at=2.0)
+
+    snapshot = build_snapshot(tmp_path, symbols=["AAPL"]).set_index("period")
+    row = snapshot.loc["2025-12-31"]
+    assert row["revenue"] == 3000.0  # audited wins the >5% divergence
+    assert "revenue" in row["audited_fields"]
 
 
 def test_import_prices_cli_dispatches_defeatbeta(tmp_path, monkeypatch) -> None:

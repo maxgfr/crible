@@ -226,6 +226,15 @@ def build_symbol_rows(data_dir: Path | str, symbols: list[str]) -> pd.DataFrame:
     parts = []
     for symbol in symbols:
         scraped = latest_raw_frames(data_dir, symbol, provider="yfinance")
+        scraped_provider = "yfinance"
+        if not any(key[0] in ("income", "balance", "cashflow") for key in scraped):
+            # last-resort fallback: defeatbeta statements (Yahoo-derived dump,
+            # only imported for symbols no other source serves). Crawled
+            # yfinance frames — including prices-daily — keep their keys.
+            fallback = latest_raw_frames(data_dir, symbol, provider="defeatbeta")
+            if fallback:
+                scraped = {**fallback, **scraped}
+                scraped_provider = "defeatbeta"
         # the audited layer, per region (a listing realistically has one): US
         # companyfacts wins recent periods and FSDS backfills the deep history;
         # ESEF (EU), Companies House (UK) and EDINET (JP) don't overlap it.
@@ -246,7 +255,7 @@ def build_symbol_rows(data_dir: Path | str, symbols: list[str]) -> pd.DataFrame:
         part = build_symbol_snapshot(
             symbol,
             scraped,
-            provider="yfinance" if scraped else _frames_provider(audited, "esef"),
+            provider=scraped_provider if scraped else _frames_provider(audited, "esef"),
             audited_frames=audited or None,
             price_quote=(quote["close"], quote["price_asof"]) if quote else None,
             quote_features=quote,

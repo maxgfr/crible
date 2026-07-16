@@ -22,8 +22,10 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
+from crible.compute.canonical import FIELD_CANDIDATES
 from crible.compute.momentum import momentum_features
 from crible.ingest.price_import import ImportReport, _merge_and_publish, universe_symbols
+from crible.ingest.raw import iter_raw_files, write_raw_statement
 from crible.price_series import SERIES_WINDOW_DAYS, write_series
 
 log = logging.getLogger("crible.ingest.defeatbeta")
@@ -50,6 +52,41 @@ _EVENT_SELECTS = {
         " CAST(shares_outstanding AS BIGINT) AS shares_outstanding"
     ),
 }
+
+
+# defeatbeta's stock_statement is LONG format (item_name/item_value) with
+# snake_case yfinance-derived names; the raw layer speaks yfinance PascalCase
+# (what build_canonical consumes). The auto rule inverts the casing; these
+# item names deviate from it.
+_ITEM_OVERRIDES = {
+    "EBIT": "ebit",
+    "EBITDA": "ebitda",
+    "NormalizedEBITDA": "normalized_ebitda",
+    "NetPPE": "net_ppe",
+    "GrossPPE": "gross_ppe",
+    "SellingGeneralAndAdministration": "selling_gen_admin",
+}
+
+
+def _auto_snake(name: str) -> str:
+    return "".join(("_" + c.lower()) if c.isupper() else c for c in name).lstrip("_")
+
+
+def _item_map() -> dict[str, str]:
+    """defeatbeta item_name → yfinance column, for every canonical candidate."""
+    mapping: dict[str, str] = {}
+    for candidates in FIELD_CANDIDATES.values():
+        for yf_name in candidates:
+            if " " in yf_name:  # legacy display alias, not an item name
+                continue
+            mapping[_ITEM_OVERRIDES.get(yf_name) or _auto_snake(yf_name)] = yf_name
+    return mapping
+
+
+ITEM_TO_YF = _item_map()
+
+_STATEMENT_TYPES = {"income_statement": "income", "balance_sheet": "balance", "cash_flow": "cashflow"}
+_STATEMENT_KEYS = ("income", "balance", "cashflow")
 
 
 def _connect(url: str) -> duckdb.DuckDBPyConnection:
@@ -108,6 +145,95 @@ def import_defeatbeta(data_dir: Path | str, tables: dict[str, str] | None = None
         "import-prices: %d symbols from defeatbeta (%d outside the universe)", len(fresh), skipped
     )
     return ImportReport(source="defeatbeta", imported=len(fresh), skipped_unknown=skipped)
+
+
+def fundamentals_gap_symbols(data_dir: Path | str) -> list[str]:
+    """Universe symbols whose fundamentals NO other source serves — the
+    last-resort-only enforcement, done at import time so the ~10k
+    EDGAR-covered issuers never get a defeatbeta raw file. A dir holding
+    only crawled ``prices-daily`` files does not count as served."""
+    known = universe_symbols(data_dir)
+    root = Path(data_dir) / "raw"
+    served: set[str] = set()
+    for directory in root.glob("provider=*/symbol=*"):
+        provider = directory.parent.name.split("=", 1)[1]
+        if provider == "defeatbeta":
+            continue  # re-imports refresh previously imported symbols
+        if any(f.stem.split("-", 1)[0] in _STATEMENT_KEYS for f in iter_raw_files(directory)):
+            served.add(directory.name.split("=", 1)[1])
+    return sorted(known - served)
+
+
+def import_defeatbeta_fundamentals(
+    data_dir: Path | str,
+    table: str | None = None,
+    symbols: list[str] | None = None,
+    limit: int | None = None,
+) -> ImportReport:
+    """Last-resort fundamentals: pivot the LONG stock_statement table into
+    yfinance-vocabulary raw frames under ``provider=defeatbeta``.
+
+    Only gap symbols (see ``fundamentals_gap_symbols``) are read; the
+    snapshot falls back to these frames when no yfinance statements exist,
+    and audited frames still reconcile ON TOP of them (audited always wins).
+    ``skip_identical`` keeps incremental compute O(actually-changed)."""
+    url = table if table is not None else DB_TABLES["statements"]
+    gap = symbols if symbols is not None else fundamentals_gap_symbols(data_dir)
+    if limit:
+        gap = gap[:limit]
+    if not gap:
+        log.info("import-fundamentals: no gap symbols — every listing is already served")
+        return ImportReport(source="defeatbeta", imported=0, skipped_unknown=0)
+
+    items = list(ITEM_TO_YF)
+    con = _connect(url)
+    try:
+        con.register("gap_symbols", pd.DataFrame({"symbol": list(gap)}))
+        placeholders = ", ".join("?" for _ in items)
+        long = con.execute(
+            f"""
+            SELECT s.symbol, s.report_date, s.item_name,
+                   CAST(s.item_value AS DOUBLE) AS item_value,
+                   s.finance_type, s.period_type
+            FROM read_parquet(?) s
+            JOIN gap_symbols USING (symbol)
+            WHERE s.item_name IN ({placeholders})
+              AND s.period_type IN ('annual', 'quarterly')
+            """,
+            [url, *items],
+        ).fetchdf()
+    finally:
+        con.close()
+
+    now = time.time()
+    written: set[str] = set()
+    for (symbol, finance_type, period_type), part in long.groupby(
+        ["symbol", "finance_type", "period_type"], sort=False
+    ):
+        statement_type = _STATEMENT_TYPES.get(str(finance_type))
+        if statement_type is None:
+            continue
+        wide = (
+            part.pivot_table(index="report_date", columns="item_name",
+                             values="item_value", aggfunc="last")
+            .rename(columns=ITEM_TO_YF)
+            .sort_index()
+        )
+        frame = wide.reset_index().rename(columns={"report_date": "period"})
+        frame.columns.name = None
+        write_raw_statement(
+            data_dir, symbol=str(symbol), provider="defeatbeta",
+            statement_type=statement_type, freq=str(period_type),
+            frame=frame, fetched_at=now, skip_identical=True,
+        )
+        written.add(str(symbol))
+    log.info(
+        "import-fundamentals: statements for %d of %d gap symbols from defeatbeta",
+        len(written), len(gap),
+    )
+    return ImportReport(
+        source="defeatbeta", imported=len(written), skipped_unknown=len(gap) - len(written)
+    )
 
 
 def _import_events(data_dir: Path | str, tables: dict[str, str], known: set[str]) -> None:

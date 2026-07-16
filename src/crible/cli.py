@@ -244,6 +244,31 @@ def import_prices(
     )
 
 
+@app.command("import-fundamentals")
+def import_fundamentals(
+    source: str = typer.Argument(
+        ..., help="'defeatbeta' — Yahoo-derived statements for symbols NO other source serves"
+    ),
+    limit: int = typer.Option(
+        0, "--limit", help="Cap the number of gap symbols imported this run (0 = all)"
+    ),
+) -> None:
+    """Import LAST-RESORT fundamentals: only universe symbols without audited
+    raw (EDGAR/ESEF/…) and without crawled yfinance statements are filled;
+    audited data always reconciles on top (assumed-risk tier, see
+    docs/DATA-SOURCES.md)."""
+    from crible import config
+    from crible.ingest.defeatbeta import import_defeatbeta_fundamentals
+
+    if source != "defeatbeta":
+        _fail("only 'defeatbeta' is supported")
+    report = import_defeatbeta_fundamentals(config.data_dir(), limit=limit or None)
+    typer.echo(
+        f"imported statements for {report.imported} gap symbols from {report.source}"
+        " — run `crible compute` to refresh ratios"
+    )
+
+
 def _heartbeat_section(key: str) -> dict:
     """Current value of one status.json key (update_heartbeat merges shallow)."""
     from crible import config
