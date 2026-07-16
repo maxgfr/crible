@@ -247,6 +247,10 @@ def build_symbol_rows(data_dir: Path | str, symbols: list[str]) -> pd.DataFrame:
             latest_raw_frames(data_dir, symbol, provider="esef"),
             latest_raw_frames(data_dir, symbol, provider="companies-house"),
             latest_raw_frames(data_dir, symbol, provider="edinet"),
+            # regions don't overlap — relative order among BR/TW/KR is inert
+            latest_raw_frames(data_dir, symbol, provider="cvm"),
+            latest_raw_frames(data_dir, symbol, provider="twse"),
+            latest_raw_frames(data_dir, symbol, provider="dart"),
         )
         if not scraped and not audited:
             continue

@@ -424,6 +424,10 @@ def refresh(
         help="Companies House Accounts Data Product ZIP URL (empty=off;"
         " also needs the operator's data/uk-company-numbers.csv)",
     ),
+    cvm_limit: int = typer.Option(
+        0, "--cvm-limit",
+        help="Audited Brazil: max CVM listings enriched this run (0=off; keyless, ODbL)",
+    ),
 ) -> None:
     """One bounded keyless refresh pass (the nightly dataset run)."""
     from crible.ingest.service import run_refresh
@@ -434,6 +438,7 @@ def refresh(
         fetch_gleif=fetch_gleif, fetch_fx=fetch_fx,
         max_seconds=max_minutes * 60 if max_minutes > 0 else None,
         edinet_days=edinet_days, companies_house_url=ch_accounts_url,
+        cvm_limit=cvm_limit,
     )
     typer.echo(json.dumps(result, indent=2, default=str))
 

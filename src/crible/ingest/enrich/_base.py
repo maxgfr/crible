@@ -10,7 +10,7 @@ from crible.ingest.state import update_heartbeat
 
 __all__ = ["config", "_connect", "update_heartbeat", "log", "seed_tasks_from_raw",
            "ESEF_REFRESH_SECONDS", "ESEF_SCHEMA", "EDGAR_REFRESH_SECONDS",
-           "EDGAR_SCHEMA", "FSDS_MAX_AGE", "CH_MAX_AGE"]
+           "EDGAR_SCHEMA", "FSDS_MAX_AGE", "CH_MAX_AGE", "CVM_MAX_AGE", "TWSE_MAX_AGE"]
 
 log = logging.getLogger("crible.ingest.enrichment")
 
@@ -37,6 +37,10 @@ CREATE TABLE IF NOT EXISTS edgar_tasks (
 FSDS_MAX_AGE = 7 * 24 * 3600
 
 CH_MAX_AGE = 30 * 24 * 3600
+
+CVM_MAX_AGE = 7 * 24 * 3600  # the current-year DFP/FCA refresh weekly
+
+TWSE_MAX_AGE = 24 * 3600  # daily snapshot endpoints — mirror for replayability
 
 
 def seed_tasks_from_raw(

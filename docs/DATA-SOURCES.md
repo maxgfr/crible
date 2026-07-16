@@ -73,7 +73,8 @@ from the mirror. This is the "self-hosted at the call level" contract.
 | **GLEIF ISIN→LEI** auto-fetch | The relationship file that unlocks the audited-EU (ESEF) layer | `crible ingest --fetch-gleif` streams it to the mirror; `crible refresh` self-heals it | Open data (CC0) | **fully-free** |
 | **ECB reference rates** via [Frankfurter](https://frankfurter.dev) | Daily FX rates → `*_eur` companion columns for cross-currency size screens | Keyless JSON, mirrored (`--fetch-fx`) | Open source, redistributable | **fully-free** |
 | **Companies House** (UK) Accounts Data Product | Audited UK accounts (iXBRL) — the **non-listed / non-IFRS backfill** (listed consolidated IFRS comes from filings.xbrl.org's GB slice, which outranks it at merge) | Keyless ZIP, mirrored; resolution via operator-provided `data/uk-company-numbers.csv` | **No explicit reuse licence** | **assumed-risk** |
-| **EDINET** (Japan) | Audited JP filings (XBRL) | **Free-key opt-in** (`CRIBLE_EDINET_KEY`) — API-only, never scraped; OFF by default | PDL1.0 — redistributable **with attribution** | opt-in (keyed) |
+| **EDINET** (Japan) | Audited JP filings (XBRL) | **Free-key opt-in** (`CRIBLE_EDINET_KEY`) — API-only, never scraped; the project nightly opts in (2026-07-16) | PDL1.0 — redistributable **with attribution** | opt-in (keyed) |
+| [CVM open data](https://dados.cvm.gov.br/dataset/cia_aberta-doc-dfp) (Brazil) | **Audited** BR fundamentals — DFP annual statements 2010→, fixed chart of accounts (`CD_CONTA`), consolidated preferred, audit opinion included | Keyless yearly ZIPs at stable URLs, mirrored; `.SA` tickers resolved via the FCA `Codigo_Negociacao` register (`src/crible/providers/cvm.py`) | **ODbL** — attribution + share-alike: *Contém dados públicos da CVM* | **fully-free** |
 
 All audited sources implement one contract (`src/crible/providers/audited.py`
 `AuditedBulkProvider`) and keep only full-year figures with deterministic concept

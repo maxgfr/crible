@@ -22,6 +22,7 @@ from crible.ingest.budget import TokenBucket
 from crible.ingest.crawler import Crawler, CrawlOutcome
 from crible.ingest.enrichment import (  # re-exported for the CLI/tests/site_export
     run_companies_house,
+    run_cvm,
     run_edgar_bulk,
     run_edgar_cycle,
     run_edinet,
@@ -491,6 +492,7 @@ def run_refresh(
     max_seconds: float | None = None,
     edinet_days: int = 0,
     companies_house_url: str = "",
+    cvm_limit: int = 0,
 ) -> dict:
     """One bounded, resumable refresh pass — the nightly dataset run.
 
@@ -655,6 +657,13 @@ def run_refresh(
         except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
             log.warning("companies-house cycle failed: %s", exc)
             result["companies_house"] = {"outage": str(exc)}
+    if cvm_limit > 0:
+        # audited Brazil — keyless yearly ZIPs, fully-free (ODbL)
+        try:
+            result["cvm"] = run_cvm(limit=cvm_limit, time_budget_seconds=stage_budget())
+        except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
+            log.warning("cvm cycle failed: %s", exc)
+            result["cvm"] = {"outage": str(exc)}
     budget_left = stage_budget()
     if budget_left is not None and budget_left <= 0:
         # inside the compute reserve — prices are an enrichment, never a gate
