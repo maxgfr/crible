@@ -254,3 +254,34 @@ def test_sweep_backfills_isins_then_enriches_in_the_same_run(tmp_path, monkeypat
     db = _duckdb.connect(str(tmp_path / "crible.duckdb"))
     assert db.execute("SELECT isin FROM companies WHERE symbol = 'OVH.PA'").fetchone()[0] == OVH_ISIN
     db.close()
+
+
+class ExplodingClient:
+    """Any touch means the early-exit contract is broken."""
+
+    def __getattr__(self, name):
+        raise AssertionError(f"limit=0 must not touch the client (called {name})")
+
+
+def test_esef_sweep_limit_zero_is_a_pure_no_op(tmp_path, monkeypatch) -> None:
+    """The crawl-marathon runs `refresh --esef-limit 0`: no entities paging,
+    no backfill, no index walk — zero requests to filings.xbrl.org."""
+    from crible.ingest.service import run_esef_sweep
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+
+    outcome = run_esef_sweep(limit=0, client=ExplodingClient(), mapping={"X": "Y"})
+
+    assert outcome["enriched"] == []
+    assert outcome["skipped"] == "limit 0"
+
+
+def test_edgar_cycle_limit_zero_is_a_pure_no_op(tmp_path, monkeypatch) -> None:
+    from crible.ingest.service import run_edgar_cycle
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+
+    outcome = run_edgar_cycle(limit=0, client=ExplodingClient())
+
+    assert outcome["enriched"] == []
+    assert outcome["skipped"] == "limit 0"

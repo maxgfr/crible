@@ -19,6 +19,10 @@ def run_edgar_cycle(limit: int = 5, client=None, ticker_map: dict[str, int] | No
 
     data = config.data_dir()
     outcome: dict = {"enriched": [], "unmatched": 0, "outage": None, "skipped": None}
+    if limit <= 0:
+        # marathon mode (`refresh --edgar-limit 0`): pure no-op, zero SEC calls
+        outcome["skipped"] = "limit 0"
+        return outcome
 
     con = _connect()
     try:

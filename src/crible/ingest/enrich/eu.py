@@ -163,6 +163,11 @@ def run_esef_sweep(
     outcome: dict = {
         "enriched": [], "skipped_unknown": 0, "outage": None, "skipped": None, "stopped": None,
     }
+    if limit <= 0:
+        # the crawl-marathon runs `refresh --esef-limit 0`: a pure no-op —
+        # no entities paging, no backfill, zero requests to filings.xbrl.org
+        outcome["skipped"] = "limit 0"
+        return outcome
     # wall-clock budget (run_refresh --max-minutes): a partial sweep is fine —
     # freshness state makes the next run resume where this one stopped
     stage_deadline = (
