@@ -147,21 +147,27 @@ def import_defeatbeta(data_dir: Path | str, tables: dict[str, str] | None = None
     return ImportReport(source="defeatbeta", imported=len(fresh), skipped_unknown=skipped)
 
 
-def fundamentals_gap_symbols(data_dir: Path | str) -> list[str]:
-    """Universe symbols whose fundamentals NO other source serves — the
-    last-resort-only enforcement, done at import time so the ~10k
-    EDGAR-covered issuers never get a defeatbeta raw file. A dir holding
-    only crawled ``prices-daily`` files does not count as served."""
-    known = universe_symbols(data_dir)
+def statement_served_symbols(data_dir: Path | str, exclude: tuple[str, ...] = ()) -> set[str]:
+    """Symbols with STATEMENT raw files from any provider not in ``exclude``.
+    A dir holding only crawled ``prices-daily`` files does not count."""
     root = Path(data_dir) / "raw"
     served: set[str] = set()
     for directory in root.glob("provider=*/symbol=*"):
         provider = directory.parent.name.split("=", 1)[1]
-        if provider == "defeatbeta":
-            continue  # re-imports refresh previously imported symbols
+        if provider in exclude:
+            continue
         if any(f.stem.split("-", 1)[0] in _STATEMENT_KEYS for f in iter_raw_files(directory)):
             served.add(directory.name.split("=", 1)[1])
-    return sorted(known - served)
+    return served
+
+
+def fundamentals_gap_symbols(data_dir: Path | str) -> list[str]:
+    """Universe symbols whose fundamentals NO other source serves — the
+    last-resort-only enforcement, done at import time so the ~10k
+    EDGAR-covered issuers never get a defeatbeta raw file. Prior defeatbeta
+    raw is excluded so re-imports refresh previously imported symbols."""
+    known = universe_symbols(data_dir)
+    return sorted(known - statement_served_symbols(data_dir, exclude=("defeatbeta",)))
 
 
 def import_defeatbeta_fundamentals(

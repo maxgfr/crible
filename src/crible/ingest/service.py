@@ -77,6 +77,49 @@ def prioritize_sample(con: duckdb.DuckDBPyConnection, symbols: list[str]) -> Non
     )
 
 
+def defer_covered_symbols(
+    con: duckdb.DuckDBPyConnection, data_dir, now: float | None = None,
+    defer_seconds: float = 30 * 86400,
+) -> int:
+    """Push never-crawled symbols already served by the dumps to the back of
+    the marathon queue: defeatbeta prices AND fundamentals from any source
+    (audited or defeatbeta) — crawling them would re-buy what we have, so
+    their Yahoo budget flows to Europe and the world instead.
+
+    ``next_due``, not ``priority``: seed_from_universe re-syncs priorities
+    from companies.crawl_priority on every run and would silently revert a
+    priority-based deferral. Re-applied each nightly and capped at 30 days,
+    so the queue self-heals within a month if the dump ever dies.
+    ``last_crawled_at IS NULL`` protects the bootstrap sample and everything
+    the crawl already reached — their quarterly re-crawls continue.
+    """
+    import pandas as pd
+
+    from crible.ingest.defeatbeta import statement_served_symbols
+    from crible.price_series import series_dir
+
+    now = time.time() if now is None else now
+    store = series_dir(data_dir) / "defeatbeta.parquet"
+    if not store.exists():
+        return 0
+    priced = set(pd.read_parquet(store, columns=["symbol"])["symbol"].unique())
+    covered = sorted(priced & statement_served_symbols(data_dir))
+    if not covered:
+        return 0
+    frame = pd.DataFrame({"symbol": covered})
+    con.register("covered_symbols", frame)
+    changed = con.execute(
+        """
+        UPDATE crawl_tasks SET next_due = ?
+        WHERE symbol IN (SELECT symbol FROM covered_symbols)
+          AND last_crawled_at IS NULL AND next_due <= ?
+        """,
+        [now + defer_seconds, now],
+    ).fetchone()
+    con.unregister("covered_symbols")
+    return int(changed[0]) if changed else 0
+
+
 def _queue_stats(con: duckdb.DuckDBPyConnection) -> dict:
     """FR-005 AC-3 — coverage %, freshness histogram, per-region backlog."""
     stats: dict = {}
@@ -110,6 +153,13 @@ def _queue_stats(con: duckdb.DuckDBPyConnection) -> dict:
         )
         stats["parked"] = con.execute(
             "SELECT count(*) FROM crawl_tasks WHERE status = 'parked'"
+        ).fetchone()[0]
+        # never-crawled symbols pushed out (dump-covered deferral + failure
+        # backoff) — with defeatbeta imported, coverage_by_region plateauing
+        # on US is by design, this is where those symbols show up
+        stats["deferred"] = con.execute(
+            "SELECT count(*) FROM crawl_tasks"
+            " WHERE last_crawled_at IS NULL AND next_due > epoch(now())"
         ).fetchone()[0]
         if "companies" in tables:
             # marathon progress at a glance: crawled/total per region
@@ -431,6 +481,9 @@ def run_refresh(
         # AFTER prioritizing: fresh raw wins over the sample's due-now reset,
         # so the nightly advances into new symbols instead of re-crawling
         result["queue_restored"] = restore_queue_from_raw(con, data)
+        # AFTER the restore: dump-covered symbols leave the marathon head —
+        # their Yahoo budget flows to the regions defeatbeta can't price
+        result["deferred_covered"] = defer_covered_symbols(con, data)
         export_universe_parquet(con, data)
 
         fetched = failed = 0

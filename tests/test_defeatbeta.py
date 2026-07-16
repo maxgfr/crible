@@ -248,6 +248,46 @@ def test_audited_reconciles_on_top_of_defeatbeta(tmp_path) -> None:
     assert "revenue" in row["audited_fields"]
 
 
+def test_defer_covered_symbols_frees_the_marathon_head(tmp_path) -> None:
+    """Never-crawled symbols with defeatbeta prices AND served fundamentals
+    are pushed 30 days out via next_due (priority would be re-synced by
+    seed_from_universe); crawled symbols keep their quarterly schedule."""
+    import duckdb
+
+    from crible.ingest.queue import SCHEMA
+    from crible.ingest.service import defer_covered_symbols
+
+    _universe(tmp_path, symbols=("AAPL", "MSFT", "SAP.DE"))
+    import_defeatbeta(tmp_path, tables=_tables(tmp_path))  # prices AAPL only
+    import_defeatbeta_fundamentals(
+        tmp_path, table=_statements_table(tmp_path, symbols=("AAPL", "MSFT"))
+    )
+    # MSFT has fundamentals but no defeatbeta prices; AAPL has both
+    frame = pd.DataFrame({"period": ["2025-12-31"], "TotalRevenue": [1.0]})
+    write_raw_statement(tmp_path, symbol="SAP.DE", provider="yfinance", statement_type="income",
+                        freq="annual", frame=frame, fetched_at=1.0)
+
+    con = duckdb.connect()
+    con.execute(SCHEMA)
+    now = 1_000_000.0
+    for symbol, crawled in (("AAPL", None), ("MSFT", None), ("SAP.DE", 999.0)):
+        con.execute(
+            "INSERT INTO crawl_tasks (symbol, priority, next_due, last_crawled_at)"
+            " VALUES (?, 1, 0, ?)",
+            [symbol, crawled],
+        )
+    deferred = defer_covered_symbols(con, tmp_path, now=now)
+    assert deferred == 1
+
+    due = dict(con.execute("SELECT symbol, next_due FROM crawl_tasks").fetchall())
+    assert due["AAPL"] == now + 30 * 86400  # covered → deferred
+    assert due["MSFT"] == 0  # no defeatbeta prices → still due
+    assert due["SAP.DE"] == 0  # already crawled → schedule untouched
+
+    # idempotent re-application: the deferred symbol is no longer <= now
+    assert defer_covered_symbols(con, tmp_path, now=now) == 0
+
+
 def test_import_prices_cli_dispatches_defeatbeta(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
     _universe(tmp_path)
