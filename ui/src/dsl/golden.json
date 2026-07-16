@@ -24,7 +24,9 @@
     "beneish_m",
     "composite_rank",
     "quality_rank",
-    "value_rank"
+    "value_rank",
+    "top10k",
+    "primary_listing"
   ],
   "cases": [
     {
@@ -157,6 +159,21 @@
       "params": [
         -0.0025
       ]
+    },
+    {
+      "query": "top10k = true",
+      "sql": "\"top10k\" = ?",
+      "params": [
+        1.0
+      ]
+    },
+    {
+      "query": "top10k = TRUE and primary_listing != False",
+      "sql": "(\"top10k\" = ?) AND (\"primary_listing\" <> ?)",
+      "params": [
+        1.0,
+        0.0
+      ]
     }
   ],
   "sorts": [
@@ -184,19 +201,19 @@
   "errors": [
     {
       "query": "piotroski > 7",
-      "message": "unknown field 'piotroski' at position 0 \u2014 did you mean 'piotroski_f'?",
+      "message": "unknown field 'piotroski' at position 0 — did you mean 'piotroski_f'?",
       "position": 0,
       "hint": "did you mean 'piotroski_f'?"
     },
     {
       "query": "return_6m > 0.1",
-      "message": "unknown field 'return_6m' at position 0 \u2014 added at snapshot build time (FR-015) \u2014 recompute the snapshot (`crible compute`) after upgrading",
+      "message": "unknown field 'return_6m' at position 0 — added at snapshot build time (FR-015) — recompute the snapshot (`crible compute`) after upgrading",
       "position": 0,
-      "hint": "added at snapshot build time (FR-015) \u2014 recompute the snapshot (`crible compute`) after upgrading"
+      "hint": "added at snapshot build time (FR-015) — recompute the snapshot (`crible compute`) after upgrading"
     },
     {
       "query": "zzz_qqq = 1",
-      "message": "unknown field 'zzz_qqq' at position 0 \u2014 no similar field exists",
+      "message": "unknown field 'zzz_qqq' at position 0 — no similar field exists",
       "position": 0,
       "hint": "no similar field exists"
     },

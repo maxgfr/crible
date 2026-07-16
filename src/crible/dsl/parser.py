@@ -8,7 +8,7 @@ Grammar (case-insensitive keywords):
     unary      := NOT unary | '(' expr ')' | comparison
     comparison := FIELD op value | FIELD IN '(' value (',' value)* ')'
     op         := > | >= | < | <= | = | == | != | <>
-    value      := NUMBER | 'quoted string' | "quoted string"
+    value      := NUMBER | TRUE | FALSE | 'quoted string' | "quoted string"
 
 Every error is a DslError carrying the offending token and its position —
 the parser is the only thing that ever reads user input; SQL never does.
@@ -152,6 +152,9 @@ class _Parser:
         token = self.take()
         if token.kind == "NUMBER":
             return float(token.value)
+        if token.kind == "FIELD" and token.value.lower() in ("true", "false"):
+            # boolean columns (top10k, primary_listing) compare against 1/0
+            return 1.0 if token.value.lower() == "true" else 0.0
         if token.kind == "STRING":
             raw = token.value[1:-1]
             return raw.replace("\\'", "'").replace('\\"', '"').replace("\\\\", "\\")

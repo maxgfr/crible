@@ -173,6 +173,10 @@ class Parser {
   parseValue(): number | string {
     const token = this.take();
     if (token.kind === "NUMBER") return Number(token.value);
+    if (token.kind === "FIELD" && ["true", "false"].includes(token.value.toLowerCase())) {
+      // boolean columns (top10k, primary_listing) compare against 1/0
+      return token.value.toLowerCase() === "true" ? 1 : 0;
+    }
     if (token.kind === "STRING") {
       const raw = token.value.slice(1, -1);
       // same replacement SEQUENCE as the Python parser
