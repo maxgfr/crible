@@ -1,0 +1,167 @@
+# Full-universe ingest marathon — the GitHub-Actions-only plan to crawl the
+# WHOLE universe (151k listings) within the keyless constraints.
+#
+# The math (2026-07-16): yfinance fundamentals cost 7 requests/symbol under
+# the 330 req/h rolling budget (NFR-007) → ~47 symbols/h. The nightly
+# refresh-data only crawls ~2h (~100 symbols — exactly the bootstrap
+# sample). Audited layers (EDGAR bulk, ESEF+backfill) cover US+EU-mandate
+# issuers for free, but the long tail (~100k EU small caps + world) can only
+# come from the crawl. Three 4¾-hour marathon slots a day + the nightly ≈
+# 750+ symbols/day → one full pass over the LIVING universe in months, not
+# years — parking (dead symbols leave the queue after repeated failures)
+# shrinks the real set as the pass advances. coverage_by_region in the run
+# summary tracks progress.
+#
+# Budget safety across runs: data/budget-state.json (published with the
+# dataset, restored on start) carries the rolling window between processes,
+# so back-to-back runs can never double-spend the hour. TWO LIVE consumers
+# would still each hold their own bucket — the guard job prevents that:
+#   - YIELD when refresh-data, import-prices or another marathon is running
+#     (their restore→publish cycle would also revert our published work:
+#     the tarball is one asset, last writer wins with stale content);
+#   - SHRINK the crawl window so the whole run (crawl + ~1h compute/publish)
+#     lands before the 23:47 nightly, whatever the cron drift (~3h observed);
+#   - the 05:13 slot skips Monday — import-prices owns Monday 06:13.
+#
+# Marathon = crawl ONLY: --esef-limit 0 --edgar-limit 0 are hard no-ops (no
+# GLEIF, no entities paging, no SEC), --no-fetch-gleif --no-fetch-fx skip
+# the mirrors. The nightly keeps the audited layers and the price top-up.
+
+name: crawl-marathon
+
+on:
+  schedule:
+    # three slots clear of the nightly (23:47 + up to 4h → ~04:00) and of
+    # each other (4¾h crawl + ~30 min compute/publish per slot); the 05:13
+    # slot skips Monday (import-prices runs Monday 06:13)
+    - cron: "13 5 * * 0,2-6"
+    - cron: "13 11 * * *"
+    - cron: "13 17 * * *"
+  workflow_dispatch:
+    inputs:
+      deadline:
+        description: "Crawl window in seconds (empty = auto-fit before the nightly, max 17100)"
+        default: ""
+        required: false
+
+permissions:
+  contents: write
+  issues: write # the failure beacon opens/bumps a labeled issue
+  actions: read # the guard lists in-progress runs of the budget consumers
+
+# own group (see refresh-data.yml: GitHub evicts the older PENDING run when
+# two queue in one group). Overlap with OTHER workflows is handled by the
+# guard job + the persisted budget window, not by a shared group.
+concurrency:
+  group: crawl-marathon
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      busy: ${{ steps.check.outputs.busy }}
+      deadline: ${{ steps.check.outputs.deadline }}
+    steps:
+      - name: Yield to other publishers and fit the window before the nightly
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          busy=0
+          # never run alongside another restore→publish cycle: concurrent
+          # Yahoo spending AND a stale-tarball clobber of their work
+          for wf in refresh-data.yml import-prices.yml crawl-marathon.yml; do
+            runs=$(gh api "repos/${{ github.repository }}/actions/workflows/$wf/runs?status=in_progress&per_page=10" \
+              --jq "[.workflow_runs[] | select(.id != ${{ github.run_id }})] | length")
+            if [ "$runs" -gt 0 ]; then
+              echo "$wf has $runs run(s) in progress — yielding this slot"
+              busy=1
+            fi
+          done
+
+          # fit the crawl window so crawl + ~1h compute/publish end before
+          # the 23:47 nightly, whatever the scheduling drift
+          deadline="${{ inputs.deadline }}"
+          if [ -z "$deadline" ]; then
+            now=$(date -u +%s)
+            cutoff=$(date -u -d '22:45' +%s)
+            window=$(( cutoff - now ))
+            [ "$window" -gt 17100 ] && window=17100
+            if [ "$window" -lt 1800 ]; then
+              echo "less than 30 min of crawl window before the nightly — yielding"
+              busy=1
+              window=0
+            fi
+            deadline=$window
+          fi
+          echo "crawl window: ${deadline}s"
+          echo "busy=$busy" >> "$GITHUB_OUTPUT"
+          echo "deadline=$deadline" >> "$GITHUB_OUTPUT"
+
+  crawl:
+    needs: guard
+    if: ${{ needs.guard.outputs.busy == '0' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      CRIBLE_DATA_DIR: data
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore last-good data from the data-latest release
+        run: |
+          curl -fsSL --retry 3 -o /tmp/crible-data.tar.gz \
+            "https://github.com/${{ github.repository }}/releases/download/data-latest/crible-data.tar.gz"
+          tar -xzf /tmp/crible-data.tar.gz
+
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - run: uv sync
+
+      - name: Marathon crawl (fundamentals only, priority order, budget-resumed)
+        # deadline = the guard-fitted crawl window; --max-minutes 320 guards
+        # the WHOLE run so prune+compute+publish always fit inside
+        # timeout-minutes. The budget window resumes from
+        # data/budget-state.json — a slot starting <1h after the previous
+        # consumer inherits its spending instead of doubling it.
+        run: |
+          uv run crible refresh \
+            --deadline "${{ needs.guard.outputs.deadline }}" \
+            --max-minutes 320 \
+            --esef-limit 0 --edgar-limit 0 \
+            --no-fetch-gleif --no-fetch-fx
+
+      - name: Export the static site artifacts (min-symbols gate)
+        run: uv run crible export-site --out site-data --min-symbols 50
+
+      - name: Publish the rolling data-latest release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/publish-data-release.sh
+
+      - name: Coverage summary
+        run: |
+          {
+            echo "### Marathon slot done — universe coverage"
+            echo '```json'
+            python3 -c "
+          import json
+          s = json.load(open('data/status.json'))
+          print(json.dumps({
+              'coverage_by_region': s.get('coverage_by_region'),
+              'coverage_pct': s.get('coverage_pct'),
+              'parked': s.get('parked'),
+              'requests_last_hour': s.get('requests_last_hour'),
+              'last_refresh': s.get('last_refresh'),
+          }, indent=2))
+          "
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/notify-workflow-failure.sh "crawl-marathon" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
