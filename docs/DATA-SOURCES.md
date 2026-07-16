@@ -85,9 +85,10 @@ backfills the deep history.
 - **Fully-free** — SEC EDGAR companyfacts + **FSDS**, ESEF, GLEIF, FinanceDatabase,
   ECB/Frankfurter FX. Public-domain or openly-licensed; republishable without
   permission ("free to access and reuse").
-- **Assumed-risk** — Yahoo prices, the Stooq/HuggingFace/defeatbeta dumps, and
-  now **Companies House** (no licence stated). Carried as a documented,
-  deliberate redistribution risk, isolated from the fully-free tier.
+- **Assumed-risk** — Yahoo prices, the Stooq/HuggingFace/defeatbeta dumps, the
+  **TradingView scanner snapshots**, and **Companies House** (no licence
+  stated). Carried as a documented, deliberate redistribution risk, isolated
+  from the fully-free tier.
 - **EDINET** is off by default and never part of the published dataset unless the
   operator opts in; when it is, its PDL1.0 attribution requirement applies.
 
@@ -141,6 +142,31 @@ has no bars (staleness stays visible via `price_asof`).
 The `import-prices` workflow (manual dispatch) forces a HuggingFace refresh +
 snapshot recompute + republish anytime; the nightly refresh pulls it weekly
 on its own.
+
+### TradingView scanner — whole-market snapshot, assumed-risk (2026-07-16)
+
+`POST scanner.tradingview.com/{country}/scan` — keyless, one request returns a
+country's ENTIRE stock list with close, currency and a **numeric market cap**
+(verified 2026-07-16: France 598 stocks, Germany 32,944 rows incl. worldwide
+cross-listings; ~40 country slugs probed live, ~100k listings total).
+`crible import-prices tradingview` runs it daily in the nightly:
+
+- **Terms, stated plainly: TradingView's ToS forbids scraping.** This is an
+  explicitly assumed, documented redistribution risk — the same tier as the
+  Yahoo crawl and the Stooq/defeatbeta dumps.
+- **Snapshot-only limitation**: no history. Never a series source, never a
+  momentum source — the column-aware distillate merge records momentum
+  provenance so a TradingView close can refresh a quote but never erase a
+  dump's `return_6m`. It does not feed the crawl deferral either: the
+  yfinance crawl stays the only bar source for EU/world charts.
+- **Role**: daily close freshness for listings no dump covers (continental
+  Europe, Asia, the long tail) + the **cap census**
+  (`data/caps/tradingview.parquet`, published) that ranks the top-10k global
+  companies — unmatched listings are kept with `symbol=NULL` so the census
+  can reveal what the universe lacks.
+- Degradable enrichment: per-country failures are counted and skipped
+  (heartbeat `imports.tradingview.countries_failed`), never fatal; last-good
+  = the data-latest restore cycle.
 
 ### defeatbeta — additional + fallback, never audited-tier (2026-07-16)
 

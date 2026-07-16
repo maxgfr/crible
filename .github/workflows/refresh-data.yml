@@ -76,6 +76,19 @@ jobs:
         continue-on-error: true # prices are an enrichment, never a gate
         run: uv run crible import-prices defeatbeta --max-age-days 6
 
+      # daily worldwide snapshot: fresh closes for listings no dump covers +
+      # the numeric cap census (data/caps/) the top-10k ranking consumes.
+      # Quote-only: the column-aware merge keeps dump momentum intact.
+      - name: Daily TradingView whole-market scan (quotes + cap census)
+        id: tradingview
+        continue-on-error: true # prices are an enrichment, never a gate
+        run: uv run crible import-prices tradingview
+      - name: Surface a swallowed TradingView failure
+        if: ${{ steps.tradingview.outcome == 'failure' }}
+        run: |
+          echo "### ⚠️ TradingView scan failed — check the step log" >> "$GITHUB_STEP_SUMMARY"
+          echo "The step is best-effort so the run stays green; the cap census keeps its last-good state." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Bounded keyless refresh (crawl → ESEF → EDGAR bulk + FSDS → FX → prices → prune → compute)
         # deadline trimmed to 2h: the EDGAR bulk sweep (~10k US issuers from
         # one public-domain archive) takes the reclaimed time; ESEF cadence

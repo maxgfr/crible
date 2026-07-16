@@ -92,6 +92,11 @@ def defer_covered_symbols(
     so the queue self-heals within a month if the dump ever dies.
     ``last_crawled_at IS NULL`` protects the bootstrap sample and everything
     the crawl already reached — their quarterly re-crawls continue.
+
+    TradingView coverage deliberately does NOT count: it supplies neither
+    statements nor bar history, and deferring on the strength of a snapshot
+    close would freeze a symbol's momentum at NaN and its chart at empty —
+    the yfinance crawl stays the only bar source for EU/world listings.
     """
     import pandas as pd
 
