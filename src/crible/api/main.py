@@ -112,6 +112,30 @@ def create_app() -> FastAPI:
             }
         return detail
 
+    @app.post("/api/fetch/{symbol}", status_code=202)
+    def fetch_symbol(symbol: str) -> dict:
+        """FR-012 — user-triggered fetch for an uncrawled company. The API
+        stays a READER (ADR-0003): it only drops a request file; the ingest
+        loop crawls it budget-charged and recomputes within a cycle.
+        Idempotent — re-posting refreshes the same request."""
+        from crible import config
+        from crible.ingest.requests import pending_requests, request_fetch
+
+        detail = runtime().company(symbol)
+        if detail is None:
+            raise HTTPException(status_code=404, detail=f"unknown symbol {symbol!r}")
+        queued = request_fetch(config.data_dir(), symbol)
+        if not queued:
+            raise HTTPException(
+                status_code=429, detail="fetch queue is full — try again in a few minutes"
+            )
+        return {
+            "queued": True,
+            "symbol": symbol,
+            "pending": len(pending_requests(config.data_dir())),
+            "note": "the ingest service picks it up within a cycle (~1-3 min)",
+        }
+
     @app.get("/api/prices/{symbol}")
     def prices(symbol: str) -> list[dict]:
         """Published daily OHLCV bars for the company drawer chart — [] when

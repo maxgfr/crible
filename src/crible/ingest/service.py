@@ -739,6 +739,27 @@ def run_loop(cycle_limit: int = 40, compute_every_seconds: float = 1800.0) -> No
     budget = TokenBucket(capacity=config.budget_per_hour(), window_seconds=3600)
     provider = YFinanceProvider()
     while True:
+        # on-demand fetches (the API drops request files — ADR-0003 keeps the
+        # API a reader): crawl them FIRST, budget-charged, and compute right
+        # away so the user's drawer fills within a couple of minutes
+        from crible.ingest.requests import clear_request, pending_requests
+
+        try:
+            requested = pending_requests(config.data_dir())
+        except Exception:  # noqa: BLE001 — a corrupt request never kills the loop
+            requested = []
+        if requested:
+            batch = requested[:20]
+            targeted = run_once(symbols=batch, budget=budget, provider=provider)
+            for symbol in batch:
+                clear_request(config.data_dir(), symbol)
+            log.info(
+                "on-demand fetch %s: +%d/-%d",
+                batch, len(targeted.fetched), len(targeted.failed),
+            )
+            run_compute()
+            last_compute = time.time()
+
         # first boot: crawl exactly the bootstrap sample, then publish
         # immediately — a first screen must return rows within hours (FR-008)
         limit = max(10, len(bootstrap_sample())) if first_cycle else cycle_limit

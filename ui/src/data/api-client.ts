@@ -6,6 +6,7 @@ import {
   type CompanyDetail,
   type CsvExport,
   type DataClient,
+  type FetchQueued,
   type SiteManifest,
   type DslErrorDetail,
   type FieldInfo,
@@ -84,6 +85,12 @@ export async function prices(symbol: string): Promise<PriceBar[]> {
   return Array.isArray(body) ? (body as PriceBar[]) : [];
 }
 
+export async function requestFetch(symbol: string): Promise<FetchQueued> {
+  const response = await fetch(`/api/fetch/${encodeURIComponent(symbol)}`, { method: "POST" });
+  if (!response.ok) throw new Error(`fetch request refused (${response.status})`);
+  return (await response.json()) as FetchQueued;
+}
+
 export const apiClient: DataClient = {
   screen,
   presets,
@@ -93,6 +100,7 @@ export const apiClient: DataClient = {
   search,
   fields,
   prices,
+  requestFetch,
   async exportCsv(query, sort, columns): Promise<CsvExport> {
     return { url: exportCsvUrl(query, sort, columns) };
   },

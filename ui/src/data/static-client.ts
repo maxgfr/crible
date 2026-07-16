@@ -228,5 +228,11 @@ export function createStaticClient(options: StaticClientOptions = {}): DataClien
       );
       return rows.map(normalizeRow) as unknown as SearchHit[];
     },
+
+    async requestFetch(): Promise<never> {
+      // the hosted demo has no ingest service behind it — the drawer hides
+      // the button in static mode, this is only the honest contract
+      throw new Error("on-demand fetch needs a self-hosted ingest service");
+    },
   };
 }

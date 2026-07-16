@@ -7,11 +7,14 @@ import { fireEvent, render, screen as rtl, waitFor } from "@testing-library/reac
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CompanyDrawer } from "../components/CompanyDrawer";
 
+const requestFetchMock = vi.fn(async (_symbol: string) => ({ queued: true }));
 vi.mock("../data", () => ({
   company: async () => ({
     profile: { name: "Acme", country: "FR", sector: "Tech" },
     periods: [],
   }),
+  requestFetch: (symbol: string) => requestFetchMock(symbol),
+  STATIC_MODE: false,
 }));
 vi.mock("../components/PriceChart", () => ({ PriceChart: () => null }));
 
@@ -25,6 +28,19 @@ describe("drawer synthesis placement", () => {
     await waitFor(() => expect(rtl.getByText("Acme")).toBeInTheDocument());
     // the mocked company has periods: [] — metadata only, no synthesis
     expect(rtl.queryByLabelText("Synthesis")).not.toBeInTheDocument();
+    unmount();
+  });
+});
+
+describe("on-demand fetch (FR-012)", () => {
+  it("an uncrawled company offers 'Fetch now' and shows the queued state", async () => {
+    const { unmount } = render(<CompanyDrawer symbol="ACME" onClose={() => {}} />);
+    await waitFor(() => expect(rtl.getByText("Acme")).toBeInTheDocument());
+    const button = rtl.getByRole("button", { name: /fetch this company now/i });
+    fireEvent.click(button);
+    await waitFor(() => expect(rtl.getByRole("status")).toHaveTextContent(/queued/i));
+    expect(requestFetchMock).toHaveBeenCalledWith("ACME");
+    expect(rtl.queryByRole("button", { name: /fetch this company now/i })).not.toBeInTheDocument();
     unmount();
   });
 });

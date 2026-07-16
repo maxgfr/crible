@@ -81,6 +81,10 @@ export async function manifest(): Promise<SiteManifest | null> {
   return (await getClient()).manifest();
 }
 
+export async function requestFetch(symbol: string) {
+  return (await getClient()).requestFetch(symbol);
+}
+
 export { DslApiError } from "./types";
 export type {
   CompanyDetail,

@@ -198,6 +198,39 @@ table.results tr:hover td {
   cursor: pointer;
 }
 
+/* compact identity columns — the numbers are what the grid is for: the
+   symbol link drops a size (never truncated, it IS the identifier) and the
+   company name clamps with an ellipsis (full name on hover) */
+table.results .symlink {
+  font-size: var(--scale-small);
+}
+table.results .cell-name {
+  display: inline-block;
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  font-size: var(--scale-small);
+  color: var(--color-muted);
+}
+
+/* FR-012 — the on-demand fetch button in an uncrawled company's drawer */
+button.fetch-now {
+  font: inherit;
+  font-size: var(--scale-small);
+  padding: var(--space-1) var(--space-2);
+  margin: var(--space-1) 0;
+  color: var(--color-bg);
+  background: var(--color-primary);
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+}
+button.fetch-now:hover {
+  filter: brightness(1.1);
+}
+
 .num-good { color: var(--color-gain); }
 .num-bad { color: var(--color-loss); }
 .num-warn { color: var(--color-warn); }

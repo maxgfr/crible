@@ -141,4 +141,14 @@ export interface DataClient {
   prices(symbol: string): Promise<PriceBar[]>;
   /** static mode only — null while the nightly refresh has not published yet */
   manifest(): Promise<SiteManifest | null>;
+  /** api mode only — queue an on-demand fetch for an uncrawled company;
+   *  the static demo has no ingest service and rejects */
+  requestFetch(symbol: string): Promise<FetchQueued>;
+}
+
+export interface FetchQueued {
+  queued: boolean;
+  symbol?: string;
+  pending?: number;
+  note?: string;
 }
