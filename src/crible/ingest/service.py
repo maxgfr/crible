@@ -125,6 +125,85 @@ def defer_covered_symbols(
     return int(changed[0]) if changed else 0
 
 
+def _top10k_stats(con: duckdb.DuckDBPyConnection, data_dir) -> dict:
+    """``coverage_top10k`` — group-level coverage of the top-10k slice (a
+    COMPANY counts as covered when any of its listings is served). Source-
+    agnostic by construction: fundamentals via statement_served_symbols
+    (yfinance, defeatbeta, EDGAR/ESEF/… alike), prices via the distillate +
+    crawled bars. Empty dict while the slice doesn't exist yet."""
+    from datetime import date, timedelta
+    from pathlib import Path
+
+    import pandas as pd
+
+    from crible.ingest.defeatbeta import statement_served_symbols
+
+    tables = {
+        r[0] for r in con.execute("SELECT table_name FROM information_schema.tables").fetchall()
+    }
+    if "companies" not in tables:
+        return {}
+    columns = {r[0] for r in con.execute("DESCRIBE companies").fetchall()}
+    if "top10k" not in columns:
+        return {}
+    members = con.execute(
+        "SELECT symbol, company_group, cap_rank_global, cap_asof, cap_source"
+        " FROM companies WHERE coalesce(top10k, FALSE)"
+    ).fetchdf()
+    if members.empty:
+        return {}
+
+    groups = members.groupby("company_group")["symbol"].apply(set)
+
+    def covered_groups(symbols: set[str]) -> int:
+        return int(sum(1 for listed in groups if listed & symbols))
+
+    fundamentals = statement_served_symbols(data_dir)
+    audited = statement_served_symbols(data_dir, exclude=("yfinance", "defeatbeta"))
+
+    raw_priced: set[str] = set()
+    for symbol_dir in (Path(data_dir) / "raw").glob("provider=*/symbol=*"):
+        if any(f.name.startswith("prices-") for f in symbol_dir.iterdir()):
+            raw_priced.add(symbol_dir.name.split("=", 1)[1])
+    dumped: set[str] = set()
+    fresh: set[str] = set()
+    latest = Path(data_dir) / "prices-latest.parquet"
+    if latest.exists():
+        quotes = pd.read_parquet(latest, columns=["symbol", "price_asof"])
+        dumped = set(quotes["symbol"])
+        cutoff = (date.today() - timedelta(days=7)).isoformat()
+        fresh = set(quotes.loc[quotes["price_asof"].astype(str) >= cutoff, "symbol"])
+
+    crawled = 0
+    if "crawl_tasks" in tables:
+        crawled = con.execute(
+            "SELECT count(*) FROM crawl_tasks t JOIN companies c USING (symbol)"
+            " WHERE coalesce(c.top10k, FALSE) AND t.last_crawled_at IS NOT NULL"
+        ).fetchone()[0]
+
+    total = int(len(groups))
+    stale_cutoff = (date.today() - timedelta(days=30)).isoformat()
+    group_asof = members.groupby("company_group")["cap_asof"].max()
+    census_asof = members.loc[members["cap_source"] == "tradingview", "cap_asof"].max()
+    block = {
+        "total_groups": total,
+        "listings": int(len(members)),
+        "fundamentals_covered": covered_groups(fundamentals),
+        "audited_covered": covered_groups(audited),
+        "priced": covered_groups(raw_priced | dumped),
+        "price_fresh_7d": covered_groups(fresh),
+        "crawled_listings": int(crawled),
+        "unranked_mega_large": int(
+            members.loc[members["cap_rank_global"].isna(), "company_group"].nunique()
+        ),
+        "cap_stale_30d": int((group_asof.astype(str) < stale_cutoff).sum()),
+        "census_asof": str(census_asof) if pd.notna(census_asof) else None,
+    }
+    for key in ("fundamentals_covered", "priced", "price_fresh_7d"):
+        block[f"{key}_pct"] = round(100.0 * block[key] / total, 2) if total else 0.0
+    return {"coverage_top10k": block}
+
+
 def _queue_stats(con: duckdb.DuckDBPyConnection) -> dict:
     """FR-005 AC-3 — coverage %, freshness histogram, per-region backlog."""
     stats: dict = {}
@@ -516,6 +595,7 @@ def run_refresh(
         result["failed"] = failed
         save_bucket(crawler.budget, budget_state)  # crash-safe: enrichment may die
         stats = _queue_stats(con)
+        stats.update(_top10k_stats(con, data))
     finally:
         con.close()
 

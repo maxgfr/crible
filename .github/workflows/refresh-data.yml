@@ -122,6 +122,20 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # ALERT-ONLY, runs AFTER the publish so it never blocks a release:
+      # bump the top10k-coverage issue when the slice drops below the
+      # thresholds. Ratchet plan: raise ~10 pts/month toward 90/95 as the
+      # audited providers and the census pipeline fill the slice.
+      - name: Top-10k coverage beacon (never blocks the publish)
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          uv run crible check-coverage --min-fundamentals 40 --min-priced 70 || \
+            bash scripts/notify-workflow-failure.sh "refresh-data" \
+              "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+              top10k-coverage "Top-10k coverage below threshold"
+
       # a red nightly must never be silent: raise/bump the labeled issue
       - name: Notify on failure
         if: failure()

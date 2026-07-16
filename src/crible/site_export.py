@@ -67,6 +67,29 @@ def export_site(data_dir: Path | str, out_dir: Path | str, min_symbols: int = 50
                     f" FROM read_parquet('{snapshot.as_posix()}') GROUP BY 1 ORDER BY 1"
                 ).fetchall()
             )
+        # the top-10k banner numbers (guarded: an old universe.parquet or a
+        # minimal fixture simply omits the block)
+        top10k: dict[str, int] = {}
+        universe_columns = {
+            r[0]
+            for r in con.execute(
+                f"DESCRIBE SELECT * FROM read_parquet('{universe.as_posix()}')"
+            ).fetchall()
+        }
+        if "top10k" in universe_columns:
+            members = con.execute(
+                f"SELECT count(DISTINCT company_group) FROM read_parquet('{universe.as_posix()}')"
+                f" WHERE coalesce(top10k, FALSE)"
+            ).fetchone()[0]
+            if members:
+                in_snapshot = 0
+                if "top10k" in columns:
+                    in_snapshot = con.execute(
+                        f"SELECT count(DISTINCT coalesce(company_group, symbol))"
+                        f" FROM read_parquet('{snapshot.as_posix()}')"
+                        f" WHERE coalesce(top10k, FALSE)"
+                    ).fetchone()[0]
+                top10k = {"members": int(members), "in_snapshot": int(in_snapshot)}
     finally:
         con.close()
     if snapshot_symbols < min_symbols:
@@ -96,6 +119,7 @@ def export_site(data_dir: Path | str, out_dir: Path | str, min_symbols: int = 50
         "snapshot_rows": snapshot_rows,
         "snapshot_symbols": snapshot_symbols,
         "snapshot_by_region": snapshot_by_region,
+        "top10k": top10k,
         "prices": prices,
         "sample": bootstrap_sample(),
         "commit": os.environ.get("GITHUB_SHA"),

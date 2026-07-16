@@ -321,6 +321,70 @@ def test_apply_cap_census_is_a_noop_before_any_census(tmp_path) -> None:
     assert con.execute("SELECT crawl_priority FROM companies").fetchone() == before
 
 
+def test_top10k_stats_counts_groups_not_listings(tmp_path) -> None:
+    """Coverage is per COMPANY: one served listing covers its whole group."""
+    from datetime import date
+
+    from crible.ingest.raw import write_raw_statement
+    from crible.ingest.service import _top10k_stats
+
+    con = duckdb.connect()
+    con.execute(SCHEMA)
+    rows = [
+        # group G1: two listings, only A.PA has audited raw
+        ("A.PA", "G1", 1, True, True), ("A.F", "G1", 1, False, True),
+        # group G2: priced via the distillate, floor member (no rank)
+        ("B.DE", "G2", None, True, True),
+        # non-member: never counted
+        ("C.MI", "G3", 500, True, False),
+    ]
+    for symbol, group, rank, primary, member in rows:
+        con.execute(
+            "INSERT INTO companies (symbol, region, crawl_priority, company_group,"
+            " cap_rank_global, primary_listing, top10k, cap_asof, cap_source)"
+            " VALUES (?, 'europe', 1, ?, ?, ?, ?, ?, 'tradingview')",
+            [symbol, group, rank, primary, member, date.today().isoformat()],
+        )
+    write_raw_statement(
+        tmp_path, symbol="A.PA", provider="edgar", statement_type="income",
+        freq="annual", frame=pd.DataFrame({"period": ["2025"], "TotalRevenue": [1.0]}),
+        fetched_at=1.0,
+    )
+    pd.DataFrame(
+        [{"symbol": "B.DE", "close": 5.0, "price_asof": date.today().isoformat(),
+          "source": "tradingview", "imported_at": 1.0}]
+    ).to_parquet(tmp_path / "prices-latest.parquet", index=False)
+
+    block = _top10k_stats(con, tmp_path)["coverage_top10k"]
+    assert block["total_groups"] == 2 and block["listings"] == 3
+    assert block["fundamentals_covered"] == 1 and block["audited_covered"] == 1
+    assert block["priced"] == 1 and block["price_fresh_7d"] == 1
+    assert block["unranked_mega_large"] == 1  # G2 has no rank → floor report
+    assert block["fundamentals_covered_pct"] == 50.0 and block["priced_pct"] == 50.0
+
+
+def test_check_coverage_gates_on_the_block(tmp_path, monkeypatch) -> None:
+    import json
+
+    from typer.testing import CliRunner
+
+    from crible.cli import app
+
+    runner = CliRunner()
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+
+    # exit 2: no block at all (alarming once the pipeline is wired)
+    assert runner.invoke(app, ["check-coverage"]).exit_code == 2
+
+    block = {"total_groups": 2, "fundamentals_covered_pct": 50.0, "priced_pct": 50.0}
+    (tmp_path / "status.json").write_text(json.dumps({"coverage_top10k": block}))
+    ok = runner.invoke(app, ["check-coverage", "--min-fundamentals", "40", "--min-priced", "40"])
+    assert ok.exit_code == 0, ok.output
+    below = runner.invoke(app, ["check-coverage", "--min-fundamentals", "60", "--min-priced", "40"])
+    assert below.exit_code == 1
+    assert "below threshold" in below.output
+
+
 def test_no_ranking_means_no_floor_and_no_members() -> None:
     from crible.universe_caps import assign_top10k, build_cap_table, pick_primary
 

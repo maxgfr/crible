@@ -277,6 +277,47 @@ def import_fundamentals(
     )
 
 
+@app.command("check-coverage")
+def check_coverage(
+    min_fundamentals: float = typer.Option(
+        40.0, "--min-fundamentals", help="Minimum % of top-10k companies with fundamentals"
+    ),
+    min_priced: float = typer.Option(
+        70.0, "--min-priced", help="Minimum % of top-10k companies with a price"
+    ),
+) -> None:
+    """Gate on the top-10k coverage block (status.json): exit 1 below a
+    threshold, exit 2 when the block is missing entirely — both alarming
+    once the census pipeline is live. Never blocks a publish: the CI beacon
+    runs AFTER the release assets ship."""
+    from crible import config
+
+    path = config.data_dir() / "status.json"
+    block = None
+    if path.exists():
+        try:
+            block = json.loads(path.read_text()).get("coverage_top10k")
+        except json.JSONDecodeError:
+            block = None
+    if not block:
+        typer.secho("no coverage_top10k block in status.json", err=True, fg=typer.colors.RED)
+        raise typer.Exit(code=2)
+    typer.echo(json.dumps(block, indent=2))
+    failures = []
+    if block.get("fundamentals_covered_pct", 0.0) < min_fundamentals:
+        failures.append(
+            f"fundamentals {block.get('fundamentals_covered_pct')}% < {min_fundamentals:g}%"
+        )
+    if block.get("priced_pct", 0.0) < min_priced:
+        failures.append(f"priced {block.get('priced_pct')}% < {min_priced:g}%")
+    if failures:
+        for failure in failures:
+            typer.secho(f"top-10k coverage below threshold: {failure}", err=True,
+                        fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    typer.echo("top-10k coverage above thresholds")
+
+
 def _heartbeat_section(key: str) -> dict:
     """Current value of one status.json key (update_heartbeat merges shallow)."""
     from crible import config
