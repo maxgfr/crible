@@ -5,9 +5,12 @@
 # does not fetch.
 #
 # Weekly schedule: one useful Stooq market per week, ROTATED by ISO week across
-# the markets where the universe has real coverage (us/de/uk/fr/jp/it) — NOT
-# Hong Kong (its ~17k warrants/CBBCs are not in the universe: a manual HK run
-# matched 1,287 of 17k, the rest genuinely absent, not a mapping defect).
+# the bulk dumps Stooq ACTUALLY PUBLISHES (probed 2026-07-16: d_us/uk/jp/pl/hu/
+# hk_txt serve a zip; d_fr/de/it/mx_txt answer "Data missing" — France, Germany
+# and Italy have NO bulk dump, their prices must come from the yfinance crawl).
+# Hong Kong stays out of the rotation (its ~17k warrants/CBBCs are not in the
+# universe: a manual HK run matched 1,287 of 17k, the rest genuinely absent,
+# not a mapping defect).
 # This is the ONLY Stooq path — the `crible stooq-download` command (below,
 # with --import) does the captcha-clearing + import in one step.
 #
@@ -77,7 +80,9 @@ jobs:
         id: stooq
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            markets=(d_us_txt d_de_txt d_uk_txt d_fr_txt d_jp_txt d_it_txt)
+            # only bulk dumps Stooq actually serves (probed 2026-07-16) —
+            # d_fr/de/it_txt do NOT exist and would waste their rotation slot
+            markets=(d_us_txt d_uk_txt d_jp_txt d_pl_txt d_hu_txt)
             week=$(date -u +%V)
             echo "dataset=${markets[$((10#$week % ${#markets[@]}))]}" >> "$GITHUB_OUTPUT"
           else
@@ -85,11 +90,22 @@ jobs:
           fi
 
       - name: Fetch the Stooq worldwide dump (proof-of-work + OCR captcha)
+        id: stooq_fetch
         if: ${{ steps.stooq.outputs.dataset != '' }}
         continue-on-error: true # prices are an enrichment, never a gate
         run: |
           uv run crible stooq-download "${{ steps.stooq.outputs.dataset }}" \
             --out "${RUNNER_TEMP}/stooq.zip" --import
+
+      # continue-on-error swallows the step's failure — surface it in the run
+      # summary so a dead dataset (Stooq's "Data missing") is never silent
+      # again (d_fr_txt failed invisibly for weeks before 2026-07-16)
+      - name: Surface a swallowed Stooq failure
+        if: ${{ steps.stooq_fetch.outcome == 'failure' }}
+        run: |
+          echo "### ⚠️ Stooq fetch failed for \`${{ steps.stooq.outputs.dataset }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "The step is best-effort so the run stays green — check the step log:" >> "$GITHUB_STEP_SUMMARY"
+          echo "Stooq answers \`Data missing\` for datasets it does not publish (fr/de/it/mx)." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Recompute the snapshot with the fresh quotes
         run: uv run crible compute
