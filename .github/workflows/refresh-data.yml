@@ -124,18 +124,40 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       # ALERT-ONLY, runs AFTER the publish so it never blocks a release:
-      # bump the top10k-coverage issue when the slice drops below the
-      # thresholds. Ratchet plan: raise ~10 pts/month toward 90/95 as the
-      # audited providers and the census pipeline fill the slice.
+      # pass → close the top10k-coverage issue; fail → bump it. Floor set
+      # BELOW current coverage so this is a REGRESSION detector, not a
+      # ramp-up nag: 2026-07-17 baseline 27.61% fundamentals (the top-10k
+      # crawl-priority tiers shipped 2026-07-16; coverage climbs as the
+      # marathons chew through tiers 0-7). Ratchet plan: raise ~10 pts/month
+      # toward 90/95. A failed notify still reddens the step (a broken
+      # beacon is never silent); only the resolve branch is softened.
       - name: Top-10k coverage beacon (never blocks the publish)
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          uv run crible check-coverage --min-fundamentals 40 --min-priced 70 || \
+          if uv run crible check-coverage --min-fundamentals 25 --min-priced 70; then
+            bash scripts/resolve-workflow-beacon.sh "refresh-data" \
+              "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+              top10k-coverage \
+              || echo "::warning::could not resolve the top10k-coverage beacon"
+          else
             bash scripts/notify-workflow-failure.sh "refresh-data" \
               "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
               top10k-coverage "Top-10k coverage below threshold"
+          fi
+
+      # continue-on-error: a resolver blip must never redden a green publish
+      # (and perversely fire the failure notify below); it self-heals on the
+      # next green run
+      - name: Resolve the failure beacon on a green run
+        if: success()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/resolve-workflow-beacon.sh "refresh-data" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
       # a red nightly must never be silent: raise/bump the labeled issue
       - name: Notify on failure

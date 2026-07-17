@@ -158,6 +158,18 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # continue-on-error: a resolver blip must never redden a green publish
+      # (and perversely fire the failure notify below); it self-heals on the
+      # next green run
+      - name: Resolve the failure beacon on a green run
+        if: success()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/resolve-workflow-beacon.sh "crawl-marathon" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
       - name: Notify on failure
         if: failure()
         env:
