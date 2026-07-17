@@ -23,24 +23,85 @@ ENTITIES_API = "https://filings.xbrl.org/api/entities"
 # a full-year duration, with slack for 52/53-week fiscal calendars (as EDGAR)
 FULL_YEAR_DAYS = (320, 400)
 
-# IFRS concept (ifrs-full unless prefixed) → (canonical field, statement type)
+# IFRS concept (ifrs-full unless prefixed) → (canonical field, statement type).
+# Ordered narrow/classic before broad variants (CONCEPT_RANK below). Fill
+# rates vary by filer far more than us-gaap (ESEF anchors face lines to
+# entity extensions) — availability grounded on a 30-filing live scan
+# (2026-07-17). Documented omissions: GrossPPE (dimensional-only in IFRS —
+# the carrying-amount axis is dropped with every dimensional fact),
+# FinanceCosts (broader than interest: FX, discount unwinding — would
+# overstate the EBIT derivation), ShorttermBorrowings (misses the current
+# portion of long-term debt), NumberOfSharesOutstanding (0/30 undimensioned
+# live), DepreciationPropertyPlantAndEquipment (depreciation only — would
+# understate D&A). Facts without dimensions may be parent-company figures
+# when a filer submits separate-only statements — pre-existing exposure.
 CONCEPT_MAP: dict[str, tuple[str, str]] = {
+    # income statement (duration facts)
     "ifrs-full:Revenue": ("TotalRevenue", "income"),
     "ifrs-full:RevenueFromContractsWithCustomers": ("TotalRevenue", "income"),
     "ifrs-full:GrossProfit": ("GrossProfit", "income"),
+    "ifrs-full:CostOfSales": ("CostOfRevenue", "income"),
     "ifrs-full:ProfitLossFromOperatingActivities": ("OperatingIncome", "income"),
     "ifrs-full:ProfitLoss": ("NetIncome", "income"),
     "ifrs-full:ProfitLossAttributableToOwnersOfParent": ("NetIncome", "income"),
+    # pretax + tax + interest → EBIT derivation (canonical.py) → Altman x3,
+    # Greenblatt, interest coverage — when the filer tags interest at all
+    "ifrs-full:ProfitLossBeforeTax": ("PretaxIncome", "income"),
+    "ifrs-full:IncomeTaxExpenseContinuingOperations": ("TaxProvision", "income"),
+    "ifrs-full:InterestExpense": ("InterestExpense", "income"),
+    # SG&A → Beneish SGAI; function-of-expense filers tagging
+    # DistributionCosts + AdministrativeExpense separately keep honest NaN
+    # (no fabricated sums)
+    "ifrs-full:SellingGeneralAndAdministrativeExpense":
+        ("SellingGeneralAndAdministration", "income"),
+    "ifrs-full:WeightedAverageShares": ("BasicAverageShares", "income"),
+    # balance sheet (instant facts)
     "ifrs-full:Assets": ("TotalAssets", "balance"),
     "ifrs-full:CurrentAssets": ("CurrentAssets", "balance"),
     "ifrs-full:CurrentLiabilities": ("CurrentLiabilities", "balance"),
+    "ifrs-full:Liabilities": ("TotalLiabilitiesNetMinorityInterest", "balance"),
     "ifrs-full:Equity": ("StockholdersEquity", "balance"),
     "ifrs-full:EquityAttributableToOwnersOfParent": ("StockholdersEquity", "balance"),
     "ifrs-full:RetainedEarnings": ("RetainedEarnings", "balance"),
     "ifrs-full:Inventories": ("Inventory", "balance"),
     "ifrs-full:TradeAndOtherCurrentReceivables": ("AccountsReceivable", "balance"),
+    "ifrs-full:TradeAndOtherCurrentPayablesToTradeSuppliers": ("AccountsPayable", "balance"),
+    # broad fallback includes accruals — documented approximation, symmetric
+    # with the broad receivables mapping above
+    "ifrs-full:TradeAndOtherCurrentPayables": ("AccountsPayable", "balance"),
     "ifrs-full:CashAndCashEquivalents": ("CashAndCashEquivalents", "balance"),
+    # IAS 16 carrying amount is net by definition; the IFRS 16 combined
+    # presentation (ROU assets included) is the ESEF mirror of edgar's
+    # ASC 842 fallback pair — narrow tag wins when both are filed
+    "ifrs-full:PropertyPlantAndEquipment": ("NetPPE", "balance"),
+    "ifrs-full:PropertyPlantAndEquipmentIncludingRightofuseAssets": ("NetPPE", "balance"),
+    "ifrs-full:Goodwill": ("Goodwill", "balance"),
+    # borrowings, not NoncurrentLiabilities (provisions, deferred tax and
+    # pensions would corrupt Beneish LVGI and any debt ratio)
+    "ifrs-full:LongtermBorrowings": ("LongTermDebt", "balance"),
+    "ifrs-full:CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings":
+        ("CurrentDebt", "balance"),
+    # cash flow (duration facts)
     "ifrs-full:CashFlowsFromUsedInOperatingActivities": ("OperatingCashFlow", "cashflow"),
+    "ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities":
+        ("CapitalExpenditure", "cashflow"),
+    "ifrs-full:PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwillInvestmentPropertyAndOtherNoncurrentAssets":
+        ("CapitalExpenditure", "cashflow"),
+    "ifrs-full:DividendsPaidClassifiedAsFinancingActivities": ("CashDividendsPaid", "cashflow"),
+    # D&A: cash-flow reconciliation line first (the edgar DD&A-first pattern)
+    "ifrs-full:AdjustmentsForDepreciationAndAmortisationExpense":
+        ("DepreciationAndAmortization", "cashflow"),
+    "ifrs-full:DepreciationAndAmortisationExpense": ("DepreciationAndAmortization", "cashflow"),
+    "ifrs-full:ProceedsFromIssuingShares": ("CommonStockIssuance", "cashflow"),
+}
+
+# xbrl-json outflow concepts carry positive magnitudes (the calculation
+# linkbase subtracts them — verified live: 14/14 capex and 12/12 dividends
+# facts positive on the 2026-07-17 scan); canonical convention is negative
+NEGATED_CONCEPTS = {
+    "ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
+    "ifrs-full:PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwillInvestmentPropertyAndOtherNoncurrentAssets",
+    "ifrs-full:DividendsPaidClassifiedAsFinancingActivities",
 }
 
 # canonical (yfinance-vocabulary) column → statement type, for frame assembly
@@ -79,6 +140,12 @@ def facts_to_frames(xbrl_json: dict[str, Any]) -> dict[tuple[str, str], pd.DataF
             value = float(fact.get("value"))
         except (TypeError, ValueError):
             continue
+        if concept in NEGATED_CONCEPTS:
+            if value < 0:
+                # diagnostic only — ESEF sign errors are a known data-quality
+                # issue; the unconditional negation (edgar precedent) stands
+                log.warning("esef: negated concept %s already negative (%s)", concept, value)
+            value = -value
         column, _ = mapped
         rank = CONCEPT_RANK[concept]
         key = (year, column)

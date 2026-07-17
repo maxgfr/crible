@@ -496,3 +496,113 @@ def test_fr010_index_sweep_outage_records_and_resumes(tmp_path, monkeypatch) -> 
     outcome = run_esef_sweep(limit=10, client=DownIndex(), mapping={"NL0011540547": LEI_ABN})
     assert outcome["outage"] is not None
     assert list(tmp_path.glob("raw/provider=esef/**/*.parquet")) == []
+
+
+# ------------------------------------------------- widened IFRS map (FR-010)
+
+def _wide_fact(concept: str, value: float, *, year: int = 2024, instant: bool = False) -> dict:
+    period = (
+        f"{year + 1}-01-01T00:00:00"
+        if instant
+        else f"{year}-01-01T00:00:00/{year + 1}-01-01T00:00:00"
+    )
+    return {
+        "value": str(value),
+        "dimensions": {
+            "concept": concept,
+            "entity": "scheme:969500A1G9QKR8Q79815",
+            "period": period,
+        },
+    }
+
+
+def _wide_json(facts: list[dict]) -> dict:
+    return {"facts": {f"f{i}": fact for i, fact in enumerate(facts)}}
+
+
+def test_fr010_widened_ifrs_tags_fill_beneish_and_altman_inputs() -> None:
+    frames = facts_to_frames(_wide_json([
+        _wide_fact("ifrs-full:CostOfSales", 6e8),
+        _wide_fact("ifrs-full:ProfitLossBeforeTax", 1.2e8),
+        _wide_fact("ifrs-full:IncomeTaxExpenseContinuingOperations", 3e7),
+        _wide_fact("ifrs-full:InterestExpense", 1e7),
+        _wide_fact("ifrs-full:SellingGeneralAndAdministrativeExpense", 2e8),
+        _wide_fact("ifrs-full:WeightedAverageShares", 1e9),
+        _wide_fact("ifrs-full:Liabilities", 5e9, instant=True),
+        _wide_fact("ifrs-full:PropertyPlantAndEquipment", 2e9, instant=True),
+        _wide_fact("ifrs-full:Goodwill", 1e9, instant=True),
+        _wide_fact("ifrs-full:TradeAndOtherCurrentPayablesToTradeSuppliers", 4e8, instant=True),
+        _wide_fact("ifrs-full:LongtermBorrowings", 1.5e9, instant=True),
+        _wide_fact("ifrs-full:AdjustmentsForDepreciationAndAmortisationExpense", 2.5e8),
+        _wide_fact("ifrs-full:ProceedsFromIssuingShares", 5e7),
+    ]))
+    income = frames[("income", "annual")].set_index("period").loc["2024"]
+    assert income["CostOfRevenue"] == 6e8
+    assert income["PretaxIncome"] == 1.2e8
+    assert income["TaxProvision"] == 3e7
+    assert income["InterestExpense"] == 1e7
+    assert income["SellingGeneralAndAdministration"] == 2e8
+    assert income["BasicAverageShares"] == 1e9
+    balance = frames[("balance", "annual")].set_index("period").loc["2024"]
+    assert balance["TotalLiabilitiesNetMinorityInterest"] == 5e9
+    assert balance["NetPPE"] == 2e9
+    assert balance["Goodwill"] == 1e9
+    assert balance["AccountsPayable"] == 4e8
+    assert balance["LongTermDebt"] == 1.5e9
+    cashflow = frames[("cashflow", "annual")].set_index("period").loc["2024"]
+    assert cashflow["DepreciationAndAmortization"] == 2.5e8
+    assert cashflow["CommonStockIssuance"] == 5e7
+
+
+def test_fr010_capex_and_dividends_negate_to_the_yfinance_convention() -> None:
+    frames = facts_to_frames(_wide_json([
+        _wide_fact(
+            "ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities", 9_447.0
+        ),
+        _wide_fact("ifrs-full:DividendsPaidClassifiedAsFinancingActivities", 1_000.0),
+        _wide_fact("ifrs-full:ProceedsFromIssuingShares", 500.0),
+    ]))
+    cashflow = frames[("cashflow", "annual")].set_index("period").loc["2024"]
+    assert cashflow["CapitalExpenditure"] == -9_447.0
+    assert cashflow["CashDividendsPaid"] == -1_000.0
+    assert cashflow["CommonStockIssuance"] == 500.0
+
+
+def test_fr010_narrow_tag_outranks_broad_variant() -> None:
+    both = facts_to_frames(_wide_json([
+        _wide_fact("ifrs-full:PropertyPlantAndEquipment", 2e9, instant=True),
+        _wide_fact("ifrs-full:PropertyPlantAndEquipmentIncludingRightofuseAssets", 2.4e9, instant=True),
+        _wide_fact("ifrs-full:TradeAndOtherCurrentPayablesToTradeSuppliers", 4e8, instant=True),
+        _wide_fact("ifrs-full:TradeAndOtherCurrentPayables", 6e8, instant=True),
+    ]))
+    balance = both[("balance", "annual")].set_index("period").loc["2024"]
+    assert balance["NetPPE"] == 2e9
+    assert balance["AccountsPayable"] == 4e8
+
+    combined_only = facts_to_frames(_wide_json([
+        _wide_fact("ifrs-full:PropertyPlantAndEquipmentIncludingRightofuseAssets", 2.4e9, instant=True),
+    ]))
+    assert combined_only[("balance", "annual")].set_index("period").loc["2024", "NetPPE"] == 2.4e9
+
+
+def test_fr010_widened_esef_reaches_scores_end_to_end() -> None:
+    facts = []
+    for year, scale in ((2023, 1.0), (2024, 1.1)):
+        facts += [
+            _wide_fact("ifrs-full:Revenue", 1e9 * scale, year=year),
+            _wide_fact("ifrs-full:ProfitLoss", 1e8 * scale, year=year),
+            _wide_fact("ifrs-full:ProfitLossBeforeTax", 1.3e8 * scale, year=year),
+            _wide_fact("ifrs-full:Assets", 2e9 * scale, year=year, instant=True),
+            _wide_fact("ifrs-full:Liabilities", 1.2e9 * scale, year=year, instant=True),
+            _wide_fact("ifrs-full:CashFlowsFromUsedInOperatingActivities", 2e8 * scale, year=year),
+            _wide_fact(
+                "ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
+                5e7 * scale, year=year,
+            ),
+        ]
+    frames = facts_to_frames(_wide_json(facts))
+    snapshot = build_symbol_snapshot("EU.PA", frames, computed_at=1.0)
+    latest = snapshot.iloc[-1]
+    assert latest["free_cash_flow"] == 2e8 * 1.1 - 5e7 * 1.1
+    assert latest["total_liabilities"] == 1.2e9 * 1.1
+    assert latest["income_before_tax"] == 1.3e8 * 1.1
