@@ -845,3 +845,19 @@ def test_fr003_total_debt_derives_from_the_sided_audited_tags() -> None:
         )
     })
     assert provider_wins.loc["2024", "total_debt"] == 2e9
+
+
+def test_fr003_symbol_snapshot_builds_without_fragmenting() -> None:
+    """The assembly must not insert columns one by one onto a many-block
+    frame — the CI logs were pure PerformanceWarning spam at 57k rows."""
+    import warnings
+
+    frames = {(s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()}
+    frames[("prices", "daily")] = pd.DataFrame(
+        {"date": ["2026-07-15", "2026-07-16"], "close": [40.0, 41.0]}
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", pd.errors.PerformanceWarning)
+        snapshot = build_symbol_snapshot("P.PA", frames, computed_at=1.0,
+                                         price_quote=(42.0, "2026-07-17"))
+    assert len(snapshot) == 3

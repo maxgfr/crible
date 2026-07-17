@@ -99,13 +99,19 @@ def build_symbol_snapshot(
     )
     ratio_growth.columns = [f"{col}_growth" for col in ratio_growth.columns]
 
-    out = pd.concat([canonical, ratios, growth, ratio_growth, scores, extras], axis=1)
+    # momentum + TTM columns ride the single concat as a NaN filler and the
+    # .copy() consolidates the blocks — inserting them one by one onto the
+    # many-block frame was pure PerformanceWarning spam at 57k rows
+    filler = pd.DataFrame(
+        float("nan"), index=canonical.index, columns=[*MOMENTUM_COLUMNS, *TTM_COLUMNS]
+    )
+    out = pd.concat(
+        [canonical, ratios, growth, ratio_growth, scores, extras, filler], axis=1
+    ).copy()
     # price-derived momentum features (return_6m feeds momentum_rank; plus
     # 12-1, 52-week-high proximity, 1y volatility), latest period only —
     # cross-sectional like the price itself; NaN when history is too short.
     # Crawled bars win; the imported-dump distillate fills per feature.
-    for col in MOMENTUM_COLUMNS:
-        out[col] = float("nan")
     if len(out):
         features = bars_features(frames.get(("prices", "daily")))
         for col in MOMENTUM_COLUMNS:
@@ -116,8 +122,6 @@ def build_symbol_snapshot(
     # TTM — the last four quarters summed onto the latest row (columns, not
     # rows). Audited discrete quarters (EDGAR 10-Q, v2) outrank scraped, and
     # a window is never source-mixed: all-audited or all-scraped, else NaN.
-    for col in TTM_COLUMNS:
-        out[col] = float("nan")
     if len(out):
         ttm = ttm_from_quarterly(audited_frames) if audited_frames else {}
         if not ttm:
