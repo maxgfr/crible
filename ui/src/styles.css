@@ -281,10 +281,14 @@ button.fetch-now:hover {
 }
 
 .drawer-resize {
-  position: absolute;
-  left: 0;
+  /* fixed, not absolute: .drawer is itself the scroll container, so an
+     absolute child scrolls away with the content. Tracks the drawer's left
+     edge via the same min() as .drawer's width — keep the two in sync; breaks
+     if an ancestor ever gains a transform/filter (re-anchors to the drawer). */
+  position: fixed;
   top: 0;
   bottom: 0;
+  right: calc(min(var(--drawer-w, 560px), 96vw) - 8px);
   width: 8px;
   cursor: ew-resize;
   touch-action: none;
@@ -900,6 +904,71 @@ table.inventory td.note {
   font-size: var(--scale-small);
   font-family: var(--font-mono);
   color: var(--color-muted);
+}
+
+/* shared hover readout for the trend + price charts. An HTML overlay — in-SVG
+   text would distort under preserveAspectRatio="none"; pointer-events: none
+   is load-bearing (the tooltip must never steal the hover: flicker). */
+.chart-frame {
+  position: relative;
+}
+
+.chart-tooltip {
+  position: absolute;
+  bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-bg-raised);
+  border: 1px solid color-mix(in srgb, var(--color-muted) 40%, transparent);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  font-family: var(--font-mono);
+  font-size: var(--scale-small);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--color-muted); /* labels wear text tokens; values get strong ink */
+}
+
+/* edge clamp: keep the box inside the chart at its first/last positions */
+.chart-tooltip.align-start {
+  transform: none;
+}
+
+.chart-tooltip.align-end {
+  transform: translateX(-100%);
+}
+
+.chart-tooltip strong,
+.chart-tooltip b {
+  color: var(--color-fg);
+  font-weight: 600;
+}
+
+/* line key, not a box — a filled square is data-weight ink at this density */
+.chart-tooltip i {
+  display: inline-block;
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--series-color);
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.chart-guide {
+  stroke: color-mix(in srgb, var(--color-muted) 45%, transparent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.trend-bar.is-hover {
+  fill: color-mix(in srgb, var(--color-fg) 80%, transparent); /* the hovered mark lifts */
 }
 
 .rank-bars .rank-bar {

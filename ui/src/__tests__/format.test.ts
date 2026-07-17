@@ -3,7 +3,7 @@
 // un-thresholded ratios stay neutral — no coloring by taste.
 
 import { describe, expect, it } from "vitest";
-import { VERDICT_COLUMNS, formatCell, formatNumber, verdictKind } from "../format";
+import { VERDICT_COLUMNS, formatCell, formatNumber, formatPercent, verdictKind } from "../format";
 
 describe("formatNumber", () => {
   it("scales billions/millions and keeps small numbers precise", () => {
@@ -12,6 +12,14 @@ describe("formatNumber", () => {
     expect(formatNumber(-3_000_000_000)).toBe("-3.00B");
     expect(formatNumber(7)).toBe("7");
     expect(formatNumber(0.1234)).toBe("0.123");
+  });
+});
+
+describe("formatPercent", () => {
+  it("renders fractions as one-decimal percentages", () => {
+    expect(formatPercent(0.4)).toBe("40.0%");
+    expect(formatPercent(0.064)).toBe("6.4%");
+    expect(formatPercent(-0.011)).toBe("-1.1%");
   });
 });
 

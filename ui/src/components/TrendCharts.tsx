@@ -3,10 +3,13 @@
 // oldest always reads left. Hand-rolled SVG on tokens; ONE scale per chart,
 // never dual-axis; series colors are the validated --color-series-* tokens
 // (gain/loss/warn are status colors, reserved for verdicts). Hover is a
-// full-height hit rect per period carrying a native <title> — deliberate
-// v1: every value also lives in the tables around the charts.
+// full-height hit rect per period driving the shared ChartTooltip readout
+// (the same text lives on each rect's aria-label); every value also lives
+// in the tables around the charts.
 
-import { formatNumber } from "../format";
+import { useState } from "react";
+import { formatNumber, formatPercent } from "../format";
+import { ChartTooltip } from "./ChartTooltip";
 import { barRects, baselineY, chartDomain, linePath } from "./charts";
 
 interface Series {
@@ -26,21 +29,37 @@ function TrendChart({
   periods,
   series,
   kind,
+  format,
 }: {
   title: string;
   /** oldest → newest (already reversed by TrendCharts) */
   periods: Record<string, unknown>[];
   series: Series[];
   kind: "bars" | "lines";
+  /** readout formatter (tooltip + aria-labels); defaults to formatNumber */
+  format?: (value: number) => string;
 }) {
+  const [hover, setHover] = useState<number | null>(null);
   const table = series.map((s) => periods.map((p) => num(p, s.column)));
   const domain = chartDomain(table);
   const plottable = table.some((vals) => vals.filter((v) => v !== null).length >= 2);
   if (!domain || !plottable) return null;
 
+  const fmt = format ?? formatNumber;
   const labels = periods.map((p) => String(p.period ?? ""));
   const slot = 100 / periods.length;
   const zero = baselineY(domain);
+  // clamp: a hover index may outlive a shrinking period set
+  const active = hover !== null && hover < periods.length ? hover : null;
+  const guideX = active === null ? 0 : (active + 0.5) * slot;
+  const align = guideX < 33 ? "start" : guideX > 67 ? "end" : "center";
+  const readout = (i: number) =>
+    `${labels[i]} · ${series
+      .map((s, index) => {
+        const value = table[index][i];
+        return `${s.label} ${value === null ? "—" : fmt(value)}`;
+      })
+      .join(" · ")}`;
   return (
     <figure className="trend-chart">
       <figcaption>
@@ -55,47 +74,70 @@ function TrendChart({
           </span>
         )}
       </figcaption>
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none">
-        <line className="chart-baseline" x1="0" x2="100" y1={zero} y2={zero} />
-        {kind === "bars"
-          ? barRects(table[0], domain).map(
-              (bar, i) =>
-                bar && (
-                  <rect
-                    key={i}
-                    className="trend-bar"
-                    x={bar.x}
-                    y={bar.y}
-                    width={bar.width}
-                    height={bar.height}
-                  />
-                ),
-            )
-          : series.map((s, index) => {
-              const d = linePath(table[index], domain);
-              return d ? <path key={s.column} className={`trend-line ${s.tone}`} d={d} /> : null;
+      <div className="chart-frame">
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          onPointerLeave={(event) => {
+            if (event.pointerType !== "touch") setHover(null); // keep tap readouts up
+          }}
+        >
+          <line className="chart-baseline" x1="0" x2="100" y1={zero} y2={zero} />
+          {kind === "bars"
+            ? barRects(table[0], domain).map(
+                (bar, i) =>
+                  bar && (
+                    <rect
+                      key={i}
+                      className={`trend-bar${active === i ? " is-hover" : ""}`}
+                      x={bar.x}
+                      y={bar.y}
+                      width={bar.width}
+                      height={bar.height}
+                    />
+                  ),
+              )
+            : series.map((s, index) => {
+                const d = linePath(table[index], domain);
+                return d ? <path key={s.column} className={`trend-line ${s.tone}`} d={d} /> : null;
+              })}
+          {active !== null && kind === "lines" && (
+            // the crosshair finds the X on lines; on bars the mark itself lifts
+            <line className="chart-guide" x1={guideX} x2={guideX} y1="0" y2="100" />
+          )}
+          {periods.map((_, i) => (
+            <rect
+              key={`hit-${i}`}
+              className="chart-hit"
+              x={i * slot}
+              y="0"
+              width={slot}
+              height="100"
+              fill="transparent"
+              aria-label={readout(i)}
+              onPointerEnter={() => setHover(i)}
+              onPointerMove={() => setHover(i)}
+            />
+          ))}
+        </svg>
+        {active !== null && (
+          <ChartTooltip
+            label={labels[active]}
+            leftPct={guideX}
+            align={align}
+            swatches={series.length > 1}
+            rows={series.map((s, index) => {
+              const value = table[index][active];
+              return {
+                key: s.column,
+                tone: s.tone,
+                label: s.label,
+                value: value === null ? "—" : fmt(value),
+              };
             })}
-        {periods.map((_, i) => (
-          <rect
-            key={`hit-${i}`}
-            className="chart-hit"
-            x={i * slot}
-            y="0"
-            width={slot}
-            height="100"
-            fill="transparent"
-          >
-            <title>
-              {`${labels[i]} · ${series
-                .map((s, index) => {
-                  const value = table[index][i];
-                  return `${s.label} ${value === null ? "—" : formatNumber(value)}`;
-                })
-                .join(" · ")}`}
-            </title>
-          </rect>
-        ))}
-      </svg>
+          />
+        )}
+      </div>
       <div className="trend-meta">
         <span>{labels[0]}</span>
         <span>{labels[labels.length - 1]}</span>
@@ -127,6 +169,7 @@ export function TrendCharts({ periods }: { periods: Record<string, unknown>[] })
         title="Margins"
         periods={ordered}
         kind="lines"
+        format={formatPercent}
         series={[
           { label: "Gross", column: "gross_margin", tone: "series-1" },
           { label: "Operating", column: "operating_margin", tone: "series-2" },

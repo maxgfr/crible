@@ -95,6 +95,11 @@ export function formatNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(3);
 }
 
+/** Fractions → "40.0%" — chart-readout display for the margin series. */
+export function formatPercent(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
 export function formatCell(column: string, value: unknown): FormattedCell {
   if (value === null || value === undefined) return { text: "—", className: "", flag: "" };
   if (typeof value === "number") {

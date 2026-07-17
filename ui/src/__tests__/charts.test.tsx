@@ -2,11 +2,22 @@
 // contracts: null is a gap or a "—", never a fabricated zero; oldest reads
 // left; legends appear from 2 series; all-NaN series → no chart.
 
-import { render, screen as rtl } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen as rtl } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { PriceChart } from "../components/PriceChart";
 import { RankBars } from "../components/RankBars";
 import { PiotroskiSparkline, TrendCharts } from "../components/TrendCharts";
 import { barRects, baselineY, chartDomain, linePath } from "../components/charts";
+
+vi.mock("../data", () => ({
+  prices: () =>
+    Promise.resolve([
+      { date: "2026-01-02", close: 10 },
+      { date: "2026-01-03", close: null }, // gap: filtered out of the hover series
+      { date: "2026-01-04", close: 20 },
+      { date: "2026-01-05", close: 30 },
+    ]),
+}));
 
 describe("chart geometry", () => {
   it("anchors zero into the domain — the baseline rule", () => {
@@ -91,10 +102,68 @@ describe("TrendCharts", () => {
     expect(captions.join(" ")).not.toContain("Margins");
   });
 
-  it("hover hit rects carry a per-period multi-series title", () => {
+  it("hover hit rects carry a per-period multi-series aria-label", () => {
     const { container } = render(<TrendCharts periods={PERIODS_NEWEST_FIRST} />);
-    const titles = [...container.querySelectorAll(".chart-hit title")].map((t) => t.textContent);
-    expect(titles.some((t) => t?.includes("2024") && t.includes("Net income 30"))).toBe(true);
+    const labels = [...container.querySelectorAll(".chart-hit")].map((r) =>
+      r.getAttribute("aria-label"),
+    );
+    expect(labels.some((t) => t?.includes("2024") && t.includes("Net income 30"))).toBe(true);
+  });
+
+  it("pointer over a hit rect shows the shared tooltip; leaving hides it", () => {
+    const { container } = render(<TrendCharts periods={PERIODS_NEWEST_FIRST} />);
+    const nifcf = container.querySelectorAll(".trend-chart")[1]; // Net income & FCF
+    const hits = nifcf.querySelectorAll(".chart-hit");
+    expect(nifcf.querySelector(".chart-tooltip")).toBeNull(); // no hover, no readout
+    fireEvent.pointerOver(hits[1]);
+    const tip = nifcf.querySelector(".chart-tooltip")!;
+    expect(tip.textContent).toContain("2024");
+    expect(tip.textContent).toContain("Net income 30");
+    expect(tip.textContent).toContain("FCF 25");
+    expect(nifcf.querySelector(".chart-guide")).not.toBeNull(); // crosshair on lines
+    fireEvent.pointerOut(hits[1]);
+    expect(nifcf.querySelector(".chart-tooltip")).toBeNull();
+  });
+
+  it("margins tooltip reads as percentages", () => {
+    const { container } = render(<TrendCharts periods={PERIODS_NEWEST_FIRST} />);
+    const margins = container.querySelectorAll(".trend-chart")[2];
+    fireEvent.pointerOver(margins.querySelectorAll(".chart-hit")[1]);
+    const tip = margins.querySelector(".chart-tooltip")!;
+    expect(tip.textContent).toContain("Gross 38.0%");
+    expect(tip.textContent).toContain("Operating 19.0%");
+  });
+
+  it("tooltip clamps at the edges; the hovered revenue bar lifts, no crosshair", () => {
+    const { container } = render(<TrendCharts periods={PERIODS_NEWEST_FIRST} />);
+    const revenue = container.querySelectorAll(".trend-chart")[0];
+    const hits = revenue.querySelectorAll(".chart-hit");
+    fireEvent.pointerOver(hits[0]);
+    expect(revenue.querySelector(".chart-tooltip")!.className).toContain("align-start");
+    expect(revenue.querySelectorAll(".trend-bar.is-hover")).toHaveLength(1);
+    expect(revenue.querySelector(".chart-guide")).toBeNull(); // bars: the mark lifts instead
+    fireEvent.pointerOver(hits[2]);
+    expect(revenue.querySelector(".chart-tooltip")!.className).toContain("align-end");
+  });
+});
+
+describe("PriceChart", () => {
+  it("maps pointer x to the nearest non-null session and shows date + close", async () => {
+    const { container } = render(<PriceChart symbol="OVH.PA" />);
+    await rtl.findByText(/4 sessions/);
+    const svg = container.querySelector(".price-chart svg") as SVGSVGElement;
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, top: 0, left: 0, right: 100, bottom: 100, width: 100, height: 100,
+      toJSON: () => ({}),
+    } as DOMRect);
+    // MouseEvent carries clientX in jsdom regardless of PointerEvent support
+    fireEvent(svg, new MouseEvent("pointermove", { bubbles: true, clientX: 55 }));
+    const tip = container.querySelector(".chart-tooltip")!;
+    expect(tip.textContent).toContain("2026-01-04"); // the null close is skipped
+    expect(tip.textContent).toContain("Close 20.00");
+    expect(container.querySelector(".chart-guide")).not.toBeNull();
+    fireEvent.pointerOut(svg);
+    expect(container.querySelector(".chart-tooltip")).toBeNull();
   });
 });
 
