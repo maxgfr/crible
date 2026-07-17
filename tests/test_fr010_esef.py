@@ -790,6 +790,82 @@ def test_fr010_history_one_short_circuits_to_the_newest_filing() -> None:
     assert len(client.fetched) == 1
 
 
+def _instant(concept: str, value: str, instant: str, extra: dict | None = None) -> dict:
+    dims = {"concept": concept, "period": f"{instant}T00:00:00"}
+    dims.update(extra or {})
+    return {"value": value, "dimensions": dims}
+
+
+def test_fr010_history_merge_is_cell_wise_socie_openings_never_shadow() -> None:
+    """Every filing's SOCIE opening instants create a SPARSE row for the year
+    before its comparatives (equity components only). A row-level year dedupe
+    would let that sparse row shadow an older filing's FULL audited balance
+    sheet for the same year — the merge must be cell-wise: the newest filing
+    wins each cell it actually reports, older filings backfill the rest."""
+    from crible.providers.esef import fetch_history_frames
+
+    newest = _history_filing("2024-12-31", "2025-04-01")
+    older = _history_filing("2022-12-31", "2023-04-01")
+    docs = {
+        newest["attributes"]["json_url"]: {
+            "facts": {
+                "a24": _instant("ifrs-full:Assets", "2000", "2025-01-01"),
+                "e24": _instant("ifrs-full:Equity", "800", "2025-01-01"),
+                "a23": _instant("ifrs-full:Assets", "1900", "2024-01-01"),
+                "e23": _instant("ifrs-full:Equity", "795", "2024-01-01"),
+                # SOCIE opening of the comparative year → a sparse 2022 row
+                "e22-open": _instant("ifrs-full:Equity", "790", "2023-01-01"),
+                "re22-open": _instant("ifrs-full:Equity", "400", "2023-01-01", _RE_MEMBER),
+            }
+        },
+        older["attributes"]["json_url"]: {
+            "facts": {
+                "a22": _instant("ifrs-full:Assets", "1700", "2023-01-01"),
+                "ca22": _instant("ifrs-full:CurrentAssets", "700", "2023-01-01"),
+                "e22": _instant("ifrs-full:Equity", "801", "2023-01-01"),
+                "re22": _instant("ifrs-full:RetainedEarnings", "401", "2023-01-01"),
+            }
+        },
+    }
+    frames = fetch_history_frames(_HistoryClient(docs), [newest, older], history=3)
+    balance = frames[("balance", "annual")].set_index("period")
+    assert balance.loc["2024", "TotalAssets"] == 2000.0
+    # the older filing's full balance sheet reaches 2022 despite the SOCIE row
+    assert balance.loc["2022", "TotalAssets"] == 1700.0
+    assert balance.loc["2022", "CurrentAssets"] == 700.0
+    # the newest filing still wins the cells it actually reports (restated)
+    assert balance.loc["2022", "StockholdersEquity"] == 790.0
+    assert balance.loc["2022", "RetainedEarnings"] == 400.0
+
+
+def test_fr010_broken_older_filing_is_skipped_but_newest_failure_raises() -> None:
+    """A deterministically-broken YEARS-OLD document must not wedge the sweep
+    forever: older-filing fetch errors are isolated (the filer still enriches
+    from the reachable filings and records its depth). The NEWEST document
+    failing stays a real outage."""
+    from crible.providers.esef import fetch_history_frames
+
+    class Flaky(_HistoryClient):
+        def __init__(self, docs, broken: str) -> None:
+            super().__init__(docs)
+            self.broken = broken
+
+        def fetch_xbrl_json(self, filing):
+            if filing["attributes"]["json_url"] == self.broken:
+                raise ConnectionError("410 gone")
+            return super().fetch_xbrl_json(filing)
+
+    client, filings = _history_fixture()
+    oldest_url = filings[2]["attributes"]["json_url"]
+    frames = fetch_history_frames(Flaky(client.docs, oldest_url), filings, history=3)
+    income = frames[("income", "annual")].set_index("period")["TotalRevenue"]
+    assert set(income.index) == {"2022", "2023", "2024"}  # 2021 skipped, rest intact
+
+    newest_url = filings[0]["attributes"]["json_url"]
+    with pytest.raises(ConnectionError):
+        fetch_history_frames(Flaky(client.docs, newest_url), filings, history=3)
+
+
 def test_fr010_client_throttles_between_requests(monkeypatch) -> None:
     from crible.providers import esef as esef_module
 
@@ -912,6 +988,71 @@ def test_fr010_sweep_depth_gate_requeues_and_then_rests(tmp_path, monkeypatch) -
     rest = _DeepClient(LEI_ABN)
     assert run_esef_sweep(limit=10, client=rest, mapping=mapping, history=3)["enriched"] == []
     assert rest.lei_calls == 0 and rest.json_fetches == 0
+
+
+def test_fr010_lowering_history_never_discards_backfilled_years(tmp_path, monkeypatch) -> None:
+    """`--esef-history 1` after a depth-3 backfill must not forfeit the deep
+    audited years: the write path merges over the existing raw and the
+    recorded depth is monotone — prune_raw then deletes nothing precious."""
+    from crible.ingest.raw import prune_raw
+    from crible.ingest.service import run_esef_sweep
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+    mapping = {"NL0011540547": LEI_ABN}
+    assert run_esef_sweep(limit=10, client=_DeepClient(LEI_ABN), mapping=mapping, history=3)[
+        "enriched"
+    ] == ["ABN.AS"]
+
+    # a shallower run while the filer is due again (refresh_seconds=0)
+    run_esef_sweep(
+        limit=10, client=_DeepClient(LEI_ABN), mapping=mapping, history=1, refresh_seconds=0
+    )
+    prune_raw(tmp_path)
+    files = list(tmp_path.glob("raw/provider=esef/symbol=ABN.AS/income-annual-*.parquet"))
+    raw = pd.read_parquet(max(files, key=lambda f: f.name))
+    assert sorted(raw["period"].astype(str)) == ["2021", "2022", "2023", "2024"]
+    assert _esef_task_depth(tmp_path, "ABN.AS") == 3  # depth never regresses
+
+
+def test_fr010_legacy_raw_without_depth_column_seeds_as_depth_one(tmp_path, monkeypatch) -> None:
+    """Pre-backfill raw files carry no _history_depth column — they must seed
+    as legacy depth 1 so the first deep sweep re-enriches them once."""
+    import time as _time
+
+    from crible.ingest.raw import write_raw_statement
+    from crible.ingest.service import run_esef_sweep
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+    write_raw_statement(
+        tmp_path, symbol="ABN.AS", provider="esef", statement_type="income", freq="annual",
+        frame=pd.DataFrame({"period": ["2024"], "TotalRevenue": [1.0]}),
+        fetched_at=_time.time(),  # fresh — only the depth clause can make it due
+    )
+    client = _DeepClient(LEI_ABN)
+    outcome = run_esef_sweep(limit=10, client=client, mapping={"NL0011540547": LEI_ABN}, history=3)
+    assert outcome["enriched"] == ["ABN.AS"]
+    assert client.lei_calls == 1
+    assert _esef_task_depth(tmp_path, "ABN.AS") == 3
+
+
+def test_fr010_cycle_depth_gate_requeues_and_then_rests(tmp_path, monkeypatch) -> None:
+    from crible.ingest.service import run_esef_cycle
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+    mapping = {"NL0011540547": LEI_ABN}
+    assert run_esef_cycle(limit=10, client=_DeepClient(LEI_ABN), mapping=mapping, history=1)[
+        "enriched"
+    ] == ["ABN.AS"]
+    assert _esef_task_depth(tmp_path, "ABN.AS") == 1
+
+    deep = _DeepClient(LEI_ABN)
+    assert run_esef_cycle(limit=10, client=deep, mapping=mapping, history=3)["enriched"] == ["ABN.AS"]
+    assert deep.json_fetches == 3
+    assert _esef_task_depth(tmp_path, "ABN.AS") == 3
+
+    rest = _DeepClient(LEI_ABN)
+    assert run_esef_cycle(limit=10, client=rest, mapping=mapping, history=3)["enriched"] == []
+    assert rest.json_fetches == 0
 
 
 def test_fr010_sweep_depth_survives_a_fresh_operational_db(tmp_path, monkeypatch) -> None:

@@ -16,8 +16,6 @@ from typing import Any
 
 import pandas as pd
 
-from crible.providers.audited import merge_audited
-
 log = logging.getLogger("crible.providers.esef")
 
 FILINGS_API = "https://filings.xbrl.org/api/filings"
@@ -270,24 +268,59 @@ def select_history_filings(filings: list[dict], history: int) -> list[dict]:
     return [by_period[p] for p in sorted(by_period, reverse=True)[:history]]
 
 
+def merge_filing_frames(
+    frame_dicts: list[dict[tuple[str, str], pd.DataFrame]],
+) -> dict[tuple[str, str], pd.DataFrame]:
+    """Cell-wise merge of per-filing frames — the FIRST dict wins per cell.
+
+    merge_audited's row-level year dedupe is wrong here: every filing's SOCIE
+    opening instants create a SPARSE row for the year before its comparatives
+    (equity components only), which would shadow an older filing's FULL
+    audited balance sheet for that year. Cell-wise, the newest filing wins
+    each cell it actually reports (restatements applied) and older filings
+    backfill the rest."""
+    out: dict[tuple[str, str], pd.DataFrame] = {}
+    for frames in frame_dicts:
+        for key, frame in frames.items():
+            if key not in out:
+                out[key] = frame.copy()
+                continue
+            merged = out[key].set_index("period").combine_first(frame.set_index("period"))
+            out[key] = merged.reset_index()
+    return {key: frame.sort_values("period", ignore_index=True) for key, frame in out.items()}
+
+
 def fetch_history_frames(
     client: "EsefClient", filings: list[dict], history: int
 ) -> dict[tuple[str, str], pd.DataFrame]:
     """Fetch + parse the filer's N most recent filings and merge their annual
-    frames: each older filing backfills ~1 audited year (its comparatives),
-    the newest filing wins every overlap. ``history <= 1`` keeps the
-    pre-backfill single-filing path (the API's newest-first order), as do
-    filings whose metadata yields no reporting period at all."""
+    frames cell-wise: each older filing backfills ~1 audited year (its
+    comparatives), the newest filing wins every cell it reports. ``history <=
+    1`` keeps the pre-backfill single-filing path (the API's newest-first
+    order), as do filings whose metadata yields no reporting period at all.
+
+    Only the NEWEST document failing is a real outage; a broken years-old
+    document is skipped so one dead link can never wedge the depth-gated
+    backfill (the filer still records its depth and converges)."""
     picked = filings[:1] if history <= 1 else (select_history_filings(filings, history) or filings[:1])
     frame_dicts = []
-    for filing in picked:
-        xbrl = client.fetch_xbrl_json(filing)
+    for index, filing in enumerate(picked):
+        try:
+            xbrl = client.fetch_xbrl_json(filing)
+        except Exception:
+            if index == 0:
+                raise
+            log.warning(
+                "esef: skipping unreachable older filing %s",
+                filing.get("attributes", {}).get("json_url"),
+            )
+            continue
         frames = facts_to_frames(xbrl) if xbrl else {}
         if frames:
             frame_dicts.append(frames)
     if not frame_dicts:
         return {}
-    return merge_audited(frame_dicts[0], *frame_dicts[1:])
+    return merge_filing_frames(frame_dicts)
 
 
 class EsefClient:

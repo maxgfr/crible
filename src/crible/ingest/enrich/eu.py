@@ -50,19 +50,52 @@ def _backfill_nameless_isins(con: duckdb.DuckDBPyConnection, client, mapping: di
         return 0
 
 
-def _write_history_frames(data, symbol: str, frames: dict, fetched_at: float, history: int) -> None:
-    """Persist merged multi-filing frames as provider='esef' raw, stamped with
-    the requested backfill depth ("backfilled to N or exhausted") — the depth
-    participates in the identity check so a deeper request re-stamps once and
-    filers with fewer filings than N never re-queue forever."""
-    from crible.ingest.raw import write_raw_statement
+def _existing_esef_frames(data, symbol: str) -> tuple[dict, int]:
+    """The newest committed esef raw frame per (statement, freq) — meta
+    columns stripped — plus the deepest recorded backfill depth (legacy files
+    without the column count as 1)."""
+    from pathlib import Path
 
-    for (statement_type, freq), frame in frames.items():
+    import pandas as pd
+
+    from crible.ingest.raw import iter_raw_files
+
+    directory = Path(data) / "raw" / "provider=esef" / f"symbol={symbol.replace('/', '_')}"
+    newest: dict[tuple[str, str], object] = {}
+    if directory.exists():
+        for file in iter_raw_files(directory):  # lexical stamp order → last wins
+            statement_type, freq, _ = file.stem.split("-", 2)
+            newest[(statement_type, freq)] = file
+    frames, depth = {}, 1
+    for key, file in newest.items():
+        frame = pd.read_parquet(file)
+        if "_history_depth" in frame.columns and len(frame):
+            depth = max(depth, int(frame["_history_depth"].iloc[0]))
+        frames[key] = frame.drop(columns=[c for c in frame.columns if c.startswith("_")])
+    return frames, depth
+
+
+def _write_history_frames(data, symbol: str, frames: dict, fetched_at: float, history: int) -> int:
+    """Persist multi-filing frames as provider='esef' raw and return the
+    recorded depth. The fetched frames merge cell-wise OVER the newest
+    committed raw (fetched wins), so previously-backfilled audited years
+    survive a shallower or routine refresh; the stamped depth is monotone
+    ("backfilled to N or exhausted", never regressing) and participates in
+    the identity check so a deeper request re-stamps once and filers with
+    fewer filings than N never re-queue forever."""
+    from crible.ingest.raw import write_raw_statement
+    from crible.providers.esef import merge_filing_frames
+
+    existing, existing_depth = _existing_esef_frames(data, symbol)
+    depth = max(history, existing_depth)
+    merged = merge_filing_frames([frames, existing]) if existing else frames
+    for (statement_type, freq), frame in merged.items():
         write_raw_statement(
             data, symbol=symbol, provider="esef", statement_type=statement_type,
-            freq=freq, frame=frame.assign(_history_depth=history), fetched_at=fetched_at,
+            freq=freq, frame=frame.assign(_history_depth=depth), fetched_at=fetched_at,
             skip_identical=True, compare_meta=("_history_depth",),
         )
+    return depth
 
 
 def run_esef_cycle(
@@ -136,11 +169,11 @@ def run_esef_cycle(
                     continue
                 frames = fetch_history_frames(client, filings, history)
                 fetched_at = time.time()
-                _write_history_frames(data, symbol, frames, fetched_at, history)
+                depth = _write_history_frames(data, symbol, frames, fetched_at, history)
                 con.execute(
                     "UPDATE esef_tasks SET last_fetched_at = ?, history_depth = ?"
                     " WHERE symbol = ?",
-                    [fetched_at, history, symbol],
+                    [fetched_at, depth, symbol],
                 )
                 if frames:
                     outcome["enriched"].append(symbol)
@@ -287,13 +320,13 @@ def run_esef_sweep(
                     return outcome
                 fetched_at = time.time()
                 for symbol in due:
-                    _write_history_frames(data, symbol, frames, fetched_at, history)
+                    depth = _write_history_frames(data, symbol, frames, fetched_at, history)
                     con.execute(
                         "INSERT INTO esef_tasks (symbol, lei, last_fetched_at, history_depth)"
                         " VALUES (?, ?, ?, ?) ON CONFLICT (symbol) DO UPDATE SET"
                         " last_fetched_at = excluded.last_fetched_at,"
                         " history_depth = excluded.history_depth",
-                        [symbol, lei, fetched_at, history],
+                        [symbol, lei, fetched_at, depth],
                     )
                     if frames:
                         outcome["enriched"].append(symbol)
