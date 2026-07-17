@@ -29,7 +29,7 @@ function path(bars: PriceBar[]): string {
     .join(" ");
 }
 
-export function PriceChart({ symbol }: { symbol: string }) {
+export function PriceChart({ symbol, currency }: { symbol: string; currency?: string }) {
   const [bars, setBars] = useState<PriceBar[] | null>(null);
   const [hover, setHover] = useState<number | null>(null);
 
@@ -51,6 +51,7 @@ export function PriceChart({ symbol }: { symbol: string }) {
   const pts = bars.flatMap((b) => (b.close === null ? [] : [{ date: b.date, close: b.close }]));
   const closes = pts.map((p) => p.close);
   const last = closes[closes.length - 1];
+  const first = bars[0]?.date ?? "";
   const asof = bars[bars.length - 1]?.date ?? "";
   const fmt = (v: number) => (Math.abs(v) >= 1000 ? v.toFixed(0) : v.toFixed(2));
 
@@ -67,7 +68,7 @@ export function PriceChart({ symbol }: { symbol: string }) {
 
   return (
     <div className="price-chart">
-      <h3>Price — {bars.length} sessions</h3>
+      <h3>Price — {bars.length} sessions{currency ? ` · ${currency}` : ""}</h3>
       <div className="chart-frame">
         <svg
           viewBox={`0 0 ${W} ${H}`}
@@ -97,7 +98,7 @@ export function PriceChart({ symbol }: { symbol: string }) {
       <div className="price-chart-meta">
         <span>lo {fmt(Math.min(...closes))} · hi {fmt(Math.max(...closes))}</span>
         <span>
-          {fmt(last)} · {asof}
+          {fmt(last)} · {first} → {asof}
         </span>
       </div>
     </div>

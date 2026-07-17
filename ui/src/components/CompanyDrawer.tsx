@@ -14,6 +14,7 @@ import {
 import { company, requestFetch, STATIC_MODE, type CompanyDetail } from "../data";
 import { fieldLabel } from "../data/field-catalog";
 import { formatCell, formatNumber } from "../format";
+import { PeriodRow, PeriodTable, sparsePeriodFlags, STATEMENT_FIELDS } from "./PeriodTable";
 import { PriceChart } from "./PriceChart";
 import { SynthesisBlock } from "./SynthesisBlock";
 import { TrendCharts } from "./TrendCharts";
@@ -64,9 +65,17 @@ const RANK_PILLARS: [string, string, string[]][] = [
   ["Value", "value_rank", ["earnings_yield", "price_to_book_ratio"]],
   ["Momentum", "momentum_rank", ["return_6m"]],
 ];
-const STATEMENT_FIELDS = [
-  "revenue", "gross_profit", "operating_income", "net_income",
-  "total_assets", "total_equity", "total_debt", "operating_cashflow", "free_cash_flow",
+// each headline score unfolds into its component rows (· prefix strips the
+// score's own column prefix, e.g. piotroski_roa_positive → · roa_positive)
+const SCORES: [string, string, string[]][] = [
+  ["Piotroski F", "piotroski_f", PIOTROSKI],
+  ["Altman Z", "altman_z", ALTMAN],
+  ["Beneish M", "beneish_m", BENEISH],
+  ["Zmijewski", "zmijewski_score", []],
+  ["Ohlson O", "ohlson_o", []],
+  ["Montier C", "montier_c", MONTIER],
+  ["Dechow F", "dechow_f", DECHOW],
+  ["Mohanram G (6/8)", "mohanram_g", MOHANRAM],
 ];
 // earnings backed by cash — the cash-quality preset's inputs + quality checks
 const CASH_QUALITY = [
@@ -173,6 +182,15 @@ function num(value: unknown): string {
   if (typeof value === "number") return formatNumber(value);
   if (typeof value === "boolean") return value ? "✓" : "✗";
   return String(value);
+}
+
+// listing currency (universe metadata, merged onto every period row) — the
+// currency every price-denominated figure is quoted in; never converted here
+function listingCurrency(detail: CompanyDetail): string | undefined {
+  for (const candidate of [detail.profile.currency, detail.periods[0]?.currency]) {
+    if (typeof candidate === "string" && candidate) return candidate;
+  }
+  return undefined;
 }
 
 // a value with its verdict color + glyph (shared thresholds with the grid);
@@ -290,7 +308,7 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
             <span className="badge">{String(detail.profile.country ?? "?")}</span>
             <span className="badge">{String(detail.profile.sector ?? "?")}</span>
           </h2>
-          <PriceChart symbol={symbol} />
+          <PriceChart symbol={symbol} currency={listingCurrency(detail)} />
           {detail.periods.length === 0 ? (
             <div className="teach">
               <p className="meta">
@@ -326,113 +344,121 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
               )}
             </div>
           ) : (
+            <DrawerSections symbol={symbol} detail={detail} />
+          )}
+        </>
+      )}
+    </aside>
+  );
+}
+
+// every section below the price chart — the period tables. Extracted so the
+// shared column context (sparse flags, listing currency, the latest-period
+// header label) is computed once for all of them.
+function DrawerSections({ symbol, detail }: { symbol: string; detail: CompanyDetail }) {
+  const periods = detail.periods;
+  const latest = periods[0];
+  const sparse = sparsePeriodFlags(periods);
+  const currency = listingCurrency(detail);
+  // money rows carry the listing currency on the LABEL — one mention per row,
+  // never per cell
+  const money = (label: string) => (currency ? `${label} (${currency})` : label);
+  const latestOnly = [latest];
+  const latestLabels = [`latest — ${String(latest.period)}`];
+
+  return (
             <>
-              <SynthesisBlock latest={detail.periods[0]} periods={detail.periods} />
+              <SynthesisBlock latest={latest} periods={periods} />
               <h3 id="drawer-statements" tabIndex={-1}>Statements</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>field</th>
-                    {detail.periods.map((p) => (
-                      <th key={String(p.period)}>{String(p.period)}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {STATEMENT_FIELDS.map((field) => (
-                    <tr key={field}>
-                      <td>{field}</td>
-                      {detail.periods.map((p) => (
-                        <td key={String(p.period)}>{num(p[field])}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <PeriodTable periods={periods} sparse={sparse}>
+                {STATEMENT_FIELDS.map((field) => (
+                  <PeriodRow
+                    key={field}
+                    label={field}
+                    periods={periods}
+                    sparse={sparse}
+                    cell={(p) => num(p[field])}
+                  />
+                ))}
+              </PeriodTable>
+              {sparse.some(Boolean) && (
+                <p className="meta table-note">
+                  Greyed columns: the sources publish ~4–5 fiscal years, and YoY/average
+                  metrics need the prior year — the oldest (rightmost) columns carry no
+                  fundamentals.
+                </p>
+              )}
               <h3 id="drawer-trends" tabIndex={-1}>Trends</h3>
               <TrendCharts periods={detail.periods} />
               <h3 id="drawer-cash" tabIndex={-1}>Cash quality</h3>
-              <table>
-                <tbody>
-                  {CASH_QUALITY.map((field) => (
-                    <tr key={field}>
-                      <td>{fieldLabel(field)}</td>
-                      {detail.periods.map((p) => (
-                        <td key={String(p.period)}>
-                          <Val column={field} value={p[field]} />
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <PeriodTable periods={periods} sparse={sparse}>
+                {CASH_QUALITY.map((field) => (
+                  <PeriodRow
+                    key={field}
+                    label={fieldLabel(field)}
+                    periods={periods}
+                    sparse={sparse}
+                    cell={(p) => <Val column={field} value={p[field]} />}
+                  />
+                ))}
+              </PeriodTable>
               <h3 id="drawer-ratios" tabIndex={-1}>Key ratios</h3>
-              <table>
-                <tbody>
-                  {KEY_RATIOS.map(([group, fields]) => (
-                    <Fragment key={group}>
-                      <tr>
-                        <td className="meta" colSpan={detail.periods.length + 1}>
-                          {group}
-                        </td>
-                      </tr>
-                      {fields.map((field) => (
-                        <tr key={field}>
-                          <td>{fieldLabel(field)}</td>
-                          {detail.periods.map((p) => (
-                            <td key={String(p.period)}>
-                              <Val column={field} value={p[field]} />
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
-              <h3 id="drawer-growth" tabIndex={-1}>Growth (YoY)</h3>
-              <table>
-                <tbody>
-                  {GROWTH_FIELDS.map((field) => (
-                    <tr key={field}>
-                      <td>{fieldLabel(field)}</td>
-                      {detail.periods.map((p) => (
-                        <td key={String(p.period)}>
-                          <Val column={field} value={p[field]} />
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <h3 id="drawer-momentum" tabIndex={-1}>Momentum</h3>
-              <table>
-                <tbody>
-                  {MOMENTUM_FIELDS.map((field) => (
-                    <tr key={field}>
-                      <td>{fieldLabel(field)}</td>
-                      <td>
-                        <Val column={field} value={detail.periods[0][field]} />
+              <PeriodTable periods={periods} sparse={sparse}>
+                {KEY_RATIOS.map(([group, fields]) => (
+                  <Fragment key={group}>
+                    <tr>
+                      <td className="meta" colSpan={periods.length + 1}>
+                        {group}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              {detail.periods[0].ttm_revenue != null && (
+                    {fields.map((field) => (
+                      <PeriodRow
+                        key={field}
+                        label={field === "market_cap" ? money(fieldLabel(field)) : fieldLabel(field)}
+                        periods={periods}
+                        sparse={sparse}
+                        cell={(p) => <Val column={field} value={p[field]} />}
+                      />
+                    ))}
+                  </Fragment>
+                ))}
+              </PeriodTable>
+              <h3 id="drawer-growth" tabIndex={-1}>Growth (YoY)</h3>
+              <PeriodTable periods={periods} sparse={sparse}>
+                {GROWTH_FIELDS.map((field) => (
+                  <PeriodRow
+                    key={field}
+                    label={fieldLabel(field)}
+                    periods={periods}
+                    sparse={sparse}
+                    cell={(p) => <Val column={field} value={p[field]} />}
+                  />
+                ))}
+              </PeriodTable>
+              <h3 id="drawer-momentum" tabIndex={-1}>Momentum</h3>
+              <PeriodTable periods={latestOnly} labels={latestLabels}>
+                {MOMENTUM_FIELDS.map((field) => (
+                  <PeriodRow
+                    key={field}
+                    label={fieldLabel(field)}
+                    periods={latestOnly}
+                    cell={(p) => <Val column={field} value={p[field]} />}
+                  />
+                ))}
+              </PeriodTable>
+              {latest.ttm_revenue != null && (
                 <>
                   <h3 id="drawer-ttm" tabIndex={-1}>TTM — trailing 12 months</h3>
-                  <table>
-                    <tbody>
-                      {TTM_FIELDS.map((field) => (
-                        <tr key={field}>
-                          <td>{fieldLabel(field)}</td>
-                          <td>
-                            <Val column={field} value={detail.periods[0][field]} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <PeriodTable periods={latestOnly} labels={latestLabels}>
+                    {TTM_FIELDS.map((field) => (
+                      <PeriodRow
+                        key={field}
+                        label={fieldLabel(field)}
+                        periods={latestOnly}
+                        cell={(p) => <Val column={field} value={p[field]} />}
+                      />
+                    ))}
+                  </PeriodTable>
                   <p className="meta">
                     Last four reported quarters — fresher than the fiscal-year rows above;
                     crawled symbols plus audited US issuers reporting discrete quarters.
@@ -440,178 +466,82 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                 </>
               )}
               <h3 id="drawer-scores" tabIndex={-1}>Scores — full breakdown</h3>
-              <table>
-                <tbody>
-                  <tr>
-                    <td>Piotroski F</td>
-                    {detail.periods.map((p) => (
-                      <td key={String(p.period)}>
-                        <Val column="piotroski_f" value={p.piotroski_f} />
-                      </td>
+              <PeriodTable periods={periods} sparse={sparse}>
+                {SCORES.map(([label, column, components]) => (
+                  <Fragment key={column}>
+                    <PeriodRow
+                      label={label}
+                      periods={periods}
+                      sparse={sparse}
+                      cell={(p) => <Val column={column} value={p[column]} />}
+                    />
+                    {components.map((component) => (
+                      <PeriodRow
+                        key={component}
+                        labelClass="meta"
+                        label={component.replace(`${column.split("_")[0]}_`, "· ")}
+                        periods={periods}
+                        sparse={sparse}
+                        cell={(p) => num(p[component])}
+                      />
                     ))}
-                  </tr>
-                  {PIOTROSKI.map((criterion) => (
-                    <tr key={criterion}>
-                      <td className="meta">{criterion.replace("piotroski_", "· ")}</td>
-                      {detail.periods.map((p) => (
-                        <td key={String(p.period)}>{num(p[criterion])}</td>
-                      ))}
-                    </tr>
-                  ))}
-                  <tr>
-                    <td>Altman Z</td>
-                    {detail.periods.map((p) => (
-                      <td key={String(p.period)}>
-                        <Val column="altman_z" value={p.altman_z} />
-                      </td>
-                    ))}
-                  </tr>
-                  {ALTMAN.map((input) => (
-                    <tr key={input}>
-                      <td className="meta">{input.replace("altman_", "· ")}</td>
-                      {detail.periods.map((p) => (
-                        <td key={String(p.period)}>{num(p[input])}</td>
-                      ))}
-                    </tr>
-                  ))}
-                  <tr>
-                    <td>Beneish M</td>
-                    {detail.periods.map((p) => (
-                      <td key={String(p.period)}>
-                        <Val column="beneish_m" value={p.beneish_m} />
-                      </td>
-                    ))}
-                  </tr>
-                  {BENEISH.map((component) => (
-                    <tr key={component}>
-                      <td className="meta">{component.replace("beneish_", "· ")}</td>
-                      {detail.periods.map((p) => (
-                        <td key={String(p.period)}>{num(p[component])}</td>
-                      ))}
-                    </tr>
-                  ))}
-                  <tr>
-                    <td>Zmijewski</td>
-                    {detail.periods.map((p) => (
-                      <td key={String(p.period)}>
-                        <Val column="zmijewski_score" value={p.zmijewski_score} />
-                      </td>
-                    ))}
-                  </tr>
-                  <tr>
-                    <td>Ohlson O</td>
-                    {detail.periods.map((p) => (
-                      <td key={String(p.period)}>
-                        <Val column="ohlson_o" value={p.ohlson_o} />
-                      </td>
-                    ))}
-                  </tr>
-                  <tr>
-                    <td>Montier C</td>
-                    {detail.periods.map((p) => (
-                      <td key={String(p.period)}>
-                        <Val column="montier_c" value={p.montier_c} />
-                      </td>
-                    ))}
-                  </tr>
-                  {MONTIER.map((flag) => (
-                    <tr key={flag}>
-                      <td className="meta">{flag.replace("montier_", "· ")}</td>
-                      {detail.periods.map((p) => (
-                        <td key={String(p.period)}>{num(p[flag])}</td>
-                      ))}
-                    </tr>
-                  ))}
-                  <tr>
-                    <td>Dechow F</td>
-                    {detail.periods.map((p) => (
-                      <td key={String(p.period)}>
-                        <Val column="dechow_f" value={p.dechow_f} />
-                      </td>
-                    ))}
-                  </tr>
-                  {DECHOW.map((component) => (
-                    <tr key={component}>
-                      <td className="meta">{component.replace("dechow_", "· ")}</td>
-                      {detail.periods.map((p) => (
-                        <td key={String(p.period)}>{num(p[component])}</td>
-                      ))}
-                    </tr>
-                  ))}
-                  <tr>
-                    <td>Mohanram G (6/8)</td>
-                    {detail.periods.map((p) => (
-                      <td key={String(p.period)}>
-                        <Val column="mohanram_g" value={p.mohanram_g} />
-                      </td>
-                    ))}
-                  </tr>
-                  {MOHANRAM.map((signal) => (
-                    <tr key={signal}>
-                      <td className="meta">{signal.replace("mohanram_", "· ")}</td>
-                      {detail.periods.map((p) => (
-                        <td key={String(p.period)}>{num(p[signal])}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {detail.periods[0].composite_rank !== null &&
-                detail.periods[0].composite_rank !== undefined && (
+                  </Fragment>
+                ))}
+              </PeriodTable>
+              {latest.composite_rank !== null &&
+                latest.composite_rank !== undefined && (
                   <>
                     <h3 id="drawer-rank" tabIndex={-1}>Rank — how it is built</h3>
-                    <table>
-                      <tbody>
-                        <tr>
-                          <td>Composite</td>
-                          <td>
-                            <Val column="composite_rank" value={detail.periods[0].composite_rank} />
-                          </td>
-                        </tr>
-                        {RANK_PILLARS.map(([label, column, components]) => (
-                          <Fragment key={column}>
-                            <tr>
-                              <td>{label}</td>
-                              <td>
-                                <Val column={column} value={detail.periods[0][column]} />
-                              </td>
-                            </tr>
-                            {components.map((component) => (
-                              <tr key={component}>
-                                <td className="meta">· {component}</td>
-                                <td>
-                                  <Val column={component} value={detail.periods[0][component]} />
-                                </td>
-                              </tr>
-                            ))}
-                          </Fragment>
-                        ))}
-                      </tbody>
-                    </table>
+                    <PeriodTable periods={latestOnly} labels={latestLabels}>
+                      <PeriodRow
+                        label="Composite"
+                        periods={latestOnly}
+                        cell={(p) => <Val column="composite_rank" value={p.composite_rank} />}
+                      />
+                      {RANK_PILLARS.map(([label, column, components]) => (
+                        <Fragment key={column}>
+                          <PeriodRow
+                            label={label}
+                            periods={latestOnly}
+                            cell={(p) => <Val column={column} value={p[column]} />}
+                          />
+                          {components.map((component) => (
+                            <PeriodRow
+                              key={component}
+                              labelClass="meta"
+                              label={`· ${component}`}
+                              periods={latestOnly}
+                              cell={(p) => <Val column={component} value={p[component]} />}
+                            />
+                          ))}
+                        </Fragment>
+                      ))}
+                    </PeriodTable>
                     <p className="meta">
-                      Percentiles 0–100 · peer group: {String(detail.periods[0].rank_peer_group ?? "global")}
-                      {detail.periods[0].rank_missing_pillars
-                        ? ` · ${String(detail.periods[0].rank_missing_pillars)} pillar omitted (missing input — never imputed)`
+                      Percentiles 0–100 · peer group: {String(latest.rank_peer_group ?? "global")}
+                      {latest.rank_missing_pillars
+                        ? ` · ${String(latest.rank_missing_pillars)} pillar omitted (missing input — never imputed)`
                         : ""}
                     </p>
                   </>
                 )}
-              {(detail.periods[0].graham_number != null ||
-                detail.periods[0].magic_formula_rank != null) && (
+              {(latest.graham_number != null ||
+                latest.magic_formula_rank != null) && (
                 <>
                   <h3 id="drawer-value" tabIndex={-1}>Value — Greenblatt & Graham</h3>
-                  <table>
-                    <tbody>
-                      {VALUE_ROWS.map(([label, column]) => (
-                        <tr key={column}>
-                          <td className={label.startsWith("·") ? "meta" : undefined}>{label}</td>
-                          <td>
-                            <Val column={column} value={detail.periods[0][column]} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <PeriodTable periods={latestOnly} labels={latestLabels}>
+                    {VALUE_ROWS.map(([label, column]) => (
+                      <PeriodRow
+                        key={column}
+                        labelClass={label.startsWith("·") ? "meta" : undefined}
+                        label={
+                          column === "graham_number" || column === "ncav" ? money(label) : label
+                        }
+                        periods={latestOnly}
+                        cell={(p) => <Val column={column} value={p[column]} />}
+                      />
+                    ))}
+                  </PeriodTable>
                   <p className="meta">
                     Latest fiscal period only — price-based metrics are never back-dated (missing price → —).
                   </p>
@@ -619,12 +549,12 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
               )}
               <h3>Provenance</h3>
               <p className="meta">
-                provider: {String(detail.periods[0].provider ?? "yfinance")} · computed at:{" "}
-                {detail.periods[0].computed_at
-                  ? new Date(Number(detail.periods[0].computed_at) * 1000).toISOString()
+                provider: {String(latest.provider ?? "yfinance")} · computed at:{" "}
+                {latest.computed_at
+                  ? new Date(Number(latest.computed_at) * 1000).toISOString()
                   : "—"}
                 {(() => {
-                  const provider = String(detail.periods[0].provider ?? "yfinance");
+                  const provider = String(latest.provider ?? "yfinance");
                   const link = PROVENANCE_LINKS[provider]?.(symbol);
                   return link ? (
                     <>
@@ -637,9 +567,5 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                 })()}
               </p>
             </>
-          )}
-        </>
-      )}
-    </aside>
   );
 }

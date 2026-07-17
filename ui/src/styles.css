@@ -346,6 +346,42 @@ button.fetch-now:hover {
 
 .drawer td:first-child, .drawer th:first-child { text-align: left; }
 
+/* every drawer table repeats its date header; the drawer is the scroll
+   container, so each thead sticks to its top while that table scrolls and is
+   pushed off by its own table's end. Collapsed borders don't travel with
+   stuck cells (Chromium) — the bottom rule is a box-shadow instead. */
+.drawer thead th {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background: var(--color-bg-raised);
+  color: var(--color-muted);
+  white-space: nowrap;
+  border-bottom: 0;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--color-muted) 30%, transparent);
+}
+
+/* structurally-empty period columns — no fundamentals at that source depth */
+.drawer .col-muted {
+  opacity: 0.45;
+}
+
+/* section rhythm mirroring .view h3, so the drawer reads as one page */
+.drawer h3 {
+  font-size: var(--scale-body);
+  color: var(--color-muted);
+  font-weight: 600;
+  margin: var(--space-6) 0 var(--space-2);
+}
+
+.drawer table {
+  margin-bottom: var(--space-2);
+}
+
+.drawer .table-note {
+  margin: var(--space-1) 0 0;
+}
+
 .badge {
   display: inline-block;
   font-size: var(--scale-small);
@@ -1085,6 +1121,8 @@ table.inventory td.note {
 .price-chart-meta {
   display: flex;
   justify-content: space-between;
+  flex-wrap: wrap; /* the date interval earns its own line in narrow drawers */
+  column-gap: var(--space-2);
   font-size: var(--scale-small);
   color: var(--color-muted);
   font-variant-numeric: tabular-nums;
