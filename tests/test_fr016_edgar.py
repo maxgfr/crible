@@ -450,6 +450,11 @@ def test_fr016_variant_tags_fill_beneish_and_yield_inputs() -> None:
                 "LongTermDebtNoncurrent": {
                     "units": {"USD": [_fact(None, "2023-12-30", 1e9)]}
                 },
+                # ASC 842 presentations (observed live on HSIC 2026-07-17):
+                # PPE and LTD only exist through the finance-lease combined tags
+                "PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization": {
+                    "units": {"USD": [_fact(None, "2023-12-30", 9e8)]}
+                },
                 "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents": {
                     "units": {"USD": [_fact(None, "2023-12-30", 4e8)]}
                 },
@@ -476,6 +481,7 @@ def test_fr016_variant_tags_fill_beneish_and_yield_inputs() -> None:
     assert cashflow.loc[0, "CommonStockIssuance"] == 5e7
     balance = frames[("balance", "annual")]
     assert balance.loc[0, "GrossPPE"] == 2e9
+    assert balance.loc[0, "NetPPE"] == 9e8
     assert balance.loc[0, "LongTermDebt"] == 1e9
     assert balance.loc[0, "CashAndCashEquivalents"] == 4e8
 
@@ -495,3 +501,34 @@ def test_fr016_classic_cash_tag_outranks_the_restricted_variant() -> None:
     }
     frames = facts_to_frames(facts)
     assert frames[("balance", "annual")].loc[0, "CashAndCashEquivalents"] == 3e8
+
+
+def test_fr016_lease_combined_debt_tag_is_a_fallback_only() -> None:
+    """LongTermDebtAndCapitalLeaseObligations maps to LongTermDebt but the
+    narrow noncurrent tag keeps the column when both are filed."""
+    facts = {
+        "facts": {
+            "us-gaap": {
+                "LongTermDebtNoncurrent": {
+                    "units": {"USD": [_fact(None, "2023-12-30", 1e9)]}
+                },
+                "LongTermDebtAndCapitalLeaseObligations": {
+                    "units": {"USD": [_fact(None, "2023-12-30", 1.2e9)]}
+                },
+            }
+        }
+    }
+    frames = facts_to_frames(facts)
+    assert frames[("balance", "annual")].loc[0, "LongTermDebt"] == 1e9
+
+    only_combined = {
+        "facts": {
+            "us-gaap": {
+                "LongTermDebtAndCapitalLeaseObligations": {
+                    "units": {"USD": [_fact(None, "2023-12-30", 1.2e9)]}
+                },
+            }
+        }
+    }
+    frames = facts_to_frames(only_combined)
+    assert frames[("balance", "annual")].loc[0, "LongTermDebt"] == 1.2e9

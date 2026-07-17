@@ -94,12 +94,20 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
     "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents":
         ("CashAndCashEquivalents", "balance"),
     "PropertyPlantAndEquipmentNet": ("NetPPE", "balance"),
+    # ASC 842 combined presentation (finance-lease ROU assets included — a
+    # documented approximation): some filers stopped tagging the narrow PPE
+    # concept entirely (observed on HSIC from FY2022)
+    "PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization":
+        ("NetPPE", "balance"),
     # gross PPE → Montier's depreciation-rate flag on audited-only symbols
     "PropertyPlantAndEquipmentGross": ("GrossPPE", "balance"),
     # exactly yfinance's non-current LTD → Beneish LVGI + long_term_debt;
     # the us-gaap `LongTermDebt` tag (includes current maturities) would
-    # double-count against CurrentLiabilities, so it stays out
+    # double-count against CurrentLiabilities, so it stays out. The lease-
+    # combined fallback mirrors yfinance's own
+    # LongTermDebtAndCapitalLeaseObligation alias in canonical.py.
     "LongTermDebtNoncurrent": ("LongTermDebt", "balance"),
+    "LongTermDebtAndCapitalLeaseObligations": ("LongTermDebt", "balance"),
     "Goodwill": ("Goodwill", "balance"),
     # short-term investments — completes Dechow's RSST/FIN inputs on
     # reconciled crawled symbols (audited-only Dechow still needs total_debt,
