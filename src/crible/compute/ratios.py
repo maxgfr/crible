@@ -85,7 +85,9 @@ def build_inputs(canonical: pd.DataFrame, price: pd.Series | None = None) -> dic
     alias(["goodwill"], c["goodwill"])
     alias(["minority_interest"], c["minority_interest"])
     alias(["capital_expenditure", "capital_expenditures"], c["capital_expenditure"])
-    alias(["dividends_paid"], c["dividends_paid"])
+    # weighted_dividend_yield expects a positive magnitude; abs() tolerates
+    # either sign convention for the reported outflow
+    alias(["dividends_paid"], c["dividends_paid"].abs())
     alias(
         [
             "shares_outstanding",

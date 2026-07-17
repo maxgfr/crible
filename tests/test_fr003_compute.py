@@ -541,6 +541,21 @@ def test_fr003_reflection_wires_cycle_payout_and_roic() -> None:
     assert "dividend_capex_coverage_ratio" not in ratios.columns
 
 
+def test_fr003_weighted_dividend_yield_positive_for_either_sign_convention() -> None:
+    from crible.compute.ratios import compute_ratios
+
+    canonical = _quickwin_canonical()
+    price = pd.Series([float("nan")] * 3 + [10.0], index=canonical.index)
+    row = compute_ratios(canonical, price).loc["2025"]
+    # the fixture reports the outflow as -52; the real yield is (52/100)/10
+    assert row["weighted_dividend_yield"] == pytest.approx(52.0 / 100.0 / 10.0)
+
+    positive = _quickwin_canonical()
+    positive["dividends_paid"] = positive["dividends_paid"].abs()
+    same = compute_ratios(positive, price).loc["2025"]
+    assert same["weighted_dividend_yield"] == pytest.approx(row["weighted_dividend_yield"])
+
+
 # ------------------------------------------------------------------- snapshot
 
 
