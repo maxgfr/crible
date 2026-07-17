@@ -366,6 +366,13 @@ button.fetch-now:hover {
   opacity: 0.45;
 }
 
+/* a STUCK muted header cell must stay opaque — rows scroll beneath it;
+   fade the text toward the background instead of the whole cell */
+.drawer thead th.col-muted {
+  opacity: 1;
+  color: color-mix(in srgb, var(--color-muted) 45%, var(--color-bg-raised));
+}
+
 /* section rhythm mirroring .view h3, so the drawer reads as one page */
 .drawer h3 {
   font-size: var(--scale-body);
