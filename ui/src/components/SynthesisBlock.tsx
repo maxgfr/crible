@@ -116,6 +116,9 @@ export function SynthesisBlock({
 }) {
   const { families, attention, decidable, total } = synthesize(latest);
   const composite = numeric(latest, "composite_rank");
+  const thin = decidable < THIN_DATA_BELOW;
+  const audited = String(latest.audited_fields ?? "").length > 0;
+  const crawled = String(latest.provider ?? "").includes("yfinance");
   const missingInputs = String(latest.missing_inputs ?? "")
     .split(",")
     .filter(Boolean)
@@ -138,19 +141,40 @@ export function SynthesisBlock({
         </div>
         <RankBars row={latest} />
       </div>
+      {thin && (
+        <div className="coverage-note" role="status">
+          <p>
+            Partial data — {decidable} of {total} checks decidable.
+          </p>
+          <p className="meta">
+            {audited
+              ? "Audited filing ingested; the keyless crawl hasn't reached this listing yet — fields fill as it advances."
+              : crawled
+                ? "Crawled quotes only; no audited filing matched yet."
+                : "Awaiting the first data pass for this listing."}
+          </p>
+        </div>
+      )}
       <div className="synthesis-families">
-        {families.map((family) => (
-          <div key={family.name} className="synthesis-family">
-            <span className="synthesis-family-name">{family.name}</span>
-            <span className="num-good">{family.good} ✓</span>
-            <span className="num-bad">{family.bad} ✗</span>
-            <span className="num-warn">{family.warn} !</span>
-            <span className="meta">
-              {family.missing} — · of {family.total}
-            </span>
-            {family.name === "Solvency & forensics" && <PiotroskiSparkline periods={periods} />}
-          </div>
-        ))}
+        {families.map((family) =>
+          family.missing === family.total ? (
+            <div key={family.name} className="synthesis-family">
+              <span className="synthesis-family-name">{family.name}</span>
+              <span className="meta">no data yet</span>
+            </div>
+          ) : (
+            <div key={family.name} className="synthesis-family">
+              <span className="synthesis-family-name">{family.name}</span>
+              <span className="num-good">{family.good} ✓</span>
+              <span className="num-bad">{family.bad} ✗</span>
+              <span className="num-warn">{family.warn} !</span>
+              <span className="meta">
+                {family.missing} — · of {family.total}
+              </span>
+              {family.name === "Solvency & forensics" && <PiotroskiSparkline periods={periods} />}
+            </div>
+          ),
+        )}
       </div>
       {attention.length > 0 && (
         <ul className="attention-list">
@@ -167,11 +191,8 @@ export function SynthesisBlock({
           ))}
         </ul>
       )}
-      {decidable < THIN_DATA_BELOW && (
-        <p className="meta">
-          Only {decidable} of {total} checks decidable — thin data
-          {missingInputs.length ? ` (missing inputs: ${missingInputs.join(", ")}…)` : ""}.
-        </p>
+      {thin && missingInputs.length > 0 && (
+        <p className="meta">Missing inputs: {missingInputs.join(", ")}…</p>
       )}
     </section>
   );

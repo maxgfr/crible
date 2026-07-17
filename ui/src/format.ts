@@ -23,6 +23,21 @@ const INVERTED_GROWTH = new Set([
   "net_debt_to_ebitda_ratio_growth",
 ]);
 
+// P&L flows, margins, returns and yields where a NEGATIVE value is a loss
+// by definition — the minus sign is the non-color half of the verdict.
+// Positive stays neutral (profitable is the baseline, not a win to paint);
+// balance-sheet stocks, prices and ranks are never sign-colored.
+const NEGATIVE_IS_BAD = new Set([
+  "gross_profit", "operating_income", "ebitda", "net_income",
+  "operating_cashflow", "free_cash_flow",
+  "ttm_net_income", "ttm_operating_cashflow", "ttm_free_cash_flow",
+  "gross_margin", "operating_margin", "ebitda_margin", "net_profit_margin",
+  "fcf_margin",
+  "return_on_equity", "return_on_assets", "return_on_invested_capital",
+  "earnings_yield", "free_cash_flow_yield", "ttm_fcf_yield",
+  "shareholder_yield", "greenblatt_earnings_yield", "greenblatt_roc",
+]);
+
 export type VerdictKind = keyof typeof FLAGS;
 
 /** THE threshold table — grid, drawer and synthesis all read this one
@@ -88,6 +103,9 @@ export function formatCell(column: string, value: unknown): FormattedCell {
     if (kind) return verdict(text, kind);
     if (VERDICT_COLUMNS.includes(column as (typeof VERDICT_COLUMNS)[number])) {
       return { text, className: "", flag: "" }; // mid-band: neutral, no glyph
+    }
+    if (NEGATIVE_IS_BAD.has(column)) {
+      return { text, className: value < 0 ? "num-bad" : "", flag: "" };
     }
     if (column.endsWith("_growth") || column.endsWith("_cagr_3y")) {
       const goodWhenUp = !INVERTED_GROWTH.has(column);

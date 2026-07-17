@@ -11,6 +11,7 @@ import {
 import { useMemo } from "react";
 import { fieldLabel } from "../data/field-catalog";
 import { formatCell } from "../format";
+import { ZeroDiagnosis } from "./ZeroDiagnosis";
 
 type Row = Record<string, unknown>;
 
@@ -24,6 +25,8 @@ interface Props {
   onSort?: (column: string) => void;
   /** permalink for a symbol's drawer (keeps the current screen in the URL) */
   hrefFor?: (symbol: string) => string;
+  /** the query that produced these rows — powers the zero-result funnel */
+  query?: string;
 }
 
 function ariaSort(sort: string | null | undefined, column: string): "ascending" | "descending" | undefined {
@@ -32,7 +35,7 @@ function ariaSort(sort: string | null | undefined, column: string): "ascending" 
   return undefined;
 }
 
-export function ResultsGrid({ rows, columns, selected, onSelect, sort, onSort, hrefFor }: Props) {
+export function ResultsGrid({ rows, columns, selected, onSelect, sort, onSort, hrefFor, query }: Props) {
   const helper = createColumnHelper<Row>();
   const linkFor = hrefFor ?? ((symbol: string) => `#/company/${encodeURIComponent(symbol)}`);
   const tableColumns = useMemo(
@@ -88,6 +91,7 @@ export function ResultsGrid({ rows, columns, selected, onSelect, sort, onSort, h
           No matching rows — loosen a clause, or check coverage in the{" "}
           <a href="#/status">Status view</a>.
         </p>
+        {query ? <ZeroDiagnosis query={query} /> : null}
       </div>
     );
   }

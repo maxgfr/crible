@@ -316,7 +316,15 @@ button.fetch-now:hover {
   }
 }
 
-.drawer h2 { margin-top: 0; font-size: var(--scale-h1); }
+.drawer h2 {
+  margin-top: 0;
+  font-size: var(--scale-h1);
+  /* name + country/sector badges breathe instead of gluing together */
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
 
 .drawer table {
   width: 100%;
@@ -730,6 +738,54 @@ table.inventory td.note {
 
 .synthesis-hero .rank-bars {
   flex: 1;
+  font-size: var(--scale-small);
+}
+
+/* zero-result funnel: the per-clause survivor table in the empty state */
+.zero-diagnosis {
+  margin-top: var(--space-3);
+  max-width: 560px;
+}
+
+.zero-diagnosis table {
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--scale-small);
+}
+
+.zero-diagnosis th,
+.zero-diagnosis td {
+  padding: var(--space-1) var(--space-3) var(--space-1) 0;
+  text-align: left;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-muted) 25%, transparent);
+}
+
+.zero-diagnosis td:nth-child(n + 2),
+.zero-diagnosis th:nth-child(n + 2) {
+  text-align: right;
+}
+
+.zero-diagnosis-killer td {
+  background: color-mix(in srgb, var(--color-warn) 10%, transparent);
+}
+
+/* thin-data coverage state: a quiet framed note, not a footnote — explains
+   WHY the checks are silent instead of a wall of dashes */
+.coverage-note {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-muted) 35%, transparent);
+  border-radius: var(--radius-md, 4px);
+  background: color-mix(in srgb, var(--color-muted) 8%, transparent);
+}
+
+.coverage-note p {
+  margin: 0;
+}
+
+.coverage-note p:first-child {
+  color: var(--color-fg);
   font-size: var(--scale-small);
 }
 

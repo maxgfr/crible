@@ -362,6 +362,7 @@ export default function App() {
             <ResultsGrid
               rows={result?.rows ?? []}
               columns={columns}
+              query={ranQuery ?? undefined}
               selected={route.company}
               onSelect={(symbol) =>
                 navigate({ view: "screener", company: symbol, q: ranQuery, sort })

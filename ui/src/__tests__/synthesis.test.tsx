@@ -86,15 +86,27 @@ describe("SynthesisBlock", () => {
     target.remove();
   });
 
-  it("says so when the composite rank is missing and data is thin", () => {
+  it("explains coverage when data is thin — audited-only listing", () => {
     render(
       <SynthesisBlock
-        latest={{ missing_inputs: "total_assets,net_income,inventory" }}
+        latest={{
+          missing_inputs: "total_assets,net_income,inventory",
+          audited_fields: "revenue,net_income",
+          provider: "esef",
+        }}
         periods={[]}
       />,
     );
     expect(rtl.getByText(/not ranked — missing pillar inputs/)).toBeInTheDocument();
-    expect(rtl.getByText(/Only 0 of 13 checks decidable/)).toBeInTheDocument();
+    expect(rtl.getByText(/Partial data — 0 of 13 checks decidable/)).toBeInTheDocument();
+    expect(rtl.getByText(/Audited filing ingested/)).toBeInTheDocument();
     expect(rtl.getByText(/total_assets, net_income, inventory/)).toBeInTheDocument();
+    // families with nothing to say collapse to one quiet line each
+    expect(rtl.getAllByText("no data yet")).toHaveLength(3);
+  });
+
+  it("explains coverage when nothing has been ingested at all", () => {
+    render(<SynthesisBlock latest={{}} periods={[]} />);
+    expect(rtl.getByText(/Awaiting the first data pass/)).toBeInTheDocument();
   });
 });

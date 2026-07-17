@@ -105,3 +105,15 @@ describe("formatCell — the verdict table", () => {
     expect(formatCell("net_debt_to_ebitda_ratio_growth", -0.3).className).toBe("num-good");
   });
 });
+
+test("negative P&L, margin, return and yield figures read as losses", () => {
+  expect(formatCell("net_income", -5e8).className).toBe("num-bad");
+  expect(formatCell("net_income", 5e8).className).toBe("");
+  expect(formatCell("fcf_margin", -0.12).className).toBe("num-bad");
+  expect(formatCell("free_cash_flow", -1e6).className).toBe("num-bad");
+  expect(formatCell("return_on_equity", -0.05).className).toBe("num-bad");
+  expect(formatCell("earnings_yield", -0.02).className).toBe("num-bad");
+  // ranks, prices and balance-sheet stocks are never sign-colored
+  expect(formatCell("composite_rank", 65).className).toBe("");
+  expect(formatCell("total_debt", 2e9).className).toBe("");
+});
