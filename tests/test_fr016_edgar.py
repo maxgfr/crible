@@ -605,3 +605,15 @@ def test_fr016_audited_deep_history_reaches_the_final_snapshot(tmp_path) -> None
     snapshot = build_snapshot(tmp_path, symbols=["DEEP"])
     assert len(snapshot) == 8
     assert snapshot.iloc[-1]["revenue_growth"] == pytest.approx(0.05)
+
+
+def test_fr016_debt_current_maps_to_the_sided_canonical_column() -> None:
+    facts = {
+        "facts": {
+            "us-gaap": {
+                "DebtCurrent": {"units": {"USD": [_fact(None, "2023-12-30", 3e8)]}},
+            }
+        }
+    }
+    frames = facts_to_frames(facts)
+    assert frames[("balance", "annual")].loc[0, "CurrentDebt"] == 3e8

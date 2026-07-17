@@ -818,3 +818,30 @@ def test_fr003_buyback_only_shareholder_yield_survives_a_dividend_free_cashflow(
     dividends_no_ocf["operating_cashflow"] = [float("nan")] * 4
     out = compute_extras(dividends_no_ocf, price).loc["2025"]
     assert out["shareholder_yield"] == pytest.approx((52.0 + 10.0 * 10.0) / 1000.0)
+
+
+def test_fr003_total_debt_derives_from_the_sided_audited_tags() -> None:
+    """Audited sources never file a TotalDebt aggregate; the sum of the two
+    sided tags is exact when both exist — a missing side keeps honest NaN
+    (LTD alone would understate leverage and EV)."""
+    from crible.compute.canonical import build_canonical
+
+    both = build_canonical({
+        ("balance", "annual"): pd.DataFrame(
+            {"period": ["2024"], "LongTermDebt": [1.5e9], "CurrentDebt": [3e8]}
+        )
+    })
+    assert both.loc["2024", "total_debt"] == 1.8e9
+    assert both.loc["2024", "short_term_debt"] == 3e8
+
+    one_side = build_canonical({
+        ("balance", "annual"): pd.DataFrame({"period": ["2024"], "LongTermDebt": [1.5e9]})
+    })
+    assert pd.isna(one_side.loc["2024", "total_debt"])
+
+    provider_wins = build_canonical({
+        ("balance", "annual"): pd.DataFrame(
+            {"period": ["2024"], "TotalDebt": [2e9], "LongTermDebt": [1.5e9], "CurrentDebt": [3e8]}
+        )
+    })
+    assert provider_wins.loc["2024", "total_debt"] == 2e9

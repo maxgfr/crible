@@ -108,6 +108,9 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
     # LongTermDebtAndCapitalLeaseObligation alias in canonical.py.
     "LongTermDebtNoncurrent": ("LongTermDebt", "balance"),
     "LongTermDebtAndCapitalLeaseObligations": ("LongTermDebt", "balance"),
+    # the clean current-side aggregate (current LTD portion + short-term
+    # borrowings) → canonical short_term_debt → audited total_debt derivation
+    "DebtCurrent": ("CurrentDebt", "balance"),
     "Goodwill": ("Goodwill", "balance"),
     # short-term investments — completes Dechow's RSST/FIN inputs on
     # reconciled crawled symbols (audited-only Dechow still needs total_debt,

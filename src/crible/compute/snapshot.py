@@ -307,7 +307,8 @@ BASE_SCHEMA_NAME = "base-schema.json"
 # 5: Dechow F-Score (Model 1 accounting core) — 7 components + F
 # 6: TTM v1 — quarterly flow sums + P/E·P/S·FCF-yield (TTM) on the latest row
 # 7: 3-year CAGR columns (revenue_cagr_3y, net_income_cagr_3y)
-ENGINE_SCHEMA_VERSION = 7
+# 8: short_term_debt canonical field + audited total_debt derivation
+ENGINE_SCHEMA_VERSION = 8
 
 
 def _newest_raw_stamp(data_dir: Path | str, symbol: str) -> float:

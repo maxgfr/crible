@@ -45,6 +45,7 @@ FIELD_CANDIDATES: dict[str, list[str]] = {
     "gross_ppe": ["GrossPPE"],
     "total_debt": ["TotalDebt"],
     "long_term_debt": ["LongTermDebt", "LongTermDebtAndCapitalLeaseObligation"],
+    "short_term_debt": ["CurrentDebt", "CurrentDebtAndCapitalLeaseObligation"],
     "total_liabilities": ["TotalLiabilitiesNetMinorityInterest"],
     "total_equity": ["StockholdersEquity", "CommonStockEquity"],
     "retained_earnings": ["RetainedEarnings"],
@@ -106,6 +107,12 @@ def build_canonical(frames: dict[tuple[str, str], pd.DataFrame], freq: str = "an
         out["earnings_before_interest_and_taxes"] = (
             out["income_before_tax"] + out["interest_expense"]
         )
+    if out["total_debt"].isna().all():
+        # audited sources never file a TotalDebt aggregate (deliberately
+        # unmapped in edgar/esef — no clean tag); the sum of the two sided
+        # tags is exact when both exist, and a missing side keeps honest NaN
+        # (LTD alone would understate leverage and enterprise value)
+        out["total_debt"] = out["long_term_debt"] + out["short_term_debt"]
     if out["ebitda"].isna().all():
         out["ebitda"] = (
             out["earnings_before_interest_and_taxes"] + out["depreciation_and_amortization"]
