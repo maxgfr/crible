@@ -50,8 +50,10 @@ QUARTERLY_FORMS = ("10-Q", *ANNUAL_FORMS)
 # us-gaap concept → (yfinance-vocabulary column, statement type), so
 # compute/canonical.py picks the values up unchanged. Ordered: for a column
 # fed by several concepts (revenue, cost of revenue), the FIRST concept that
-# reported a period keeps it. Debt/dividends/EBIT are deliberately omitted —
-# no single clean us-gaap concept; reconcile only overrides what audited has.
+# reported a period keeps it — narrow/classic tags before broad variants.
+# TotalDebt and EBIT stay deliberately omitted (no single clean us-gaap
+# concept; EBIT derives from pretax + interest in canonical.py); reconcile
+# only overrides what audited has.
 CONCEPT_MAP: dict[str, tuple[str, str]] = {
     # income statement (duration facts)
     "Revenues": ("TotalRevenue", "income"),
@@ -65,6 +67,8 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
     "IncomeTaxExpenseBenefit": ("TaxProvision", "income"),
     "InterestExpense": ("InterestExpense", "income"),
     "WeightedAverageNumberOfSharesOutstandingBasic": ("BasicAverageShares", "income"),
+    # SG&A → Beneish SGAI on audited-only symbols
+    "SellingGeneralAndAdministrativeExpense": ("SellingGeneralAndAdministration", "income"),
     # pretax income (standard us-gaap tags, continuing operations — a small
     # documented deviation): unlocks the EBIT derivation (pretax + interest,
     # canonical.py) → Altman x3, Greenblatt yield, interest coverage for
@@ -84,7 +88,18 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
     "AccountsReceivableNetCurrent": ("AccountsReceivable", "balance"),
     "AccountsPayableCurrent": ("AccountsPayable", "balance"),
     "CashAndCashEquivalentsAtCarryingValue": ("CashAndCashEquivalents", "balance"),
+    # ASU 2016-18 combined tag (includes restricted cash — a documented
+    # approximation): many post-2016 filers report ONLY this one; the classic
+    # narrow tag above wins whenever both exist
+    "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents":
+        ("CashAndCashEquivalents", "balance"),
     "PropertyPlantAndEquipmentNet": ("NetPPE", "balance"),
+    # gross PPE → Montier's depreciation-rate flag on audited-only symbols
+    "PropertyPlantAndEquipmentGross": ("GrossPPE", "balance"),
+    # exactly yfinance's non-current LTD → Beneish LVGI + long_term_debt;
+    # the us-gaap `LongTermDebt` tag (includes current maturities) would
+    # double-count against CurrentLiabilities, so it stays out
+    "LongTermDebtNoncurrent": ("LongTermDebt", "balance"),
     "Goodwill": ("Goodwill", "balance"),
     # short-term investments — completes Dechow's RSST/FIN inputs on
     # reconciled crawled symbols (audited-only Dechow still needs total_debt,
@@ -95,11 +110,28 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
     # cash flow (duration facts)
     "NetCashProvidedByUsedInOperatingActivities": ("OperatingCashFlow", "cashflow"),
     "PaymentsToAcquirePropertyPlantAndEquipment": ("CapitalExpenditure", "cashflow"),
+    "PaymentsToAcquireProductiveAssets": ("CapitalExpenditure", "cashflow"),
+    # D&A rides the cash-flow statement → EBITDA (EBIT + D&A, canonical.py),
+    # Beneish DEPI, Montier dep-rate. Combined DD&A first (the standard CF
+    # reconciliation tag), narrower variants after.
+    "DepreciationDepletionAndAmortization": ("DepreciationAndAmortization", "cashflow"),
+    "DepreciationAndAmortization": ("DepreciationAndAmortization", "cashflow"),
+    "DepreciationAmortizationAndAccretionNet": ("DepreciationAndAmortization", "cashflow"),
+    # dividends (common-stock-only first) → shareholder_yield, payout ratio
+    "PaymentsOfDividendsCommonStock": ("CashDividendsPaid", "cashflow"),
+    "PaymentsOfDividends": ("CashDividendsPaid", "cashflow"),
+    # equity issuance → Dechow's issuance flag
+    "ProceedsFromIssuanceOfCommonStock": ("CommonStockIssuance", "cashflow"),
 }
 
-# SEC reports capex as a positive payment; the canonical (yfinance) convention
-# is a negative outflow — build_canonical derives FCF as ocf + capex
-NEGATED_CONCEPTS = {"PaymentsToAcquirePropertyPlantAndEquipment"}
+# SEC reports payments as positive outflows; the canonical (yfinance)
+# convention is negative — build_canonical derives FCF as ocf + capex
+NEGATED_CONCEPTS = {
+    "PaymentsToAcquirePropertyPlantAndEquipment",
+    "PaymentsToAcquireProductiveAssets",
+    "PaymentsOfDividendsCommonStock",
+    "PaymentsOfDividends",
+}
 
 # canonical (yfinance-vocabulary) column → statement type, for frame assembly
 STATEMENT_OF = {column: stmt for column, stmt in CONCEPT_MAP.values()}

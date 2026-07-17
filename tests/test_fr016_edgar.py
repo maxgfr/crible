@@ -432,3 +432,66 @@ def test_fr016_snapshot_provenance_for_audited_only_symbols(tmp_path) -> None:
     )
     snapshot = build_snapshot(tmp_path, symbols=["AAPL"])
     assert set(snapshot["provider"]) == {"edgar"}  # not mislabeled yfinance
+
+
+def test_fr016_variant_tags_fill_beneish_and_yield_inputs() -> None:
+    facts = {
+        "facts": {
+            "us-gaap": {
+                "SellingGeneralAndAdministrativeExpense": {
+                    "units": {"USD": [_fact("2023-01-01", "2023-12-30", 3e9)]}
+                },
+                "DepreciationDepletionAndAmortization": {
+                    "units": {"USD": [_fact("2023-01-01", "2023-12-30", 5e8)]}
+                },
+                "PropertyPlantAndEquipmentGross": {
+                    "units": {"USD": [_fact(None, "2023-12-30", 2e9)]}
+                },
+                "LongTermDebtNoncurrent": {
+                    "units": {"USD": [_fact(None, "2023-12-30", 1e9)]}
+                },
+                "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents": {
+                    "units": {"USD": [_fact(None, "2023-12-30", 4e8)]}
+                },
+                "PaymentsToAcquireProductiveAssets": {
+                    "units": {"USD": [_fact("2023-01-01", "2023-12-30", 2e8)]}
+                },
+                "PaymentsOfDividendsCommonStock": {
+                    "units": {"USD": [_fact("2023-01-01", "2023-12-30", 1e8)]}
+                },
+                "ProceedsFromIssuanceOfCommonStock": {
+                    "units": {"USD": [_fact("2023-01-01", "2023-12-30", 5e7)]}
+                },
+            }
+        }
+    }
+    frames = facts_to_frames(facts)
+    income = frames[("income", "annual")]
+    assert income.loc[0, "SellingGeneralAndAdministration"] == 3e9
+    cashflow = frames[("cashflow", "annual")]
+    assert cashflow.loc[0, "DepreciationAndAmortization"] == 5e8
+    # SEC reports payments as positive outflows; canonical convention negates
+    assert cashflow.loc[0, "CapitalExpenditure"] == -2e8
+    assert cashflow.loc[0, "CashDividendsPaid"] == -1e8
+    assert cashflow.loc[0, "CommonStockIssuance"] == 5e7
+    balance = frames[("balance", "annual")]
+    assert balance.loc[0, "GrossPPE"] == 2e9
+    assert balance.loc[0, "LongTermDebt"] == 1e9
+    assert balance.loc[0, "CashAndCashEquivalents"] == 4e8
+
+
+def test_fr016_classic_cash_tag_outranks_the_restricted_variant() -> None:
+    facts = {
+        "facts": {
+            "us-gaap": {
+                "CashAndCashEquivalentsAtCarryingValue": {
+                    "units": {"USD": [_fact(None, "2023-12-30", 3e8)]}
+                },
+                "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents": {
+                    "units": {"USD": [_fact(None, "2023-12-30", 4e8)]}
+                },
+            }
+        }
+    }
+    frames = facts_to_frames(facts)
+    assert frames[("balance", "annual")].loc[0, "CashAndCashEquivalents"] == 3e8
