@@ -5,7 +5,7 @@ DSL and the same schema-derived whitelist as the CLI/API/UI — and expose NO
 crawl/refresh/compute: side effects stay out of the tool surface. Standard
 registration, after `crible bootstrap` pulled the published dataset:
 
-    claude mcp add crible -e CRIBLE_DATA_DIR=$HOME/crible-data -- crible mcp
+    claude mcp add crible -e CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp
 """
 
 from __future__ import annotations

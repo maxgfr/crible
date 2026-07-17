@@ -76,9 +76,9 @@ crible is a regular Python CLI (`[project.scripts]`); install it as a tool and r
 
 ```bash
 uv tool install git+https://github.com/maxgfr/crible    # or one-shot: uvx --from git+https://github.com/maxgfr/crible crible …
-crible --data-dir ~/crible-data bootstrap                # pull the FULL published dataset — no crawl
-crible --data-dir ~/crible-data screen "price_to_earnings_ratio <= 15 AND region = 'europe'"
-crible --data-dir ~/crible-data fields                   # every filterable column + type
+crible --data-dir ~/.crible-data bootstrap                # pull the FULL published dataset — no crawl
+crible --data-dir ~/.crible-data screen "price_to_earnings_ratio <= 15 AND region = 'europe'"
+crible --data-dir ~/.crible-data fields                   # every filterable column + type
 ```
 
 `--data-dir` (or `CRIBLE_DATA_DIR`) selects the dataset location; the default is `./data`
@@ -88,7 +88,7 @@ Agents can screen through MCP — a read-only tool surface (`screen`, `fields`, 
 `company`, `status`) over stdio:
 
 ```bash
-claude mcp add crible -e CRIBLE_DATA_DIR=$HOME/crible-data -- crible mcp
+claude mcp add crible -e CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp
 ```
 
 The repo also ships a [`crible-cli` agent skill](.claude/skills/crible-cli/SKILL.md) that

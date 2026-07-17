@@ -13,8 +13,8 @@ screener anywhere:
 
 ```bash
 uv tool install git+https://github.com/maxgfr/crible
-crible --data-dir ~/crible-data bootstrap
-crible --data-dir ~/crible-data screen "piotroski_f >= 7" --sort -composite_rank
+crible --data-dir ~/.crible-data bootstrap
+crible --data-dir ~/.crible-data screen "piotroski_f >= 7" --sort -composite_rank
 ```
 
 (One-shot alternative: `uvx --from git+https://github.com/maxgfr/crible crible …`.)
@@ -187,5 +187,5 @@ After any raw change, `crible compute` is what refreshes ratios/ranks. Check
 bootstrap:
 
 ```bash
-claude mcp add crible -e CRIBLE_DATA_DIR=$HOME/crible-data -- crible mcp
+claude mcp add crible -e CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp
 ```
