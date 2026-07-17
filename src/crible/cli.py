@@ -436,6 +436,12 @@ def refresh(
         help="Refetch ESEF filings older than N days (default 90; 0 = backfill"
         " mode, re-parse everything with the current concept map)",
     ),
+    esef_history: int = typer.Option(
+        3, "--esef-history",
+        help="Merge the N most recent annual ESEF filings per filer — each"
+        " older filing adds ~1 audited year (1 = newest only, the pre-0.12"
+        " behavior; depth-gated, paid once per filer)",
+    ),
     edgar_limit: int = typer.Option(25, "--edgar-limit", help="Max EDGAR enrichments this run"),
     edgar_bulk: bool = typer.Option(
         False, "--edgar-bulk",
@@ -473,6 +479,7 @@ def refresh(
     result = run_refresh(
         deadline_seconds=deadline, esef_limit=esef_limit, edgar_limit=edgar_limit,
         esef_refresh_seconds=esef_max_age_days * 86400 if esef_max_age_days >= 0 else None,
+        esef_history=esef_history,
         edgar_bulk=edgar_bulk, fsds_quarters=fsds_quarters,
         fetch_gleif=fetch_gleif, fetch_fx=fetch_fx,
         max_seconds=max_minutes * 60 if max_minutes > 0 else None,

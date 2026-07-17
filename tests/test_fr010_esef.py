@@ -5,6 +5,7 @@ audited-wins reconciliation with >5% discrepancy logging, unmatched counting.
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from crible.compute.reconcile import reconcile
 from crible.compute.snapshot import build_symbol_snapshot
@@ -158,6 +159,74 @@ def test_fr010_concept_collision_resolves_by_declared_precedence() -> None:
     frames = facts_to_frames(COLLISION_JSON)
     income = frames[("income", "annual")].set_index("period")
     assert income.loc["2024", "NetIncome"] == 600000.0
+
+
+# ------------------------------- dimensional RetainedEarnings recovery (SOCIE)
+
+
+def _equity_fact(concept: str, value: str, extra: dict | None = None) -> dict:
+    dims = {
+        "concept": concept,
+        "entity": "scheme:969500A1G9QKR8Q79815",
+        "period": "2025-01-01T00:00:00",  # Jan-1 instant → FY2024 close
+    }
+    dims.update(extra or {})
+    return {"value": value, "dimensions": dims}
+
+
+_RE_MEMBER = {"ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember"}
+
+
+def test_fr010_retained_earnings_recovered_from_equity_components_axis() -> None:
+    """IFRS filers tag retained earnings almost only dimensionally (SOCIE,
+    ComponentsOfEquityAxis) — the one narrow exception to the whole-entity
+    rule, because Altman x2 (→ the Quality pillar) depends on it."""
+    frames = facts_to_frames(
+        {
+            "facts": {
+                "equity-component": _equity_fact("ifrs-full:Equity", "300", _RE_MEMBER),
+            }
+        }
+    )
+    balance = frames[("balance", "annual")].set_index("period")
+    assert balance.loc["2024", "RetainedEarnings"] == 300.0
+    # the dimensional fact feeds RetainedEarnings ONLY — never StockholdersEquity
+    assert "StockholdersEquity" not in balance.columns
+
+    # some filers tag the component with the RetainedEarnings concept itself
+    frames = facts_to_frames(
+        {"facts": {"re-component": _equity_fact("ifrs-full:RetainedEarnings", "310", _RE_MEMBER)}}
+    )
+    assert frames[("balance", "annual")].set_index("period").loc["2024", "RetainedEarnings"] == 310.0
+
+
+def test_fr010_undimensioned_retained_earnings_outranks_dimensional_any_order() -> None:
+    dimensional = _equity_fact("ifrs-full:Equity", "300", _RE_MEMBER)
+    direct = _equity_fact("ifrs-full:RetainedEarnings", "280")
+    for facts in ({"a": dimensional, "b": direct}, {"a": direct, "b": dimensional}):
+        frames = facts_to_frames({"facts": facts})
+        balance = frames[("balance", "annual")].set_index("period")
+        assert balance.loc["2024", "RetainedEarnings"] == 280.0
+
+
+def test_fr010_other_members_and_extra_axes_stay_skipped() -> None:
+    frames = facts_to_frames(
+        {
+            "facts": {
+                "other-member": _equity_fact(
+                    "ifrs-full:Equity",
+                    "500",
+                    {"ifrs-full:ComponentsOfEquityAxis": "ifrs-full:IssuedCapitalMember"},
+                ),
+                "second-axis": _equity_fact(
+                    "ifrs-full:Equity",
+                    "600",
+                    {**_RE_MEMBER, "ifrs-full:SegmentsAxis": "something"},
+                ),
+            }
+        }
+    )
+    assert ("balance", "annual") not in frames
 
 
 # ------------------------------------------------------------- reconciliation
@@ -599,6 +668,15 @@ def test_fr010_widened_esef_reaches_scores_end_to_end() -> None:
                 "ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
                 5e7 * scale, year=year,
             ),
+            # dimensional SOCIE fact — the recovered RetainedEarnings path
+            {
+                "value": str(4e8 * scale),
+                "dimensions": {
+                    "concept": "ifrs-full:Equity",
+                    "period": f"{year + 1}-01-01T00:00:00",
+                    "ifrs-full:ComponentsOfEquityAxis": "ifrs-full:RetainedEarningsMember",
+                },
+            },
         ]
     frames = facts_to_frames(_wide_json(facts))
     snapshot = build_symbol_snapshot("EU.PA", frames, computed_at=1.0)
@@ -606,6 +684,253 @@ def test_fr010_widened_esef_reaches_scores_end_to_end() -> None:
     assert latest["free_cash_flow"] == 2e8 * 1.1 - 5e7 * 1.1
     assert latest["total_liabilities"] == 1.2e9 * 1.1
     assert latest["income_before_tax"] == 1.3e8 * 1.1
+    # recovered retained earnings reaches Altman x2 (→ the Quality pillar)
+    assert latest["retained_earnings"] == 4e8 * 1.1
+    assert latest["altman_x2_re_ta"] == pytest.approx((4e8 * 1.1) / (2e9 * 1.1))
+
+
+# ----------------------------------- deep history: multi-filing merge (FR-010)
+
+_LEI = "969500A1G9QKR8Q79815"
+
+
+def _history_filing(
+    period_end: str, date_added: str, *, lei: str = _LEI, tag_period: bool = True
+) -> dict:
+    attrs = {
+        "json_url": f"/{lei}/{period_end}/{date_added}.json",
+        "date_added": date_added,
+    }
+    if tag_period:
+        attrs["period_end"] = period_end
+    return {"attributes": attrs}
+
+
+def _revenue_doc(values_by_year: dict[int, float]) -> dict:
+    return _wide_json(
+        [_wide_fact("ifrs-full:Revenue", value, year=year) for year, value in values_by_year.items()]
+    )
+
+
+def test_fr010_select_history_filings_dedupes_orders_and_caps() -> None:
+    from crible.providers.esef import select_history_filings
+
+    fy2024 = _history_filing("2024-12-31", "2025-04-01")
+    fy2024_amended = _history_filing("2024-12-31", "2025-06-01")
+    fy2023 = _history_filing("2023-12-31", "2024-04-01")
+    fy2022 = _history_filing("2022-12-31", "2023-04-01")
+    scrambled = [fy2023, fy2024, fy2022, fy2024_amended]
+
+    picked = select_history_filings(scrambled, 2)
+    # amendments dedupe to the newest date_added; groups order newest-first
+    assert picked == [fy2024_amended, fy2023]
+    assert select_history_filings(scrambled, 10) == [fy2024_amended, fy2023, fy2022]
+
+    # period_end falls back to the json_url path convention /<LEI>/<period_end>/…
+    untagged = [
+        _history_filing("2023-12-31", "2024-04-01", tag_period=False),
+        _history_filing("2024-12-31", "2025-04-01", tag_period=False),
+    ]
+    assert [f["attributes"]["json_url"] for f in select_history_filings(untagged, 2)] == [
+        untagged[1]["attributes"]["json_url"],
+        untagged[0]["attributes"]["json_url"],
+    ]
+
+
+class _HistoryClient:
+    """Serves one xbrl-json doc per filing, keyed by json_url; counts fetches."""
+
+    def __init__(self, docs_by_url: dict[str, dict]) -> None:
+        self.docs = docs_by_url
+        self.fetched: list[str] = []
+
+    def fetch_xbrl_json(self, filing: dict) -> dict | None:
+        url = filing["attributes"]["json_url"]
+        self.fetched.append(url)
+        return self.docs.get(url)
+
+
+def _history_fixture() -> tuple[_HistoryClient, list[dict]]:
+    filings = [
+        _history_filing("2024-12-31", "2025-04-01"),
+        _history_filing("2023-12-31", "2024-04-01"),
+        _history_filing("2022-12-31", "2023-04-01"),
+    ]
+    docs = {
+        # each annual filing carries its reporting year + the comparative year;
+        # the 2023 comparative in the newest filing DIFFERS from the older
+        # filing's face value — the newest filing must win
+        filings[0]["attributes"]["json_url"]: _revenue_doc({2024: 1100.0, 2023: 999.0}),
+        filings[1]["attributes"]["json_url"]: _revenue_doc({2023: 1000.0, 2022: 900.0}),
+        filings[2]["attributes"]["json_url"]: _revenue_doc({2022: 901.0, 2021: 800.0}),
+    }
+    return _HistoryClient(docs), filings
+
+
+def test_fr010_fetch_history_frames_merges_older_filings_newest_wins() -> None:
+    from crible.providers.esef import fetch_history_frames
+
+    client, filings = _history_fixture()
+    frames = fetch_history_frames(client, filings, history=3)
+    income = frames[("income", "annual")].set_index("period")["TotalRevenue"]
+    assert income.loc["2024"] == 1100.0
+    assert income.loc["2023"] == 999.0  # newest filing wins the overlap
+    assert income.loc["2022"] == 900.0  # first older filing backfills
+    assert income.loc["2021"] == 800.0  # deepest filing adds one more year
+    assert len(client.fetched) == 3
+
+
+def test_fr010_history_one_short_circuits_to_the_newest_filing() -> None:
+    from crible.providers.esef import fetch_history_frames
+
+    client, filings = _history_fixture()
+    frames = fetch_history_frames(client, filings, history=1)
+    income = frames[("income", "annual")].set_index("period")["TotalRevenue"]
+    assert set(income.index) == {"2023", "2024"}
+    assert len(client.fetched) == 1
+
+
+def test_fr010_client_throttles_between_requests(monkeypatch) -> None:
+    from crible.providers import esef as esef_module
+
+    class _Http:
+        def get(self, url, params=None):
+            class _Resp:
+                def raise_for_status(self):
+                    pass
+
+                def json(self):
+                    return {"data": [], "meta": {"count": 0}}
+
+            return _Resp()
+
+    sleeps: list[float] = []
+    ticks = iter([0.0, 0.1, 0.2])  # 2nd request arrives 0.1s after the 1st
+    monkeypatch.setattr(esef_module.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(esef_module.time, "sleep", sleeps.append)
+
+    client = esef_module.EsefClient(http=_Http(), min_interval=0.5)
+    client.filings_index()
+    client.filings_index()
+    assert sleeps and sleeps[0] == pytest.approx(0.4)
+
+
+# ------------------------- deep history: depth-gated cycle & sweep (FR-010)
+
+
+def _deep_filings(lei: str) -> tuple[list[dict], dict[str, dict]]:
+    filings = [
+        _history_filing("2024-12-31", "2025-04-01", lei=lei),
+        _history_filing("2023-12-31", "2024-04-01", lei=lei),
+        _history_filing("2022-12-31", "2023-04-01", lei=lei),
+    ]
+    docs = {
+        filings[0]["attributes"]["json_url"]: _revenue_doc({2024: 1100.0, 2023: 999.0}),
+        filings[1]["attributes"]["json_url"]: _revenue_doc({2023: 1000.0, 2022: 900.0}),
+        filings[2]["attributes"]["json_url"]: _revenue_doc({2022: 901.0, 2021: 800.0}),
+    }
+    return filings, docs
+
+
+class _DeepClient:
+    """LEI + index client whose single filer has three annual filings."""
+
+    def __init__(self, lei: str) -> None:
+        self.filings, self.docs = _deep_filings(lei)
+        self.json_fetches = 0
+        self.lei_calls = 0
+
+    def filings_index(self, page_size: int = 100, page_number: int = 1):
+        if page_number > 1:
+            return [], 1
+        return [self.filings[0]], 1
+
+    def filings_for_lei(self, lei):
+        self.lei_calls += 1
+        return self.filings
+
+    def fetch_xbrl_json(self, filing):
+        self.json_fetches += 1
+        return self.docs[filing["attributes"]["json_url"]]
+
+
+def _esef_task_depth(tmp_path, symbol: str):
+    import duckdb as _duckdb
+
+    con = _duckdb.connect(str(tmp_path / "crible.duckdb"))
+    try:
+        row = con.execute(
+            "SELECT history_depth FROM esef_tasks WHERE symbol = ?", [symbol]
+        ).fetchone()
+        return row[0] if row else None
+    finally:
+        con.close()
+
+
+def test_fr010_cycle_merges_filing_history_and_records_depth(tmp_path, monkeypatch) -> None:
+    from crible.ingest.service import run_esef_cycle
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+    client = _DeepClient(LEI_ABN)
+    outcome = run_esef_cycle(
+        limit=10, client=client, mapping={"NL0011540547": LEI_ABN}, history=3
+    )
+    assert outcome["enriched"] == ["ABN.AS"]
+    assert client.json_fetches == 3
+    files = list(tmp_path.glob("raw/provider=esef/symbol=ABN.AS/income-annual-*.parquet"))
+    assert len(files) == 1  # ONE merged frame — raw newest-only semantics untouched
+    raw = pd.read_parquet(files[0])
+    assert sorted(raw["period"].astype(str)) == ["2021", "2022", "2023", "2024"]
+    assert raw.loc[raw["period"] == "2023", "TotalRevenue"].item() == 999.0  # newest wins
+    assert (raw["_history_depth"] == 3).all()
+    assert _esef_task_depth(tmp_path, "ABN.AS") == 3
+
+
+def test_fr010_sweep_depth_gate_requeues_and_then_rests(tmp_path, monkeypatch) -> None:
+    from crible.ingest.service import run_esef_sweep
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+    mapping = {"NL0011540547": LEI_ABN}
+
+    shallow = _DeepClient(LEI_ABN)
+    assert run_esef_sweep(limit=10, client=shallow, mapping=mapping, history=1)["enriched"] == ["ABN.AS"]
+    assert shallow.lei_calls == 0  # history=1 keeps the zero-extra-request path
+    assert shallow.json_fetches == 1
+    assert _esef_task_depth(tmp_path, "ABN.AS") == 1
+
+    # raising the requested depth makes the fresh filer due again — once
+    deep = _DeepClient(LEI_ABN)
+    outcome = run_esef_sweep(limit=10, client=deep, mapping=mapping, history=3)
+    assert outcome["enriched"] == ["ABN.AS"]
+    assert deep.lei_calls == 1 and deep.json_fetches == 3
+    files = list(tmp_path.glob("raw/provider=esef/symbol=ABN.AS/income-annual-*.parquet"))
+    raw = pd.read_parquet(max(files, key=lambda f: f.name))
+    assert sorted(raw["period"].astype(str)) == ["2021", "2022", "2023", "2024"]
+    assert _esef_task_depth(tmp_path, "ABN.AS") == 3
+
+    # satisfied depth: the next deep sweep fetches nothing
+    rest = _DeepClient(LEI_ABN)
+    assert run_esef_sweep(limit=10, client=rest, mapping=mapping, history=3)["enriched"] == []
+    assert rest.lei_calls == 0 and rest.json_fetches == 0
+
+
+def test_fr010_sweep_depth_survives_a_fresh_operational_db(tmp_path, monkeypatch) -> None:
+    """Recorded depth lives in the raw layer (_history_depth), not only in the
+    operational DB — a nightly CI run starting blank must not re-backfill
+    every filer."""
+    from crible.ingest.service import run_esef_sweep
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+    mapping = {"NL0011540547": LEI_ABN}
+    first = _DeepClient(LEI_ABN)
+    assert run_esef_sweep(limit=10, client=first, mapping=mapping, history=3)["enriched"] == ["ABN.AS"]
+
+    (tmp_path / "crible.duckdb").unlink()
+    _seed_sweep_universe(tmp_path, monkeypatch)
+    again = _DeepClient(LEI_ABN)
+    outcome = run_esef_sweep(limit=10, client=again, mapping=mapping, history=3)
+    assert outcome["enriched"] == []
+    assert again.lei_calls == 0 and again.json_fetches == 0
 
 
 def test_fr010_sweep_max_age_zero_refetches_fresh_symbols(tmp_path, monkeypatch) -> None:

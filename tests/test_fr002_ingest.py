@@ -290,6 +290,40 @@ def test_fr002_skip_identical_reuses_the_newest_version(tmp_path) -> None:
     assert other.name.startswith("balance-annual-")
 
 
+def test_fr002_compare_meta_columns_participate_in_skip_identical(tmp_path) -> None:
+    """The ESEF history backfill stamps `_history_depth` on the frame: identical
+    data at identical depth must keep the stamp stable, but a deeper backfill of
+    the same data must re-stamp ONCE (else filers with fewer filings than N
+    would be refetched forever)."""
+    frame = pd.DataFrame({"period": ["2025"], "revenue": [100.0]})
+    first = write_raw_statement(
+        tmp_path, symbol="CA.PA", provider="esef",
+        statement_type="income", freq="annual", frame=frame.assign(_history_depth=3),
+        fetched_at=1_000.0, skip_identical=True, compare_meta=("_history_depth",),
+    )
+    again = write_raw_statement(
+        tmp_path, symbol="CA.PA", provider="esef",
+        statement_type="income", freq="annual", frame=frame.assign(_history_depth=3),
+        fetched_at=2_000.0, skip_identical=True, compare_meta=("_history_depth",),
+    )
+    assert again == first  # same data, same depth → reused
+
+    deeper = write_raw_statement(
+        tmp_path, symbol="CA.PA", provider="esef",
+        statement_type="income", freq="annual", frame=frame.assign(_history_depth=5),
+        fetched_at=3_000.0, skip_identical=True, compare_meta=("_history_depth",),
+    )
+    assert deeper != first  # same data, deeper backfill → re-stamped once
+
+    # legacy callers (no compare_meta) still ignore every meta column
+    plain = write_raw_statement(
+        tmp_path, symbol="CA.PA", provider="esef",
+        statement_type="income", freq="annual", frame=frame.copy(),
+        fetched_at=4_000.0, skip_identical=True,
+    )
+    assert plain == deeper
+
+
 def test_fr002_keyed_provider_without_key_disables_cleanly(caplog) -> None:
     registry = ProviderRegistry(env={})
     keyed = KeyedProvider()

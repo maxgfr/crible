@@ -7,8 +7,8 @@ import time
 import duckdb
 
 from crible.ingest.enrich._base import (
-    ESEF_REFRESH_SECONDS, ESEF_SCHEMA, _connect, config, log, seed_tasks_from_raw,
-    update_heartbeat,
+    ESEF_DEFAULT_HISTORY, ESEF_REFRESH_SECONDS, _connect, config, ensure_esef_schema,
+    log, seed_tasks_from_raw, update_heartbeat,
 )
 
 # entities-index paging cap for the name→LEI→ISIN backfill: ~10k ESEF filers
@@ -50,12 +50,31 @@ def _backfill_nameless_isins(con: duckdb.DuckDBPyConnection, client, mapping: di
         return 0
 
 
-def run_esef_cycle(limit: int = 5, client=None, mapping: dict[str, str] | None = None) -> dict:
+def _write_history_frames(data, symbol: str, frames: dict, fetched_at: float, history: int) -> None:
+    """Persist merged multi-filing frames as provider='esef' raw, stamped with
+    the requested backfill depth ("backfilled to N or exhausted") — the depth
+    participates in the identity check so a deeper request re-stamps once and
+    filers with fewer filings than N never re-queue forever."""
+    from crible.ingest.raw import write_raw_statement
+
+    for (statement_type, freq), frame in frames.items():
+        write_raw_statement(
+            data, symbol=symbol, provider="esef", statement_type=statement_type,
+            freq=freq, frame=frame.assign(_history_depth=history), fetched_at=fetched_at,
+            skip_identical=True, compare_meta=("_history_depth",),
+        )
+
+
+def run_esef_cycle(
+    limit: int = 5, client=None, mapping: dict[str, str] | None = None,
+    history: int = ESEF_DEFAULT_HISTORY,
+) -> dict:
     """FR-010 — the ESEF enrichment cycle: EU companies whose ISIN resolves to
     an LEI (GLEIF file at data/isin-lei.csv, operator-provided) get audited
     figures pulled from filings.xbrl.org into provider='esef' raw statements.
-    Outages are recorded and the cycle resumes next time; unmatched listings
-    are counted, never errored."""
+    ``history`` merges the filer's N most recent filings (deep-history
+    backfill). Outages are recorded and the cycle resumes next time;
+    unmatched listings are counted, never errored."""
     from crible.providers.gleif import load_mapping, resolve_leis
 
     data = config.data_dir()
@@ -73,7 +92,7 @@ def run_esef_cycle(limit: int = 5, client=None, mapping: dict[str, str] | None =
 
     con = _connect()
     try:
-        con.execute(ESEF_SCHEMA)
+        ensure_esef_schema(con)
         companies = [
             {"symbol": s, "isin": i}
             for s, i in con.execute(
@@ -89,10 +108,12 @@ def run_esef_cycle(limit: int = 5, client=None, mapping: dict[str, str] | None =
                 "INSERT INTO esef_tasks (symbol, lei) VALUES (?, ?) ON CONFLICT (symbol) DO NOTHING",
                 [symbol, lei],
             )
+        # a filer is due on staleness OR when a deeper backfill is requested
         due = con.execute(
             "SELECT symbol, lei FROM esef_tasks WHERE last_fetched_at IS NULL"
-            " OR last_fetched_at < ? ORDER BY last_fetched_at NULLS FIRST LIMIT ?",
-            [time.time() - ESEF_REFRESH_SECONDS, limit],
+            " OR last_fetched_at < ? OR coalesce(history_depth, 1) < ?"
+            " ORDER BY last_fetched_at NULLS FIRST LIMIT ?",
+            [time.time() - ESEF_REFRESH_SECONDS, history, limit],
         ).fetchall()
         if not due:
             return outcome
@@ -101,29 +122,25 @@ def run_esef_cycle(limit: int = 5, client=None, mapping: dict[str, str] | None =
             from crible.providers.esef import EsefClient
 
             client = EsefClient()
-        from crible.ingest.raw import write_raw_statement
-        from crible.providers.esef import facts_to_frames
+        from crible.providers.esef import fetch_history_frames
 
         for symbol, lei in due:
             try:
                 filings = client.filings_for_lei(lei)
                 if not filings:
                     con.execute(
-                        "UPDATE esef_tasks SET last_fetched_at = ? WHERE symbol = ?",
-                        [time.time(), symbol],
+                        "UPDATE esef_tasks SET last_fetched_at = ?, history_depth = ?"
+                        " WHERE symbol = ?",
+                        [time.time(), history, symbol],
                     )
                     continue
-                xbrl = client.fetch_xbrl_json(filings[0])
-                frames = facts_to_frames(xbrl) if xbrl else {}
+                frames = fetch_history_frames(client, filings, history)
                 fetched_at = time.time()
-                for (statement_type, freq), frame in frames.items():
-                    write_raw_statement(
-                        data, symbol=symbol, provider="esef", statement_type=statement_type,
-                        freq=freq, frame=frame, fetched_at=fetched_at, skip_identical=True,
-                    )
+                _write_history_frames(data, symbol, frames, fetched_at, history)
                 con.execute(
-                    "UPDATE esef_tasks SET last_fetched_at = ? WHERE symbol = ?",
-                    [fetched_at, symbol],
+                    "UPDATE esef_tasks SET last_fetched_at = ?, history_depth = ?"
+                    " WHERE symbol = ?",
+                    [fetched_at, history, symbol],
                 )
                 if frames:
                     outcome["enriched"].append(symbol)
@@ -138,11 +155,12 @@ def run_esef_cycle(limit: int = 5, client=None, mapping: dict[str, str] | None =
         con.close()
 
 
-def _esef_due(con: duckdb.DuckDBPyConnection, symbol: str, cutoff: float) -> bool:
+def _esef_due(con: duckdb.DuckDBPyConnection, symbol: str, cutoff: float, history: int) -> bool:
     row = con.execute(
-        "SELECT last_fetched_at FROM esef_tasks WHERE symbol = ?", [symbol]
+        "SELECT last_fetched_at, coalesce(history_depth, 1) FROM esef_tasks WHERE symbol = ?",
+        [symbol],
     ).fetchone()
-    return row is None or row[0] is None or row[0] < cutoff
+    return row is None or row[0] is None or row[0] < cutoff or row[1] < history
 
 
 def run_esef_sweep(
@@ -150,14 +168,17 @@ def run_esef_sweep(
     page_size: int = 100, max_pages: int = 300,
     time_budget_seconds: float | None = None,
     refresh_seconds: float = ESEF_REFRESH_SECONDS,
+    history: int = ESEF_DEFAULT_HISTORY,
 ) -> dict:
     """FR-010 at index scale: walk filings.xbrl.org's FULL index (newest
     first) instead of querying one LEI at a time — every request lands on a
     real filing, so the whole EU/EEA ESEF gisement (~25k filings) is
     coverable in a few nightly runs. Filers outside the universe are counted
     and skipped; dual listings sharing one LEI are all enriched; freshness
-    (esef_tasks, 90 days) prevents refetching. Outages resume next run."""
-    from crible.providers.esef import facts_to_frames, filing_lei
+    (esef_tasks, 90 days) prevents refetching; ``history`` > 1 additionally
+    fetches the filer's older filings (deep backfill, depth-gated so it is
+    paid once per filer). Outages resume next run."""
+    from crible.providers.esef import facts_to_frames, fetch_history_frames, filing_lei
     from crible.providers.gleif import load_mapping
 
     data = config.data_dir()
@@ -195,7 +216,7 @@ def run_esef_sweep(
 
     con = _connect()
     try:
-        con.execute(ESEF_SCHEMA)
+        ensure_esef_schema(con)
         outcome["backfilled"] = _backfill_nameless_isins(con, client, mapping)
         rows = con.execute(
             "SELECT symbol, isin FROM companies"
@@ -215,9 +236,8 @@ def run_esef_sweep(
         seed_tasks_from_raw(
             con, data, provider="esef", table="esef_tasks", key_column="lei",
             keys={s: lei for lei, symbols in by_lei.items() for s in symbols},
+            history_column="history_depth",
         )
-
-        from crible.ingest.raw import write_raw_statement
 
         # refresh_seconds=0 is the BACKFILL mode: every matched filing is due
         # again — how a widened concept map reaches already-fetched filings
@@ -249,29 +269,31 @@ def run_esef_sweep(
                 if not symbols:
                     outcome["skipped_unknown"] += 1
                     continue
-                due = [s for s in symbols if _esef_due(con, s, cutoff)]
+                due = [s for s in symbols if _esef_due(con, s, cutoff, history)]
                 if not due:
                     continue
                 try:
-                    xbrl = client.fetch_xbrl_json(filing)
-                    frames = facts_to_frames(xbrl) if xbrl else {}
+                    if history > 1 and hasattr(client, "filings_for_lei"):
+                        # deep backfill: enumerate the filer's filings and merge
+                        # the N most recent (one filings_for_lei + ≤N fetches)
+                        filings = client.filings_for_lei(lei) or [filing]
+                        frames = fetch_history_frames(client, filings, history)
+                    else:
+                        xbrl = client.fetch_xbrl_json(filing)
+                        frames = facts_to_frames(xbrl) if xbrl else {}
                 except Exception as exc:  # noqa: BLE001
                     outcome["outage"] = f"{lei}: {exc}"
                     log.warning("esef sweep: outage on %s: %s — resuming next run", lei, exc)
                     return outcome
                 fetched_at = time.time()
                 for symbol in due:
-                    for (statement_type, freq), frame in frames.items():
-                        write_raw_statement(
-                            data, symbol=symbol, provider="esef",
-                            statement_type=statement_type, freq=freq,
-                            frame=frame, fetched_at=fetched_at, skip_identical=True,
-                        )
+                    _write_history_frames(data, symbol, frames, fetched_at, history)
                     con.execute(
-                        "INSERT INTO esef_tasks (symbol, lei, last_fetched_at) VALUES (?, ?, ?)"
-                        " ON CONFLICT (symbol) DO UPDATE SET"
-                        " last_fetched_at = excluded.last_fetched_at",
-                        [symbol, lei, fetched_at],
+                        "INSERT INTO esef_tasks (symbol, lei, last_fetched_at, history_depth)"
+                        " VALUES (?, ?, ?, ?) ON CONFLICT (symbol) DO UPDATE SET"
+                        " last_fetched_at = excluded.last_fetched_at,"
+                        " history_depth = excluded.history_depth",
+                        [symbol, lei, fetched_at, history],
                     )
                     if frames:
                         outcome["enriched"].append(symbol)

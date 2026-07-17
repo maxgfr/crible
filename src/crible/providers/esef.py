@@ -10,10 +10,13 @@ values at reconciliation time.
 from __future__ import annotations
 
 import logging
+import time
 from datetime import date
 from typing import Any
 
 import pandas as pd
+
+from crible.providers.audited import merge_audited
 
 log = logging.getLogger("crible.providers.esef")
 
@@ -104,6 +107,23 @@ NEGATED_CONCEPTS = {
     "ifrs-full:DividendsPaidClassifiedAsFinancingActivities",
 }
 
+# The one narrow exception to the whole-entity rule: IFRS filers tag retained
+# earnings almost only dimensionally (SOCIE, ComponentsOfEquityAxis), so the
+# blanket dimensional skip starves Altman x2 → the Quality pillar for EU names.
+# A fact qualifies only when its SINGLE extra dimension is this exact
+# axis/member pair — extension axes/members never match the ifrs-full QNames
+# and stay conservatively dropped. No double-counting: the value fills one
+# canonical column, never a sum. IAS 8 restatements can make the Jan-1 opening
+# instant differ from the prior close — same exposure class as the documented
+# parent-company caveat above.
+_EQUITY_COMPONENTS_AXIS = "ifrs-full:ComponentsOfEquityAxis"
+DIMENSIONAL_RECOVERY: dict[tuple[str, str, str], tuple[str, str]] = {
+    ("ifrs-full:Equity", _EQUITY_COMPONENTS_AXIS, "ifrs-full:RetainedEarningsMember"):
+        ("RetainedEarnings", "balance"),
+    ("ifrs-full:RetainedEarnings", _EQUITY_COMPONENTS_AXIS, "ifrs-full:RetainedEarningsMember"):
+        ("RetainedEarnings", "balance"),
+}
+
 # canonical (yfinance-vocabulary) column → statement type, for frame assembly
 STATEMENT_OF = {canonical: stmt for canonical, stmt in CONCEPT_MAP.values()}
 
@@ -127,11 +147,21 @@ def facts_to_frames(xbrl_json: dict[str, Any]) -> dict[tuple[str, str], pd.DataF
     for fact in facts.values():
         dimensions = fact.get("dimensions", {})
         concept = dimensions.get("concept")
-        mapped = CONCEPT_MAP.get(concept)
-        if mapped is None:
-            continue
-        if any(k not in ("concept", "entity", "period", "unit", "language") for k in dimensions):
-            continue  # segmented/dimensional fact — skip, whole-entity only
+        extra = [k for k in dimensions if k not in ("concept", "entity", "period", "unit", "language")]
+        if extra:
+            # segmented/dimensional fact — whole-entity only, except the
+            # declared DIMENSIONAL_RECOVERY pairs (single known axis/member)
+            if len(extra) != 1:
+                continue
+            mapped = DIMENSIONAL_RECOVERY.get((concept, extra[0], str(dimensions.get(extra[0]))))
+            if mapped is None:
+                continue
+            rank = len(CONCEPT_MAP)  # below every direct concept — undimensioned wins
+        else:
+            mapped = CONCEPT_MAP.get(concept)
+            if mapped is None:
+                continue
+            rank = CONCEPT_RANK[concept]
         period = dimensions.get("period", "")
         year = _fiscal_year(period)
         if year is None:
@@ -147,7 +177,6 @@ def facts_to_frames(xbrl_json: dict[str, Any]) -> dict[tuple[str, str], pd.DataF
                 log.warning("esef: negated concept %s already negative (%s)", concept, value)
             value = -value
         column, _ = mapped
-        rank = CONCEPT_RANK[concept]
         key = (year, column)
         if key in claimed and claimed[key] <= rank:
             continue  # an equal-or-earlier-precedence concept already set this column
@@ -212,13 +241,77 @@ def filing_lei(filing: dict) -> str | None:
     return segment if len(segment) == 20 and segment.isalnum() else None
 
 
-class EsefClient:
-    """Thin network client — kept separate so tests inject fixtures."""
+def _filing_period_end(filing: dict) -> str:
+    """Reporting period of a filing — the period_end attribute, falling back
+    to the second json_url path segment (/<LEI>/<period_end>/…)."""
+    attributes = filing.get("attributes", {})
+    period = str(attributes.get("period_end") or "")
+    if period:
+        return period
+    parts = str(attributes.get("json_url") or "").lstrip("/").split("/")
+    return parts[1] if len(parts) > 1 else ""
 
-    def __init__(self, http=None) -> None:
+
+def select_history_filings(filings: list[dict], history: int) -> list[dict]:
+    """The filer's N most recent reporting periods, one filing each.
+
+    Amendments and multi-language duplicates share a period_end — the newest
+    date_added wins within each group; groups order newest period first."""
+    by_period: dict[str, dict] = {}
+    for filing in filings:
+        period = _filing_period_end(filing)
+        if not period:
+            continue
+        current = by_period.get(period)
+        added = str(filing.get("attributes", {}).get("date_added") or "")
+        current_added = str(current.get("attributes", {}).get("date_added") or "") if current else ""
+        if current is None or added > current_added:
+            by_period[period] = filing
+    return [by_period[p] for p in sorted(by_period, reverse=True)[:history]]
+
+
+def fetch_history_frames(
+    client: "EsefClient", filings: list[dict], history: int
+) -> dict[tuple[str, str], pd.DataFrame]:
+    """Fetch + parse the filer's N most recent filings and merge their annual
+    frames: each older filing backfills ~1 audited year (its comparatives),
+    the newest filing wins every overlap. ``history <= 1`` keeps the
+    pre-backfill single-filing path (the API's newest-first order), as do
+    filings whose metadata yields no reporting period at all."""
+    picked = filings[:1] if history <= 1 else (select_history_filings(filings, history) or filings[:1])
+    frame_dicts = []
+    for filing in picked:
+        xbrl = client.fetch_xbrl_json(filing)
+        frames = facts_to_frames(xbrl) if xbrl else {}
+        if frames:
+            frame_dicts.append(frames)
+    if not frame_dicts:
+        return {}
+    return merge_audited(frame_dicts[0], *frame_dicts[1:])
+
+
+class EsefClient:
+    """Thin network client — kept separate so tests inject fixtures.
+
+    ``min_interval`` throttles consecutive requests (filings.xbrl.org
+    publishes no hard limit; ~2 req/s is polite) — the history backfill
+    multiplies fetches per filer, so politeness lives here, once."""
+
+    def __init__(self, http=None, min_interval: float = 0.5) -> None:
         import httpx
 
         self._http = http or httpx.Client(timeout=30, follow_redirects=True)
+        self._min_interval = min_interval
+        self._last_request: float | None = None
+
+    def _get(self, url: str, **kwargs):
+        if self._last_request is not None and self._min_interval > 0:
+            wait = self._min_interval - (time.monotonic() - self._last_request)
+            if wait > 0:
+                time.sleep(wait)
+        response = self._http.get(url, **kwargs)
+        self._last_request = time.monotonic()
+        return response
 
     def filings_index(self, page_size: int = 100, page_number: int = 1) -> tuple[list[dict], int]:
         """One page of the FULL filings index, newest first.
@@ -230,7 +323,7 @@ class EsefClient:
             "page[number]": page_number,
             "sort": "-date_added",
         }
-        response = self._http.get(FILINGS_API, params=params)
+        response = self._get(FILINGS_API, params=params)
         response.raise_for_status()
         payload = response.json()
         count = int(payload.get("meta", {}).get("count", 0) or 0)
@@ -245,7 +338,7 @@ class EsefClient:
         listed here even when FinanceDatabase ships its listing without an
         ISIN. Rows without an identifier are dropped."""
         params = {"page[size]": page_size, "page[number]": page_number}
-        response = self._http.get(ENTITIES_API, params=params)
+        response = self._get(ENTITIES_API, params=params)
         response.raise_for_status()
         payload = response.json()
         count = int(payload.get("meta", {}).get("count", 0) or 0)
@@ -268,7 +361,7 @@ class EsefClient:
             ),
             "sort": "-date_added",
         }
-        response = self._http.get(FILINGS_API, params=params)
+        response = self._get(FILINGS_API, params=params)
         response.raise_for_status()
         return response.json().get("data", [])
 
@@ -279,7 +372,7 @@ class EsefClient:
             return None
         if json_url.startswith("/"):
             json_url = "https://filings.xbrl.org" + json_url
-        response = self._http.get(json_url)
+        response = self._get(json_url)
         response.raise_for_status()
         return response.json()
 

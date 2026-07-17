@@ -20,6 +20,7 @@ from crible.compute.snapshot import build_snapshot_incremental, publish_snapshot
 from crible.ingest.backoff import BackoffPolicy
 from crible.ingest.budget import TokenBucket
 from crible.ingest.crawler import Crawler, CrawlOutcome
+from crible.ingest.enrich._base import ESEF_DEFAULT_HISTORY
 from crible.ingest.enrichment import (  # re-exported for the CLI/tests/site_export
     run_companies_house,
     run_cvm,
@@ -514,6 +515,7 @@ def run_refresh(
     edgar_limit: int = 25,
     *,
     esef_refresh_seconds: float | None = None,
+    esef_history: int = ESEF_DEFAULT_HISTORY,
     edgar_bulk: bool = False,
     fsds_quarters: int = 0,
     fetch_gleif: bool = False,
@@ -646,7 +648,8 @@ def run_refresh(
             {} if esef_refresh_seconds is None else {"refresh_seconds": esef_refresh_seconds}
         )
         result["esef"] = run_esef_sweep(
-            limit=esef_limit, time_budget_seconds=stage_budget(), **esef_kwargs
+            limit=esef_limit, time_budget_seconds=stage_budget(),
+            history=esef_history, **esef_kwargs,
         )
     except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
         log.warning("esef sweep failed: %s", exc)

@@ -190,6 +190,27 @@ def test_run_refresh_max_seconds_reserves_time_for_compute(refresh_env) -> None:
     assert "snapshot_rows" in result  # compute always runs
 
 
+def test_run_refresh_plumbs_esef_history_to_the_sweep(refresh_env, monkeypatch) -> None:
+    import crible.ingest.service as service
+
+    recorded: dict = {}
+
+    def fake_sweep(**kwargs):
+        recorded.update(kwargs)
+        return {"enriched": [], "skipped": "test", "outage": None}
+
+    monkeypatch.setattr(service, "run_esef_sweep", fake_sweep)
+    run_refresh(
+        deadline_seconds=60,
+        fetch_universe=fixture_frame,
+        provider=FakeYfProvider(),
+        price_provider=FakePriceProvider(),
+        edgar_client=FakeEdgarDirectory(),
+        esef_history=5,
+    )
+    assert recorded.get("history") == 5
+
+
 def test_run_refresh_falls_back_to_last_good_universe(refresh_env) -> None:
     # a previous successful run left a universe.parquet behind
     seed = duckdb.connect()

@@ -57,6 +57,7 @@ def write_raw_statement(
     frame: pd.DataFrame,
     fetched_at: float,
     skip_identical: bool = False,
+    compare_meta: tuple[str, ...] = (),
 ) -> Path:
     """Persist one fetched statement frame as a new immutable raw file.
 
@@ -67,6 +68,11 @@ def write_raw_statement(
     compute stays O(actually-changed) and the published tarball stops
     churning. A dtype round-trip mismatch simply falls through to a write —
     safe, never lossy.
+
+    ``compare_meta`` names ``_``-prefixed columns the caller placed in the
+    frame that must participate in the identity check (e.g. the ESEF
+    ``_history_depth``): a change in such a column re-stamps once even when
+    the data is unchanged.
     """
     safe_symbol = symbol.replace("/", "_")
     directory = Path(data_dir) / "raw" / f"provider={provider}" / f"symbol={safe_symbol}"
@@ -74,9 +80,13 @@ def write_raw_statement(
     if skip_identical:
         existing = _newest_matching(directory, statement_type, freq)
         if existing is not None:
-            old = pd.read_parquet(existing)
-            old = old.drop(columns=[c for c in old.columns if c.startswith("_")])
-            if old.reset_index(drop=True).equals(frame.reset_index(drop=True)):
+
+            def strip(df: pd.DataFrame) -> pd.DataFrame:
+                dropped = [c for c in df.columns if c.startswith("_") and c not in compare_meta]
+                return df.drop(columns=dropped)
+
+            old = strip(pd.read_parquet(existing))
+            if old.reset_index(drop=True).equals(strip(frame).reset_index(drop=True)):
                 return existing
     stamp = f"{int(fetched_at * 1000):015d}"
     final = directory / f"{statement_type}-{freq}-{stamp}.parquet"
