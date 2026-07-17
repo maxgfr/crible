@@ -7,6 +7,7 @@ scraped periods, audited provenance.
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from crible.compute.reconcile import align_periods
 from crible.compute.snapshot import build_snapshot, build_symbol_snapshot
@@ -532,3 +533,75 @@ def test_fr016_lease_combined_debt_tag_is_a_fallback_only() -> None:
     }
     frames = facts_to_frames(only_combined)
     assert frames[("balance", "annual")].loc[0, "LongTermDebt"] == 1.2e9
+
+
+def test_fr016_fsds_year_relabels_do_not_duplicate_fiscal_years() -> None:
+    """FSDS labels 52/53-week fiscal years -12-31 while companyfacts keeps the
+    true end date; the merge must not let the relabeled twin through as a
+    phantom extra year (observed live on HSIC: identical values in consecutive
+    periods → Beneish ratio components exactly 1.0, revenue_growth 0.0)."""
+    from crible.providers.audited import merge_audited
+
+    primary = {
+        ("income", "annual"): pd.DataFrame(
+            {"period": ["2023-12-30", "2024-12-28"], "TotalRevenue": [12_339e6, 12_673e6]}
+        )
+    }
+    fsds = {
+        ("income", "annual"): pd.DataFrame(
+            {
+                "period": ["2016-12-31", "2023-12-31", "2024-12-31"],
+                "TotalRevenue": [11_572e6, 12_339e6, 12_673e6],
+            }
+        )
+    }
+    merged = merge_audited(primary, fsds)
+    assert sorted(merged[("income", "annual")]["period"].astype(str)) == [
+        "2016-12-31", "2023-12-30", "2024-12-28",
+    ]
+
+
+def test_fr016_quarterly_merge_keeps_same_year_periods() -> None:
+    """Several discrete quarters share a year — the year-prefix dedupe must
+    only apply to annual frames."""
+    from crible.providers.audited import merge_audited
+
+    primary = {
+        ("income", "quarterly"): pd.DataFrame({"period": ["2024-03-30"], "TotalRevenue": [1.0]})
+    }
+    fallback = {
+        ("income", "quarterly"): pd.DataFrame({"period": ["2024-06-29"], "TotalRevenue": [2.0]})
+    }
+    merged = merge_audited(primary, fallback)
+    assert sorted(merged[("income", "quarterly")]["period"].astype(str)) == [
+        "2024-03-30", "2024-06-29",
+    ]
+
+
+def test_fr016_audited_deep_history_reaches_the_final_snapshot(tmp_path) -> None:
+    """8 audited fiscal years must survive to the FINAL snapshot rows — with
+    growth and 3y CAGR resolving — including when a 2-period yfinance frame
+    sits on top (the reconcile union, guarded end to end)."""
+    revenues = [10e9 * (1.05 ** i) for i in range(8)]
+    periods = [f"{2018 + i}-12-28" for i in range(8)]
+    income = pd.DataFrame({"period": periods, "TotalRevenue": revenues,
+                           "NetIncome": [r * 0.1 for r in revenues]})
+    write_raw_statement(tmp_path, symbol="DEEP", provider="edgar", statement_type="income",
+                        freq="annual", frame=income, fetched_at=1.0)
+
+    snapshot = build_snapshot(tmp_path, symbols=["DEEP"])
+    assert len(snapshot) == 8
+    latest = snapshot.iloc[-1]
+    assert latest["revenue_cagr_3y"] == pytest.approx(0.05)
+    assert latest["revenue_growth"] == pytest.approx(0.05)
+
+    # a shallow scraped frame on top must not shadow the audited depth —
+    # yfinance labels the same fiscal years -12-31 (align_periods matches)
+    scraped = pd.DataFrame({"period": ["2024-12-31", "2025-12-31"],
+                            "TotalRevenue": revenues[-2:],
+                            "NetIncome": [r * 0.1 for r in revenues[-2:]]})
+    write_raw_statement(tmp_path, symbol="DEEP", provider="yfinance", statement_type="income",
+                        freq="annual", frame=scraped, fetched_at=2.0)
+    snapshot = build_snapshot(tmp_path, symbols=["DEEP"])
+    assert len(snapshot) == 8
+    assert snapshot.iloc[-1]["revenue_growth"] == pytest.approx(0.05)

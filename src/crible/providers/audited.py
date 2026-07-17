@@ -44,7 +44,16 @@ def merge_audited(
     The primary source wins on every period it reports; each fallback only
     backfills periods the merge does not yet have (e.g. SEC FSDS adding
     pre-8-year history under companyfacts). Frames are keyed by
-    (statement_type, freq) with a ``period`` column."""
+    (statement_type, freq) with a ``period`` column.
+
+    Annual periods dedupe by YEAR, not exact label: FSDS stamps 52/53-week
+    fiscal years -12-31 while companyfacts keeps the true end date
+    (2024-12-28), and the exact-label dedupe let the relabeled twin through
+    as a phantom extra year with identical values — Beneish ratios collapsed
+    to exactly 1.0 (observed live on HSIC, 2026-07-17). Quarterly frames
+    keep the exact-label dedupe (several quarters share a year). Residual:
+    a fiscal year ending in early January still labels across the year
+    boundary — the same known limitation align_periods carries."""
     out: dict[tuple[str, str], pd.DataFrame] = {k: v.copy() for k, v in primary.items()}
     for fallback in fallbacks:
         for key, frame in fallback.items():
@@ -52,7 +61,12 @@ def merge_audited(
                 out[key] = frame.copy()
                 continue
             have = set(out[key]["period"].astype(str))
-            extra = frame[~frame["period"].astype(str).isin(have)]
+            periods = frame["period"].astype(str)
+            mask = ~periods.isin(have)
+            if key[1] == "annual":
+                have_years = {p[:4] for p in have}
+                mask &= ~periods.str[:4].isin(have_years)
+            extra = frame[mask]
             if len(extra):
                 out[key] = pd.concat([out[key], extra], ignore_index=True)
     return out
