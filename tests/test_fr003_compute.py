@@ -792,3 +792,29 @@ def test_fr003_freshest_price_asof_wins_between_bars_and_quote() -> None:
     )
     latest = stale_quote[stale_quote["period"] == "2025"].iloc[0]
     assert latest["price_asof"] == "2026-07-16"
+
+
+def test_fr003_buyback_only_shareholder_yield_survives_a_dividend_free_cashflow() -> None:
+    """A parsed cash-flow statement with no dividends line means a genuine
+    non-payer — the computable buyback signal must survive (observed live on
+    HSIC: buybacks real, yield NaN)."""
+    from crible.compute.extras import compute_extras
+
+    price = pd.Series([float("nan")] * 3 + [10.0], index=["2022", "2023", "2024", "2025"])
+
+    non_payer = _quickwin_canonical()
+    non_payer["dividends_paid"] = [float("nan")] * 4
+    out = compute_extras(non_payer, price).loc["2025"]
+    assert out["shareholder_yield"] == pytest.approx((10.0 * 10.0) / 1000.0)
+
+    # no cash-flow statement at all → still honest NaN, never a fabricated zero
+    no_cashflow = _quickwin_canonical()
+    no_cashflow["dividends_paid"] = [float("nan")] * 4
+    no_cashflow["operating_cashflow"] = [float("nan")] * 4
+    assert pd.isna(compute_extras(no_cashflow, price).loc["2025", "shareholder_yield"])
+
+    # dividends present without OCF still count — the mask only fills MISSING
+    dividends_no_ocf = _quickwin_canonical()
+    dividends_no_ocf["operating_cashflow"] = [float("nan")] * 4
+    out = compute_extras(dividends_no_ocf, price).loc["2025"]
+    assert out["shareholder_yield"] == pytest.approx((52.0 + 10.0 * 10.0) / 1000.0)

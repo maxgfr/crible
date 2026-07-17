@@ -84,9 +84,14 @@ def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
         # total shareholder yield: dividends + net buybacks over market cap.
         # Buybacks are proxied by the share-count decline valued at the current
         # price (issuance reads negative — dilution shows up as a drag);
-        # missing inputs propagate as NaN, never a fabricated zero.
+        # missing inputs propagate as NaN, never a fabricated zero. One reading
+        # is not a fabrication: a PARSED cash-flow statement (operating_cashflow
+        # present) with no dividends line is a genuine non-payer — dividends are
+        # truly zero there, so the computable buyback signal survives.
+        dividends = c["dividends_paid"].abs()
+        dividends = dividends.mask(dividends.isna() & c["operating_cashflow"].notna(), 0.0)
         buyback_value = (shares.shift(1) - shares) * price
-        out["shareholder_yield"] = (c["dividends_paid"].abs() + buyback_value) / market_cap
+        out["shareholder_yield"] = (dividends + buyback_value) / market_cap
     else:
         for col in (
             "graham_number",
