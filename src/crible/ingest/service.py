@@ -85,9 +85,10 @@ def defer_covered_symbols(
     defer_seconds: float = 30 * 86400,
 ) -> int:
     """Push never-crawled symbols already served by the dumps to the back of
-    the marathon queue: defeatbeta prices AND fundamentals from any source
-    (audited or defeatbeta) — crawling them would re-buy what we have, so
-    their Yahoo budget flows to Europe and the world instead.
+    the marathon queue: bars from ANY imported series store (defeatbeta,
+    Stooq, HuggingFace, …) AND fundamentals from any source (audited or
+    defeatbeta) — crawling them would re-buy what we have, so their Yahoo
+    budget flows to the still-uncovered listings instead.
 
     ``next_due``, not ``priority``: seed_from_universe re-syncs priorities
     from companies.crawl_priority on every run and would silently revert a
@@ -107,10 +108,11 @@ def defer_covered_symbols(
     from crible.price_series import series_dir
 
     now = time.time() if now is None else now
-    store = series_dir(data_dir) / "defeatbeta.parquet"
-    if not store.exists():
+    priced: set[str] = set()
+    for store in sorted(series_dir(data_dir).glob("*.parquet")):
+        priced |= set(pd.read_parquet(store, columns=["symbol"])["symbol"].unique())
+    if not priced:
         return 0
-    priced = set(pd.read_parquet(store, columns=["symbol"])["symbol"].unique())
     covered = sorted(priced & statement_served_symbols(data_dir))
     if not covered:
         return 0
@@ -126,6 +128,16 @@ def defer_covered_symbols(
     ).fetchone()
     con.unregister("covered_symbols")
     return int(changed[0]) if changed else 0
+
+
+# the load-bearing snapshot columns behind the completeness metric: the
+# covered/not-covered binary hides HOW MUCH of a company's row is usable —
+# this is the number the monthly ratchet should push up
+COMPLETENESS_COLUMNS = (
+    "revenue", "net_income", "total_assets", "free_cash_flow", "ebitda",
+    "return_on_equity", "price_to_earnings_ratio",
+    "piotroski_f", "altman_z", "beneish_m",
+)
 
 
 def _top10k_stats(con: duckdb.DuckDBPyConnection, data_dir) -> dict:
@@ -204,6 +216,27 @@ def _top10k_stats(con: duckdb.DuckDBPyConnection, data_dir) -> dict:
     }
     for key in ("fundamentals_covered", "priced", "price_fresh_7d"):
         block[f"{key}_pct"] = round(100.0 * block[key] / total, 2) if total else 0.0
+
+    # completeness: average share of key columns filled, best listing per
+    # group; a group with no snapshot row scores 0. Omitted (not 0) while no
+    # snapshot exists — check-coverage keeps gating on the metrics above.
+    snap_path = Path(data_dir) / "snapshot" / "snapshot.parquet"
+    if snap_path.exists() and total:
+        import pyarrow.parquet as pq
+
+        schema_names = set(pq.ParquetFile(snap_path).schema_arrow.names)
+        available = [c for c in COMPLETENESS_COLUMNS if c in schema_names]
+        if available:
+            snap = pd.read_parquet(snap_path, columns=["symbol", *available])
+            share = snap.set_index("symbol")[available].notna().mean(axis=1)
+            share = share.groupby(level=0).max()
+            best = (
+                members.assign(_share=members["symbol"].map(share).fillna(0.0))
+                .groupby("company_group")["_share"].max()
+            )
+            block["fundamentals_completeness_pct"] = round(
+                100.0 * float(best.reindex(groups.index).fillna(0.0).mean()), 2
+            )
     return {"coverage_top10k": block}
 
 

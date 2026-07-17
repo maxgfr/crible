@@ -324,3 +324,29 @@ def test_defeatbeta_gate_ignores_other_dumps(tmp_path, monkeypatch) -> None:
     result = runner.invoke(app, ["import-prices", "defeatbeta", "--max-age-days", "6"])
     assert result.exit_code == 0, result.output
     assert "imported 1 symbols from defeatbeta" in result.output
+
+
+def test_defer_covered_symbols_counts_any_dump_series_source(tmp_path) -> None:
+    """A never-crawled symbol with Stooq bars + audited fundamentals defers
+    too — price coverage means ANY imported series store, not defeatbeta only."""
+    import duckdb
+
+    from crible.ingest.queue import SCHEMA
+    from crible.ingest.service import defer_covered_symbols
+    from crible.price_series import write_series
+
+    _universe(tmp_path, symbols=("SAP.DE",))
+    frame = pd.DataFrame({"period": ["2025-12-31"], "TotalRevenue": [1.0]})
+    write_raw_statement(tmp_path, symbol="SAP.DE", provider="esef", statement_type="income",
+                        freq="annual", frame=frame, fetched_at=1.0)
+    bars = pd.DataFrame(
+        {"symbol": ["SAP.DE"], "date": ["2026-07-01"], "open": [1.0], "high": [1.0],
+         "low": [1.0], "close": [1.0], "adj_close": [1.0], "volume": [0.0],
+         "source": ["stooq"]}
+    )
+    write_series(tmp_path, "stooq", bars)
+
+    con = duckdb.connect()
+    con.execute(SCHEMA)
+    con.execute("INSERT INTO crawl_tasks (symbol, priority, next_due) VALUES ('SAP.DE', 1, 0)")
+    assert defer_covered_symbols(con, tmp_path, now=1_000_000.0) == 1

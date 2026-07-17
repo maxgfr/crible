@@ -392,3 +392,47 @@ def test_no_ranking_means_no_floor_and_no_members() -> None:
     caps = pick_primary(build_cap_table(universe, None, None, None, RATES, NOW))
     out = assign_top10k(caps, previous_members=set())
     assert not out["top10k"].any()  # pre-census: guaranteed no-op
+
+
+def test_top10k_stats_reports_fundamentals_completeness(tmp_path) -> None:
+    """Completeness = average share of key snapshot columns filled across the
+    top-10k, best-covered listing per group; groups without a row count 0."""
+    from datetime import date
+
+    from crible.ingest.service import COMPLETENESS_COLUMNS, _top10k_stats
+
+    con = duckdb.connect()
+    con.execute(SCHEMA)
+    for symbol, group in (("A.PA", "G1"), ("B.DE", "G2")):
+        con.execute(
+            "INSERT INTO companies (symbol, region, crawl_priority, company_group,"
+            " cap_rank_global, primary_listing, top10k, cap_asof, cap_source)"
+            " VALUES (?, 'europe', 1, ?, 1, TRUE, TRUE, ?, 'tradingview')",
+            [symbol, group, date.today().isoformat()],
+        )
+    full = dict.fromkeys(COMPLETENESS_COLUMNS, 1.0)
+    half = {c: (1.0 if i < len(COMPLETENESS_COLUMNS) // 2 else None)
+            for i, c in enumerate(COMPLETENESS_COLUMNS)}
+    snap = pd.DataFrame([{"symbol": "A.PA", **full}, {"symbol": "B.DE", **half}])
+    (tmp_path / "snapshot").mkdir(parents=True)
+    snap.to_parquet(tmp_path / "snapshot" / "snapshot.parquet", index=False)
+
+    block = _top10k_stats(con, tmp_path)["coverage_top10k"]
+    assert block["fundamentals_completeness_pct"] == 75.0
+
+
+def test_top10k_stats_without_snapshot_omits_completeness(tmp_path) -> None:
+    from datetime import date
+
+    from crible.ingest.service import _top10k_stats
+
+    con = duckdb.connect()
+    con.execute(SCHEMA)
+    con.execute(
+        "INSERT INTO companies (symbol, region, crawl_priority, company_group,"
+        " cap_rank_global, primary_listing, top10k, cap_asof, cap_source)"
+        " VALUES ('A.PA', 'europe', 1, 'G1', 1, TRUE, TRUE, ?, 'tradingview')",
+        [date.today().isoformat()],
+    )
+    block = _top10k_stats(con, tmp_path)["coverage_top10k"]
+    assert "fundamentals_completeness_pct" not in block
