@@ -72,9 +72,13 @@ def build_symbol_snapshot(
 
     price_asof: str | None = None
     if price is None:
-        # crawled daily bars win; the imported dump quote is the fallback
-        # (price_quote from data/prices-latest.parquet — derived values only)
-        close = latest_close(frames) or price_quote
+        # freshest as-of wins between the crawled daily bars and the imported
+        # dump quote (price_quote from data/prices-latest.parquet) — a same-day
+        # TradingView close must not lose to yesterday's crawled bar
+        crawled = latest_close(frames)
+        close = crawled or price_quote
+        if crawled and price_quote and str(price_quote[1]) > str(crawled[1]):
+            close = price_quote
         if close is not None:
             value, price_asof = close
             # the current price applies to the LATEST fiscal period only —

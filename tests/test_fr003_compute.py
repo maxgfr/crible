@@ -771,3 +771,24 @@ def test_incremental_compute_rebuilds_all_when_the_price_distillate_refreshes(tm
 
     snap.build_snapshot_incremental(tmp_path)
     assert calls and sorted(calls[0]) == ["AAA", "BBB"]  # ALL symbols rebuilt, not none
+
+
+def test_fr003_freshest_price_asof_wins_between_bars_and_quote() -> None:
+    """A dump/TV quote NEWER than the last crawled bar supplies the price;
+    older quotes still lose to the bars (freshest as-of wins, either way)."""
+    frames = {(s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()}
+    frames[("prices", "daily")] = pd.DataFrame(
+        {"date": ["2026-07-15", "2026-07-16"], "close": [40.0, 41.0]}
+    )
+
+    fresher_quote = build_symbol_snapshot(
+        "P.PA", frames, computed_at=1.0, price_quote=(42.0, "2026-07-17")
+    )
+    latest = fresher_quote[fresher_quote["period"] == "2025"].iloc[0]
+    assert latest["price_asof"] == "2026-07-17"
+
+    stale_quote = build_symbol_snapshot(
+        "P.PA", frames, computed_at=1.0, price_quote=(39.0, "2026-07-10")
+    )
+    latest = stale_quote[stale_quote["period"] == "2025"].iloc[0]
+    assert latest["price_asof"] == "2026-07-16"
