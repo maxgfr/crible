@@ -18,6 +18,11 @@ on:
     # (SEC bulk, filings.xbrl.org, FinanceDatabase) rebuilds daily at most.
     - cron: "47 23 * * *"
   workflow_dispatch:
+    inputs:
+      esef_backfill:
+        description: "Re-parse every matched ESEF filing with the current concept map (ignores the 90-day freshness gate)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -104,7 +109,11 @@ jobs:
         # raw, the sweep covers the ~8,850 matched EU listings in a handful
         # of nightlies, then settles to new-filings-only. The wall-clock
         # guard, not this count, is the real bound.
-        run: uv run crible refresh --deadline 7200 --max-minutes 240 --esef-limit 1500 --edgar-bulk --fsds-quarters 2 --cvm-limit 1000 --twse-limit 3000
+        # esef_backfill (workflow_dispatch): one-shot re-parse of the whole
+        # matched ESEF gisement after a concept-map widening — freshness gate
+        # off, limit lifted; scheduled nightlies keep the 90-day cadence
+        run: |
+          uv run crible refresh --deadline 7200 --max-minutes 240 --esef-limit ${{ inputs.esef_backfill && '20000 --esef-max-age-days 0' || '1500' }} --edgar-bulk --fsds-quarters 2 --cvm-limit 1000 --twse-limit 3000
 
       - name: Export the static site artifacts (min-symbols gate)
         run: uv run crible export-site --out site-data --min-symbols 50

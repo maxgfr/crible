@@ -431,6 +431,11 @@ def refresh(
         " compute+publish always run (0 = unbounded, the self-hosted default)",
     ),
     esef_limit: int = typer.Option(25, "--esef-limit", help="Max ESEF enrichments this run"),
+    esef_max_age_days: float = typer.Option(
+        -1.0, "--esef-max-age-days",
+        help="Refetch ESEF filings older than N days (default 90; 0 = backfill"
+        " mode, re-parse everything with the current concept map)",
+    ),
     edgar_limit: int = typer.Option(25, "--edgar-limit", help="Max EDGAR enrichments this run"),
     edgar_bulk: bool = typer.Option(
         False, "--edgar-bulk",
@@ -467,6 +472,7 @@ def refresh(
 
     result = run_refresh(
         deadline_seconds=deadline, esef_limit=esef_limit, edgar_limit=edgar_limit,
+        esef_refresh_seconds=esef_max_age_days * 86400 if esef_max_age_days >= 0 else None,
         edgar_bulk=edgar_bulk, fsds_quarters=fsds_quarters,
         fetch_gleif=fetch_gleif, fetch_fx=fetch_fx,
         max_seconds=max_minutes * 60 if max_minutes > 0 else None,

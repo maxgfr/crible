@@ -149,6 +149,7 @@ def run_esef_sweep(
     limit: int = 100, client=None, mapping: dict[str, str] | None = None,
     page_size: int = 100, max_pages: int = 300,
     time_budget_seconds: float | None = None,
+    refresh_seconds: float = ESEF_REFRESH_SECONDS,
 ) -> dict:
     """FR-010 at index scale: walk filings.xbrl.org's FULL index (newest
     first) instead of querying one LEI at a time — every request lands on a
@@ -218,7 +219,9 @@ def run_esef_sweep(
 
         from crible.ingest.raw import write_raw_statement
 
-        cutoff = time.time() - ESEF_REFRESH_SECONDS
+        # refresh_seconds=0 is the BACKFILL mode: every matched filing is due
+        # again — how a widened concept map reaches already-fetched filings
+        cutoff = time.time() - refresh_seconds
         seen_leis: set[str] = set()
         page = 1
         while len(outcome["enriched"]) < limit and page <= max_pages:

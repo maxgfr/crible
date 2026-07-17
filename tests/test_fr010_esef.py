@@ -606,3 +606,17 @@ def test_fr010_widened_esef_reaches_scores_end_to_end() -> None:
     assert latest["free_cash_flow"] == 2e8 * 1.1 - 5e7 * 1.1
     assert latest["total_liabilities"] == 1.2e9 * 1.1
     assert latest["income_before_tax"] == 1.3e8 * 1.1
+
+
+def test_fr010_sweep_max_age_zero_refetches_fresh_symbols(tmp_path, monkeypatch) -> None:
+    """Backfill mode: refresh_seconds=0 ignores freshness so a widened
+    concept map reaches ALREADY-fetched filings without waiting 90 days."""
+    from crible.ingest.service import run_esef_sweep
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+    mapping = {"NL0011540547": LEI_ABN}
+    assert run_esef_sweep(limit=10, client=FakeIndexClient(), mapping=mapping)["enriched"] == [
+        "ABN.AS"
+    ]
+    redo = run_esef_sweep(limit=10, client=FakeIndexClient(), mapping=mapping, refresh_seconds=0)
+    assert redo["enriched"] == ["ABN.AS"]

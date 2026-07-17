@@ -513,6 +513,7 @@ def run_refresh(
     esef_limit: int = 25,
     edgar_limit: int = 25,
     *,
+    esef_refresh_seconds: float | None = None,
     edgar_bulk: bool = False,
     fsds_quarters: int = 0,
     fetch_gleif: bool = False,
@@ -641,7 +642,12 @@ def run_refresh(
     try:
         # index sweep, not per-LEI polling: every request lands on a real
         # filing, so the nightly covers actual EU filers at full speed
-        result["esef"] = run_esef_sweep(limit=esef_limit, time_budget_seconds=stage_budget())
+        esef_kwargs = (
+            {} if esef_refresh_seconds is None else {"refresh_seconds": esef_refresh_seconds}
+        )
+        result["esef"] = run_esef_sweep(
+            limit=esef_limit, time_budget_seconds=stage_budget(), **esef_kwargs
+        )
     except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
         log.warning("esef sweep failed: %s", exc)
         result["esef"] = {"outage": str(exc)}
