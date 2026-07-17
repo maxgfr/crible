@@ -101,6 +101,15 @@ npx skills add maxgfr/crible -g     # install into ~/.claude/skills
 npx skills update -g -y             # pull the latest version from the repo
 ```
 
+Uninstalling: `crible clean` deletes the dataset directory (with a marker guard so a
+mistyped `--data-dir` never removes an arbitrary folder), then remove the tool itself:
+
+```bash
+crible --data-dir ~/.crible-data clean   # or clean --yes to skip the prompt
+uv tool uninstall crible                 # pipx uninstall crible, if installed that way
+claude mcp remove crible                 # only if the MCP server was registered
+```
+
 ### Start with data — zero crawl
 
 The nightly refresh publishes its open dataset as assets on the rolling

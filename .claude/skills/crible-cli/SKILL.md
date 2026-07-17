@@ -139,6 +139,13 @@ uv run crible bootstrap --force         # re-pull the latest layer
 uv run crible bootstrap --repo owner/name   # pull from a fork's published dataset
 ```
 
+**Uninstall / start over:** delete the dataset directory (marker-guarded so a
+mistyped `--data-dir` never removes an arbitrary folder; re-bootstrap anytime).
+```bash
+crible --data-dir ~/.crible-data clean          # interactive confirmation
+crible --data-dir ~/.crible-data clean --yes    # for scripts
+```
+
 **Crawl your own universe:**
 ```bash
 uv run crible ingest --bootstrap        # load the universe from FinanceDatabase (once)

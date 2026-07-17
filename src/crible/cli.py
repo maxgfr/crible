@@ -131,6 +131,40 @@ def status() -> None:
     typer.echo(json.dumps(Runtime.from_env().status(), indent=2, default=str))
 
 
+# any of these at the top level marks a directory as a crible dataset — the
+# guard keeps a mistyped --data-dir from deleting an arbitrary folder
+_DATASET_MARKERS = ("universe.parquet", "raw", "snapshot", "status.json", "crible.duckdb")
+
+
+@app.command()
+def clean(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt"),
+) -> None:
+    """Delete the local dataset directory — the uninstall path (re-bootstrap
+    any time with `crible bootstrap`)."""
+    import shutil
+
+    from crible import config
+
+    target = config.data_dir()
+    if not target.exists():
+        typer.echo(f"nothing to clean: {target} does not exist")
+        return
+    if not any((target / marker).exists() for marker in _DATASET_MARKERS):
+        typer.secho(
+            f"refusing: {target} does not look like a crible dataset "
+            f"(none of {', '.join(_DATASET_MARKERS)} present)",
+            err=True,
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+    size_mb = sum(f.stat().st_size for f in target.rglob("*") if f.is_file()) / 1e6
+    if not yes:
+        typer.confirm(f"delete {target} ({size_mb:.0f} MB)?", abort=True)
+    shutil.rmtree(target)
+    typer.echo(f"removed {target} ({size_mb:.0f} MB freed)")
+
+
 @app.command()
 def ingest(
     bootstrap: bool = typer.Option(False, "--bootstrap", help="Load the universe from FinanceDatabase"),
