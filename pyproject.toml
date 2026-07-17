@@ -1,6 +1,6 @@
 [project]
 name = "crible"
-version = "0.10.0"
+version = "0.11.0"
 description = "Self-hosted fundamental stock screener — worldwide universe, Europe-depth, zero-key by design"
 readme = "README.md"
 license = { text = "MIT" }
