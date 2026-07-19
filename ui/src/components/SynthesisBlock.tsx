@@ -107,6 +107,71 @@ function kindGlyph(kind: VerdictKind): string {
   return FLAGS[kind].trim();
 }
 
+// ---------------------------------------------------------------- invest signal
+// One deterministic tier from the SAME verdict table the counters use — no
+// second rule set. Display-only synthesis: mechanical thresholds, never advice.
+
+export type InvestSignal = "favorable" | "mixed" | "unfavorable" | "insufficient";
+
+export interface InvestVerdict {
+  signal: InvestSignal;
+  reason: string;
+}
+
+// a distress-model red flag vetoes on its own — solvency first
+const CRITICAL_COLUMNS = ["piotroski_f", "altman_z", "zmijewski_score", "ohlson_o"];
+
+const FAVORABLE_GOOD_SHARE = 0.6;
+const FAVORABLE_MIN_COMPOSITE = 55;
+
+export function investVerdict(latest: Record<string, unknown>): InvestVerdict {
+  const { families, decidable } = synthesize(latest);
+  if (decidable < THIN_DATA_BELOW) {
+    return {
+      signal: "insufficient",
+      reason: `only ${decidable} checks decidable — too thin to call`,
+    };
+  }
+  const good = families.reduce((n, f) => n + f.good, 0);
+  const bad = families.reduce((n, f) => n + f.bad, 0);
+  const warn = families.reduce((n, f) => n + f.warn, 0);
+  const critical = CRITICAL_COLUMNS.filter((column) => {
+    const value = numeric(latest, column);
+    return value !== null && verdictKind(column, value) === "bad";
+  });
+  if (critical.length > 0) {
+    return { signal: "unfavorable", reason: `distress red flag: ${critical.join(", ")}` };
+  }
+  if (bad >= 2) {
+    return { signal: "unfavorable", reason: `${bad} failed checks of ${decidable}` };
+  }
+  const composite = numeric(latest, "composite_rank");
+  if (
+    bad === 0 &&
+    warn <= 1 &&
+    good >= Math.ceil(decidable * FAVORABLE_GOOD_SHARE) &&
+    (composite === null || composite >= FAVORABLE_MIN_COMPOSITE)
+  ) {
+    return {
+      signal: "favorable",
+      reason:
+        `${good}/${decidable} checks pass, no red flag` +
+        (composite !== null ? `, composite ${formatNumber(composite)}` : ""),
+    };
+  }
+  return {
+    signal: "mixed",
+    reason: `${good} pass · ${bad} fail · ${warn} warn of ${decidable} checks`,
+  };
+}
+
+const SIGNAL_BADGES: Record<InvestSignal, { glyph: string; label: string }> = {
+  favorable: { glyph: "✓", label: "Favorable" },
+  mixed: { glyph: "!", label: "Mixed" },
+  unfavorable: { glyph: "✗", label: "Unfavorable" },
+  insufficient: { glyph: "—", label: "Not enough data" },
+};
+
 export function SynthesisBlock({
   latest,
   periods,
@@ -129,8 +194,17 @@ export function SynthesisBlock({
     target?.focus?.();
   };
 
+  const verdict = investVerdict(latest);
+  const badge = SIGNAL_BADGES[verdict.signal];
+
   return (
     <section className="synthesis" aria-label="Synthesis">
+      <div className={`invest-signal invest-${verdict.signal}`} role="status">
+        <span className="invest-signal-badge">
+          {badge.glyph} Invest signal: {badge.label}
+        </span>
+        <span className="meta">{verdict.reason} · mechanical thresholds, not investment advice</span>
+      </div>
       <div className="synthesis-hero">
         <div>
           <div className="synthesis-rank">{composite !== null ? formatNumber(composite) : "—"}</div>

@@ -31,6 +31,7 @@ vi.mock("../data", () => ({
   }),
 }));
 vi.mock("../components/PriceChart", () => ({ PriceChart: () => null }));
+vi.mock("../components/LiveQuote", () => ({ LiveQuote: () => null }));
 
 describe("new scores — grid coloring", () => {
   it("applies the shared semantic grammar: distress bipolar, manipulation warns", () => {

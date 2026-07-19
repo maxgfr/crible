@@ -17,6 +17,7 @@ vi.mock("../data", () => ({
   STATIC_MODE: false,
 }));
 vi.mock("../components/PriceChart", () => ({ PriceChart: () => null }));
+vi.mock("../components/LiveQuote", () => ({ LiveQuote: () => null }));
 
 beforeEach(() => {
   window.localStorage.clear();

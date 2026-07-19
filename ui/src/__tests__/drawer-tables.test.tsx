@@ -27,7 +27,10 @@ vi.mock("../data", () => ({
     ],
   }),
 }));
-vi.mock("../components/PriceChart", () => ({ PriceChart: () => null }));
+vi.mock("../components/PriceChart", () => ({
+  PriceChart: () => <div data-testid="price-chart" />,
+}));
+vi.mock("../components/LiveQuote", () => ({ LiveQuote: () => null }));
 
 async function renderDrawer() {
   const { CompanyDrawer } = await import("../components/CompanyDrawer");
@@ -73,6 +76,22 @@ describe("drawer tables — structurally empty columns", () => {
   it("explains the muted columns once, under Statements", async () => {
     await renderDrawer();
     expect(rtl.getByText(/oldest \(rightmost\)/)).toBeInTheDocument();
+  });
+});
+
+describe("drawer layout — charts after the numbers", () => {
+  it("keeps the price chart and Trends below the last number table", async () => {
+    await renderDrawer();
+    const follows = (a: Element, b: Element) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const scores = rtl.getByText("Scores — full breakdown");
+    const chart = rtl.getByTestId("price-chart");
+    const trends = rtl.getByText("Trends");
+    const provenance = rtl.getByText("Provenance");
+    // document order: …scores < price chart < Trends < Provenance
+    expect(follows(scores, chart)).toBe(true);
+    expect(follows(chart, trends)).toBe(true);
+    expect(follows(trends, provenance)).toBe(true);
   });
 });
 

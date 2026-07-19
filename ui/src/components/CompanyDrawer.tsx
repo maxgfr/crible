@@ -14,6 +14,7 @@ import {
 import { company, requestFetch, STATIC_MODE, type CompanyDetail } from "../data";
 import { fieldLabel } from "../data/field-catalog";
 import { formatCell, formatNumber } from "../format";
+import { LiveQuote } from "./LiveQuote";
 import { PeriodRow, PeriodTable, sparsePeriodFlags, STATEMENT_FIELDS } from "./PeriodTable";
 import { PriceChart } from "./PriceChart";
 import { SynthesisBlock } from "./SynthesisBlock";
@@ -193,6 +194,13 @@ function listingCurrency(detail: CompanyDetail): string | undefined {
   return undefined;
 }
 
+// the published close's as-of date on the latest period — the live-quote
+// chip's staleness input; null when the snapshot carries no price
+function priceAsof(detail: CompanyDetail): string | null {
+  const raw = detail.periods[0]?.price_asof;
+  return typeof raw === "string" && raw ? raw : null;
+}
+
 // a value with its verdict color + glyph (shared thresholds with the grid);
 // booleans keep the plain ✓/✗ path
 function Val({ column, value }: { column: string; value: unknown }) {
@@ -308,7 +316,7 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
             <span className="badge">{String(detail.profile.country ?? "?")}</span>
             <span className="badge">{String(detail.profile.sector ?? "?")}</span>
           </h2>
-          <PriceChart symbol={symbol} currency={listingCurrency(detail)} />
+          <LiveQuote symbol={symbol} asof={priceAsof(detail)} />
           {detail.periods.length === 0 ? (
             <div className="teach">
               <p className="meta">
@@ -345,6 +353,9 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
             </div>
           ) : (
             <DrawerSections symbol={symbol} detail={detail} />
+          )}
+          {detail.periods.length === 0 && (
+            <PriceChart symbol={symbol} currency={listingCurrency(detail)} />
           )}
         </>
       )}
@@ -388,8 +399,6 @@ function DrawerSections({ symbol, detail }: { symbol: string; detail: CompanyDet
                   fundamentals.
                 </p>
               )}
-              <h3 id="drawer-trends" tabIndex={-1}>Trends</h3>
-              <TrendCharts periods={detail.periods} />
               <h3 id="drawer-cash" tabIndex={-1}>Cash quality</h3>
               <PeriodTable periods={periods} sparse={sparse}>
                 {CASH_QUALITY.map((field) => (
@@ -547,6 +556,10 @@ function DrawerSections({ symbol, detail }: { symbol: string; detail: CompanyDet
                   </p>
                 </>
               )}
+              {/* charts LAST — number tables first, every curve after them */}
+              <PriceChart symbol={symbol} currency={currency} />
+              <h3 id="drawer-trends" tabIndex={-1}>Trends</h3>
+              <TrendCharts periods={periods} />
               <h3>Provenance</h3>
               <p className="meta">
                 provider: {String(latest.provider ?? "yfinance")} · computed at:{" "}
