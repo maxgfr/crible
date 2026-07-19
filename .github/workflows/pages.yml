@@ -67,7 +67,7 @@ jobs:
           fi
           touch ui/dist/.nojekyll
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
         with:
           enablement: true
       - id: upload
