@@ -114,7 +114,7 @@ jobs:
             "https://github.com/${{ github.repository }}/releases/download/data-latest/crible-data.tar.gz"
           tar -xzf /tmp/crible-data.tar.gz
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.12
       - run: uv sync
 
