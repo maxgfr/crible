@@ -30,6 +30,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # the artifact store intermittently rejects FinalizeArtifact with a
+    # transient 403; deploy follows whichever upload attempt landed
+    outputs:
+      artifact_name: ${{ steps.upload.outcome == 'success' && 'github-pages' || 'github-pages-retry' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -66,9 +70,18 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
-      - uses: actions/upload-pages-artifact@v3
+      - id: upload
+        uses: actions/upload-pages-artifact@v3
+        continue-on-error: true
         with:
           path: ui/dist
+      # second attempt under a FRESH name: a failed finalize can leave the
+      # default "github-pages" artifact half-created and unclaimable
+      - if: steps.upload.outcome == 'failure'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ui/dist
+          name: github-pages-retry
 
   deploy:
     needs: build
@@ -79,3 +92,5 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: ${{ needs.build.outputs.artifact_name }}
