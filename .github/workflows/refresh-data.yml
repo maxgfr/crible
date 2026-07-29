@@ -47,9 +47,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # --retry-all-errors so --retry also covers the HTTP 404 window a
+      # concurrent `gh release upload --clobber` opens (see crawl-marathon.yml).
+      # It matters MORE here than the else-branch suggests: falling through to
+      # "start from scratch" over a transient 404 would throw away the whole
+      # crawl queue and rebuild a thin dataset.
       - name: Restore last-good data from the data-latest release
         run: |
-          if curl -fsSL --retry 3 -o /tmp/crible-data.tar.gz \
+          if curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 \
+              -o /tmp/crible-data.tar.gz \
               "https://github.com/${{ github.repository }}/releases/download/data-latest/crible-data.tar.gz"; then
             tar -xzf /tmp/crible-data.tar.gz
             echo "restored last-good data/"

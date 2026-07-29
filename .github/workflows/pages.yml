@@ -50,7 +50,12 @@ jobs:
       - name: Attach the published data artifacts
         run: |
           mkdir -p ui/dist/data
-          if curl -fsSL --retry 3 -o /tmp/site-data.tar.gz \
+          # --retry-all-errors so --retry also covers the HTTP 404 window a
+          # concurrent `gh release upload --clobber` opens: without it a
+          # transient 404 takes the else-branch and DEPLOYS A DATA-LESS SITE
+          # over a perfectly good one.
+          if curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 \
+              -o /tmp/site-data.tar.gz \
               "https://github.com/${{ github.repository }}/releases/download/data-latest/site-data.tar.gz"; then
             tar -xzf /tmp/site-data.tar.gz -C /tmp
             cp -R /tmp/site-data/. ui/dist/data/

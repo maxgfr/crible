@@ -108,9 +108,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # --retry-all-errors is what makes --retry cover an HTTP 404: publishers
+      # upload with `gh release upload --clobber`, which DELETES the asset
+      # before re-uploading it, so the download 404s for the whole upload
+      # window. Plain --retry only retries transient transport errors and 5xx,
+      # so the slot died 6 s in with `curl: (22) ... error: 404` (2026-07-22,
+      # runs 29920979406 + 29946217062). No fallback branch here on purpose: a
+      # marathon without the last-good dataset has no crawl queue and no budget
+      # state to resume — failing loudly beats crawling from scratch.
       - name: Restore last-good data from the data-latest release
         run: |
-          curl -fsSL --retry 3 -o /tmp/crible-data.tar.gz \
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 \
+            -o /tmp/crible-data.tar.gz \
             "https://github.com/${{ github.repository }}/releases/download/data-latest/crible-data.tar.gz"
           tar -xzf /tmp/crible-data.tar.gz
 
