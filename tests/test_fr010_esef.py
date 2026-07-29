@@ -272,6 +272,21 @@ def test_fr010_small_differences_override_silently() -> None:
     assert result.discrepancies == []  # < 5%: override without noise
 
 
+def test_fr010_reconcile_survives_a_duplicated_audited_period(caplog) -> None:
+    """Defence in depth: reconcile reads cell by cell with .loc[period, column],
+    which degrades from scalar to Series on a duplicated index and raises "The
+    truth value of a Series is ambiguous" one statement later — that killed the
+    compute stage for all 19k symbols on the 2026-07-29 nightly. A duplicated
+    label is upstream corruption; it must degrade the symbol, not abort the run."""
+    scraped = pd.DataFrame({"revenue": [100.0]}, index=["2024-12-31"])
+    audited = pd.DataFrame({"revenue": [110.0, 120.0]}, index=["2024-12-31", "2024-12-31"])
+    with caplog.at_level("WARNING"):
+        result = reconcile(scraped, audited, symbol="DUP.PA")
+    assert result.merged.loc["2024-12-31", "revenue"] == 120.0  # last row wins
+    assert result.audited_fields == {"2024-12-31": ["revenue"]}
+    assert any("duplicate audited periods" in r.message for r in caplog.records)
+
+
 def test_fr010_audited_year_labels_align_to_dated_scraped_periods() -> None:
     """ESEF labels periods by fiscal year ("2024") while yfinance uses dates
     ("2024-12-31") — align_periods must bridge them or the audited layer

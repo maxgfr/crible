@@ -9,7 +9,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from crible.compute.reconcile import align_periods
+from crible.compute.reconcile import align_periods, reconcile
 from crible.compute.snapshot import build_snapshot, build_symbol_snapshot
 from crible.ingest.raw import write_raw_statement
 from crible.providers.edgar import EdgarClient, facts_to_frames, resolve_ciks
@@ -418,6 +418,20 @@ def test_fr016_align_periods_leaves_ambiguous_years_untouched() -> None:
     scraped_index = pd.Index(["2024-03-31", "2024-09-30"])  # two scraped periods in 2024
     aligned = align_periods(audited, scraped_index)
     assert list(aligned.index) == ["2024-09-28"]  # ambiguous — conservative
+
+
+def test_fr016_align_periods_never_collapses_two_audited_periods_onto_one_label() -> None:
+    """Mirror of the guard above: two audited labels inside one fiscal year must
+    not BOTH be renamed onto the single scraped label of that year. The
+    duplicated index made reconcile's .loc[period, column] a Series and
+    "The truth value of a Series is ambiguous" aborted the whole compute stage
+    (2026-07-29 nightly, run 30413277070)."""
+    audited = pd.DataFrame({"revenue": [1.0, 2.0]}, index=["2024-06-30", "2024-09-30"])
+    scraped = pd.DataFrame({"revenue": [3.0]}, index=["2024-12-31"])
+    aligned = align_periods(audited, scraped.index)
+    assert list(aligned.index) == ["2024-06-30", "2024-09-30"]  # ambiguous — untouched
+    assert not aligned.index.has_duplicates
+    reconcile(scraped, aligned, symbol="X")  # no ValueError
 
 
 # ----------------------------------------------------------------- provenance

@@ -48,6 +48,21 @@ def test_merge_audited_prefers_primary_and_backfills_from_fallback() -> None:
     assert frame.loc["2019", "TotalRevenue"] == 40.0   # fallback backfills the gap
 
 
+def test_merge_audited_keeps_two_fiscal_years_labelled_inside_one_calendar_year() -> None:
+    """52/53-week filers (AAP: FY2021 ends 2022-01-01, FY2022 ends 2022-12-31)
+    put two REAL fiscal years in one calendar year. The year-prefix dedupe must
+    stay a cross-source guard only — applying it inside a frame would delete a
+    genuine year, which is why align_periods, not merge_audited, is where the
+    duplicate-label collision gets handled."""
+    primary = {
+        ("income", "annual"): pd.DataFrame(
+            {"period": ["2022-01-01", "2022-12-31"], "TotalRevenue": [10998.0, 9148.0]}
+        ),
+    }
+    frame = merge_audited(primary)[("income", "annual")]
+    assert list(frame["period"]) == ["2022-01-01", "2022-12-31"]
+
+
 def test_write_audited_frames_writes_provider_tagged_raw(tmp_path) -> None:
     frames = {
         ("income", "annual"): pd.DataFrame({"period": ["2024"], "TotalRevenue": [100.0]}),
