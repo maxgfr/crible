@@ -3,7 +3,7 @@
 # uv (the deps layer survives src/ edits); stage runtime is slim + non-root.
 # Bases are patch-pinned; dependabot's docker ecosystem keeps them fresh.
 
-FROM ghcr.io/astral-sh/uv:0.11.29 AS uv
+FROM ghcr.io/astral-sh/uv:0.12.0 AS uv
 
 FROM node:24.18.0-alpine AS ui
 WORKDIR /build
