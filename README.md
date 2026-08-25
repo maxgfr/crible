@@ -88,18 +88,22 @@ Agents can screen through MCP — a read-only tool surface (`screen`, `fields`, 
 `company`, `status`) over stdio:
 
 ```bash
-claude mcp add crible -e CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp
+codex mcp add crible --env CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp
+# Claude Code: claude mcp add crible -e CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp
 ```
 
 The repo also ships a [`crible-cli` agent skill](.claude/skills/crible-cli/SKILL.md) that
 teaches coding agents the full CLI — screening syntax, data management, publishing. Install
-it once, globally, with the [skills CLI](https://skills.sh) (works for Claude Code and
-other agents; re-run `update` anytime to sync with this repo):
+it once, globally, with the [skills CLI](https://skills.sh) (works for Codex, Claude Code,
+and other compatible agents; re-run `update` anytime to sync with this repo):
 
 ```bash
-npx skills add maxgfr/crible -g     # install into ~/.claude/skills
+npx skills add maxgfr/crible -g --agent codex --skill crible-cli -y
 npx skills update -g -y             # pull the latest version from the repo
 ```
+
+The repository also exposes the canonical skill at `.agents/skills/crible-cli`
+for Codex project discovery; that path is a versioned link, not a divergent copy.
 
 Uninstalling: `crible clean` deletes the dataset directory (with a marker guard so a
 mistyped `--data-dir` never removes an arbitrary folder), then remove the tool itself:
