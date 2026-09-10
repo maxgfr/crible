@@ -36,7 +36,7 @@ jobs:
       artifact_name: ${{ steps.upload.outcome == 'success' && 'github-pages' || 'github-pages-retry' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       - run: npm --prefix ui install --no-audit --no-fund
