@@ -125,7 +125,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v5
       - run: uv python install 3.12
-      - run: uv sync
+      - run: uv sync --locked
 
       - name: Marathon crawl (fundamentals only, priority order, budget-resumed)
         # deadline = the guard-fitted crawl window; --max-minutes 320 guards

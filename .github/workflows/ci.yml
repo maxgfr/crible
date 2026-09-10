@@ -14,13 +14,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - run: uv python install 3.12
-      - run: uv sync
+      # Fail on a stale lockfile instead of silently rewriting it in CI.
+      - run: uv sync --locked
       - run: uv run pytest -q
         env:
           # NFR-008 bounds are normative for the reference machine; shared
           # runners get an explicit 3× budget instead of a weakened contract
           CRIBLE_BENCH_FACTOR: "3"
       - run: uv run ruff check src tests
+      - run: uv run ruff format --check src tests
 
   ui:
     runs-on: ubuntu-latest

@@ -65,7 +65,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v5
       - run: uv python install 3.12
-      - run: uv sync
+      - run: uv sync --locked
 
       - name: Download the GLEIF ISIN→LEI mapping (never committed)
         continue-on-error: true # the ESEF cycle self-skips without it

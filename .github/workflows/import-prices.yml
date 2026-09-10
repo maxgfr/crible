@@ -72,7 +72,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v5
       - run: uv python install 3.12
-      - run: uv sync --extra captcha
+      - run: uv sync --locked --extra captcha
 
       - name: Import the HuggingFace price dump (US — series + distillate)
         run: uv run crible import-prices huggingface

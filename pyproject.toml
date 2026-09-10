@@ -59,6 +59,15 @@ target-version = "py312"
 # is therefore invisible to semantic-release.
 version_toml = ["pyproject.toml:project.version"]
 version_variables = ["src/crible/__init__.py:__version__"]
+# PSR stamps the next version before running this command. Keep uv.lock in the
+# same versioned commit so every subsequent `uv sync --locked` remains usable.
+# The action runs in its own container, so install the pinned uv release there.
+build_command = """
+set -e
+python -m pip install --disable-pip-version-check "uv==0.12.12"
+uv lock --upgrade-package "$PACKAGE_NAME"
+git add uv.lock
+"""
 tag_format = "v{version}"
 commit_message = "chore(release): v{version} [skip ci]"
 commit_author = "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
