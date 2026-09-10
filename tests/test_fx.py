@@ -41,7 +41,7 @@ def test_attach_fx_adds_eur_companions_without_touching_ratios() -> None:
     out = attach_fx(snapshot, data_dir=None, rates=RATES)
 
     assert out.loc[0, "revenue_eur"] == 100.0  # USD → EUR
-    assert out.loc[1, "revenue_eur"] == 50.0   # EUR passthrough
+    assert out.loc[1, "revenue_eur"] == 50.0  # EUR passthrough
     assert math.isnan(out.loc[2, "revenue_eur"])  # JPY has no rate → NULL, not imputed
     # the currency-neutral ratio is byte-for-byte unchanged
     pd.testing.assert_series_equal(out["return_on_equity"], snapshot["return_on_equity"])

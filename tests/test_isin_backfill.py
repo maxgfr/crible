@@ -20,8 +20,13 @@ from crible.universe import bootstrap_universe
 
 def _frame(rows: list[dict]) -> pd.DataFrame:
     defaults = {
-        "country": "France", "sector": "Information Technology", "industry": "IT",
-        "exchange": "PAR", "currency": "EUR", "market_cap": None, "isin": None,
+        "country": "France",
+        "sector": "Information Technology",
+        "industry": "IT",
+        "exchange": "PAR",
+        "currency": "EUR",
+        "market_cap": None,
+        "isin": None,
         "delisted": False,
     }
     return pd.DataFrame([{**defaults, "name": r["symbol"], **r} for r in rows])
@@ -40,17 +45,11 @@ def test_bootstrap_preserves_a_known_isin_when_upstream_has_none(con) -> None:
 
     bootstrap_universe(con, _frame([{"symbol": "OVH.PA", "name": "OVH Groupe SA"}]))
 
-    assert con.execute(
-        "SELECT isin FROM companies WHERE symbol = 'OVH.PA'"
-    ).fetchone()[0] == "FR0014005HJ9"
+    assert con.execute("SELECT isin FROM companies WHERE symbol = 'OVH.PA'").fetchone()[0] == "FR0014005HJ9"
 
     # a real upstream ISIN still wins over the local value
-    bootstrap_universe(
-        con, _frame([{"symbol": "OVH.PA", "name": "OVH Groupe SA", "isin": "FR0014005HJ8"}])
-    )
-    assert con.execute(
-        "SELECT isin FROM companies WHERE symbol = 'OVH.PA'"
-    ).fetchone()[0] == "FR0014005HJ8"
+    bootstrap_universe(con, _frame([{"symbol": "OVH.PA", "name": "OVH Groupe SA", "isin": "FR0014005HJ8"}]))
+    assert con.execute("SELECT isin FROM companies WHERE symbol = 'OVH.PA'").fetchone()[0] == "FR0014005HJ8"
 
 
 # ------------------------------------------------------------------ backfill
@@ -70,10 +69,15 @@ def test_backfill_matches_normalized_names_and_recovers_the_isin(con) -> None:
     legal form) must bridge them, the reverse GLEIF map recovers the ISIN."""
     from crible.ingest.enrich.backfill import backfill_missing_isins
 
-    bootstrap_universe(con, _frame([
-        {"symbol": "OVH.PA", "name": "OVH Groupe SA"},
-        {"symbol": "STAY.PA", "name": "Société Anonyme Unrelated"},
-    ]))
+    bootstrap_universe(
+        con,
+        _frame(
+            [
+                {"symbol": "OVH.PA", "name": "OVH Groupe SA"},
+                {"symbol": "STAY.PA", "name": "Société Anonyme Unrelated"},
+            ]
+        ),
+    )
 
     report = backfill_missing_isins(
         con,
@@ -95,10 +99,11 @@ def test_backfill_skips_names_shared_by_distinct_leis(con) -> None:
 
     report = backfill_missing_isins(
         con,
-        entities=[("LEI-A-000000000000000", "GENERALE HOLDING SA"),
-                  ("LEI-B-000000000000000", "Générale Holding")],
-        mapping={"FR0000000010": "LEI-A-000000000000000",
-                 "FR0000000011": "LEI-B-000000000000000"},
+        entities=[
+            ("LEI-A-000000000000000", "GENERALE HOLDING SA"),
+            ("LEI-B-000000000000000", "Générale Holding"),
+        ],
+        mapping={"FR0000000010": "LEI-A-000000000000000", "FR0000000011": "LEI-B-000000000000000"},
     )
 
     assert _isin(con, "GEN.PA") is None
@@ -109,10 +114,15 @@ def test_backfill_skips_names_shared_by_distinct_leis(con) -> None:
 def test_backfill_never_overwrites_and_is_idempotent(con) -> None:
     from crible.ingest.enrich.backfill import backfill_missing_isins
 
-    bootstrap_universe(con, _frame([
-        {"symbol": "OVH.PA", "name": "OVH Groupe SA"},
-        {"symbol": "AIR.PA", "name": "Airbus SE", "isin": "NL0000235190"},
-    ]))
+    bootstrap_universe(
+        con,
+        _frame(
+            [
+                {"symbol": "OVH.PA", "name": "OVH Groupe SA"},
+                {"symbol": "AIR.PA", "name": "Airbus SE", "isin": "NL0000235190"},
+            ]
+        ),
+    )
     entities = [(OVH_LEI, "OVH GROUPE"), ("LEI-AIRBUS-00000000000", "AIRBUS")]
     mapping = {OVH_ISIN: OVH_LEI, "XX0000000001": "LEI-AIRBUS-00000000000"}
 
@@ -130,9 +140,7 @@ def test_backfill_counts_leis_the_gleif_file_does_not_know(con) -> None:
 
     bootstrap_universe(con, _frame([{"symbol": "NEW.PA", "name": "Fresh Filer"}]))
 
-    report = backfill_missing_isins(
-        con, entities=[("LEI-FRESH-000000000000", "FRESH FILER")], mapping={}
-    )
+    report = backfill_missing_isins(con, entities=[("LEI-FRESH-000000000000", "FRESH FILER")], mapping={})
 
     assert _isin(con, "NEW.PA") is None
     assert report["no_isin_for_lei"] == 1
@@ -143,14 +151,17 @@ def test_backfill_dual_listings_share_the_entity(con) -> None:
     recover an ISIN — the sweep groups them under the one LEI anyway."""
     from crible.ingest.enrich.backfill import backfill_missing_isins
 
-    bootstrap_universe(con, _frame([
-        {"symbol": "OVH.PA", "name": "OVH Groupe SA"},
-        {"symbol": "0ABC.IL", "name": "OVH Groupe SA", "country": "United Kingdom"},
-    ]))
-
-    report = backfill_missing_isins(
-        con, entities=[(OVH_LEI, "OVH GROUPE")], mapping={OVH_ISIN: OVH_LEI}
+    bootstrap_universe(
+        con,
+        _frame(
+            [
+                {"symbol": "OVH.PA", "name": "OVH Groupe SA"},
+                {"symbol": "0ABC.IL", "name": "OVH Groupe SA", "country": "United Kingdom"},
+            ]
+        ),
     )
+
+    report = backfill_missing_isins(con, entities=[(OVH_LEI, "OVH GROUPE")], mapping={OVH_ISIN: OVH_LEI})
 
     assert _isin(con, "OVH.PA") == OVH_ISIN
     assert _isin(con, "0ABC.IL") == OVH_ISIN
@@ -243,9 +254,7 @@ def test_sweep_backfills_isins_then_enriches_in_the_same_run(tmp_path, monkeypat
     bootstrap_universe(db, _frame([{"symbol": "OVH.PA", "name": "OVH Groupe SA"}]))
     db.close()
 
-    outcome = run_esef_sweep(
-        limit=10, client=BackfillingIndexClient(), mapping={OVH_ISIN: OVH_LEI}
-    )
+    outcome = run_esef_sweep(limit=10, client=BackfillingIndexClient(), mapping={OVH_ISIN: OVH_LEI})
 
     assert outcome["backfilled"] == 1
     assert outcome["enriched"] == ["OVH.PA"]

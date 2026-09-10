@@ -33,19 +33,15 @@ def test_merge_audited_prefers_primary_and_backfills_from_fallback() -> None:
     primary wins on overlapping periods, the fallback only backfills periods it
     is missing (deeper history)."""
     primary = {
-        ("income", "annual"): pd.DataFrame(
-            {"period": ["2024"], "TotalRevenue": [100.0]}
-        ),
+        ("income", "annual"): pd.DataFrame({"period": ["2024"], "TotalRevenue": [100.0]}),
     }
     fallback = {
-        ("income", "annual"): pd.DataFrame(
-            {"period": ["2019", "2024"], "TotalRevenue": [40.0, 999.0]}
-        ),
+        ("income", "annual"): pd.DataFrame({"period": ["2019", "2024"], "TotalRevenue": [40.0, 999.0]}),
     }
     merged = merge_audited(primary, fallback)
     frame = merged[("income", "annual")].set_index("period")
     assert frame.loc["2024", "TotalRevenue"] == 100.0  # primary wins the overlap
-    assert frame.loc["2019", "TotalRevenue"] == 40.0   # fallback backfills the gap
+    assert frame.loc["2019", "TotalRevenue"] == 40.0  # fallback backfills the gap
 
 
 def test_merge_audited_keeps_two_fiscal_years_labelled_inside_one_calendar_year() -> None:

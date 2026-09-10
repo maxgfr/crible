@@ -104,9 +104,7 @@ def build_canonical(frames: dict[tuple[str, str], pd.DataFrame], freq: str = "an
         # yfinance capital_expenditure is negative
         out["free_cash_flow"] = out["operating_cashflow"] + out["capital_expenditure"]
     if out["earnings_before_interest_and_taxes"].isna().all():
-        out["earnings_before_interest_and_taxes"] = (
-            out["income_before_tax"] + out["interest_expense"]
-        )
+        out["earnings_before_interest_and_taxes"] = out["income_before_tax"] + out["interest_expense"]
     if out["total_debt"].isna().all():
         # audited sources never file a TotalDebt aggregate (deliberately
         # unmapped in edgar/esef — no clean tag); the sum of the two sided
@@ -114,8 +112,6 @@ def build_canonical(frames: dict[tuple[str, str], pd.DataFrame], freq: str = "an
         # (LTD alone would understate leverage and enterprise value)
         out["total_debt"] = out["long_term_debt"] + out["short_term_debt"]
     if out["ebitda"].isna().all():
-        out["ebitda"] = (
-            out["earnings_before_interest_and_taxes"] + out["depreciation_and_amortization"]
-        )
+        out["ebitda"] = out["earnings_before_interest_and_taxes"] + out["depreciation_and_amortization"]
 
     return out.sort_index()

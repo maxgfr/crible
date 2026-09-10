@@ -21,7 +21,10 @@ def test_fr013_inventory_exposes_the_keyless_core(client):
     body = client.get("/api/providers").json()
     by_id = {p["id"]: p for p in body}
     assert by_id["yfinance"] == {
-        "id": "yfinance", "kind": "keyless", "key_env_var": None, "enabled": True,
+        "id": "yfinance",
+        "kind": "keyless",
+        "key_env_var": None,
+        "enabled": True,
     }
     # keyless-only contract (2026-07-17): no keyed provider ships at all
     assert all(p["key_env_var"] is None for p in body)

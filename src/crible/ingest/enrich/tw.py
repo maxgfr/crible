@@ -28,10 +28,7 @@ def run_twse(limit: int = 0, http=None, time_budget_seconds: float | None = None
     started = time.monotonic()
 
     def out_of_time() -> bool:
-        return (
-            time_budget_seconds is not None
-            and time.monotonic() - started >= time_budget_seconds
-        )
+        return time_budget_seconds is not None and time.monotonic() - started >= time_budget_seconds
 
     con = _connect()
     try:
@@ -58,11 +55,7 @@ def run_twse(limit: int = 0, http=None, time_budget_seconds: float | None = None
             log.warning("twse: %s — resuming next run", outcome["outage"])
             return outcome
 
-    reported = {
-        str(row.get("公司代號", "")).strip()
-        for payload in payloads.values()
-        for row in payload
-    }
+    reported = {str(row.get("公司代號", "")).strip() for payload in payloads.values() for row in payload}
     codes = sorted(set(by_code) & reported)
     outcome["unmatched"] = len(reported - set(by_code))
     update_heartbeat(twse_resolved=len(codes), twse_unmatched=outcome["unmatched"])
@@ -86,8 +79,12 @@ def run_twse(limit: int = 0, http=None, time_budget_seconds: float | None = None
         }
         merged = merge_audited(fresh, existing)  # new period wins, history backfills
         write_audited_frames(
-            data, symbol=symbol, provider_id="twse", frames=merged,
-            fetched_at=fetched_at, skip_identical=True,
+            data,
+            symbol=symbol,
+            provider_id="twse",
+            frames=merged,
+            fetched_at=fetched_at,
+            skip_identical=True,
         )
         outcome["enriched"] += 1
     log.info("twse: enriched %d TW listings (%d codes matched)", outcome["enriched"], len(codes))

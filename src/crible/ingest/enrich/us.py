@@ -5,9 +5,16 @@ from __future__ import annotations
 import time
 
 from crible.ingest.enrich._base import (
-    EDGAR_REFRESH_SECONDS, EDGAR_SCHEMA, FSDS_MAX_AGE, _connect, config, log,
-    seed_tasks_from_raw, update_heartbeat,
+    EDGAR_REFRESH_SECONDS,
+    EDGAR_SCHEMA,
+    FSDS_MAX_AGE,
+    _connect,
+    config,
+    log,
+    seed_tasks_from_raw,
+    update_heartbeat,
 )
+
 
 def run_edgar_cycle(limit: int = 5, client=None, ticker_map: dict[str, int] | None = None) -> dict:
     """FR-016 — the EDGAR enrichment cycle: US companies whose ticker resolves
@@ -59,7 +66,12 @@ def run_edgar_cycle(limit: int = 5, client=None, ticker_map: dict[str, int] | No
         # fresh operational DB (every CI run): re-derive freshness from the
         # restored raw layer so the cycle advances instead of re-fetching
         seed_tasks_from_raw(
-            con, data, provider="edgar", table="edgar_tasks", key_column="cik", keys=resolved,
+            con,
+            data,
+            provider="edgar",
+            table="edgar_tasks",
+            key_column="cik",
+            keys=resolved,
         )
         due = con.execute(
             "SELECT symbol, cik FROM edgar_tasks WHERE last_fetched_at IS NULL"
@@ -81,8 +93,14 @@ def run_edgar_cycle(limit: int = 5, client=None, ticker_map: dict[str, int] | No
                 fetched_at = time.time()
                 for (statement_type, freq), frame in frames.items():
                     write_raw_statement(
-                        data, symbol=symbol, provider="edgar", statement_type=statement_type,
-                        freq=freq, frame=frame, fetched_at=fetched_at, skip_identical=True,
+                        data,
+                        symbol=symbol,
+                        provider="edgar",
+                        statement_type=statement_type,
+                        freq=freq,
+                        frame=frame,
+                        fetched_at=fetched_at,
+                        skip_identical=True,
                     )
                 con.execute(
                     "UPDATE edgar_tasks SET last_fetched_at = ? WHERE symbol = ?",
@@ -90,8 +108,12 @@ def run_edgar_cycle(limit: int = 5, client=None, ticker_map: dict[str, int] | No
                 )
                 if frames:
                     outcome["enriched"].append(symbol)
-                    log.info("edgar: enriched %s (%d statement frame(s)) from CIK %010d",
-                             symbol, len(frames), int(cik))
+                    log.info(
+                        "edgar: enriched %s (%d statement frame(s)) from CIK %010d",
+                        symbol,
+                        len(frames),
+                        int(cik),
+                    )
             except Exception as exc:  # noqa: BLE001 — outage: record, resume next cycle
                 outcome["outage"] = f"{symbol}: {exc}"
                 log.warning("edgar: outage on %s: %s — resuming next cycle", symbol, exc)
@@ -102,8 +124,11 @@ def run_edgar_cycle(limit: int = 5, client=None, ticker_map: dict[str, int] | No
 
 
 def run_edgar_bulk(
-    zip_path=None, client=None, ticker_map: dict[str, int] | None = None,
-    download: bool = True, limit: int | None = None,
+    zip_path=None,
+    client=None,
+    ticker_map: dict[str, int] | None = None,
+    download: bool = True,
+    limit: int | None = None,
     time_budget_seconds: float | None = None,
 ) -> dict:
     """FR-016 / ADR-0005 scale-up — the bulk variant: ONE companyfacts.zip
@@ -121,9 +146,7 @@ def run_edgar_bulk(
     # wall-clock budget (run_refresh --max-minutes): per-symbol granularity is
     # safe — edgar_tasks stamps and raw writes are per-symbol, so a partial
     # pass resumes cleanly (idempotent writes skip the already-ingested)
-    stage_deadline = (
-        None if time_budget_seconds is None else time.monotonic() + time_budget_seconds
-    )
+    stage_deadline = None if time_budget_seconds is None else time.monotonic() + time_budget_seconds
 
     def out_of_time() -> bool:
         return stage_deadline is not None and time.monotonic() >= stage_deadline
@@ -187,8 +210,14 @@ def run_edgar_bulk(
                 # unchanged one must not get a fresh stamp (it would mark all
                 # ~5k edgar symbols dirty and degrade compute to a full rebuild)
                 write_raw_statement(
-                    data, symbol=symbol, provider="edgar", statement_type=statement_type,
-                    freq=freq, frame=frame, fetched_at=fetched_at, skip_identical=True,
+                    data,
+                    symbol=symbol,
+                    provider="edgar",
+                    statement_type=statement_type,
+                    freq=freq,
+                    frame=frame,
+                    fetched_at=fetched_at,
+                    skip_identical=True,
                 )
             con.execute(
                 "INSERT INTO edgar_tasks (symbol, cik, last_fetched_at) VALUES (?, ?, ?)"
@@ -205,7 +234,10 @@ def run_edgar_bulk(
 
 
 def run_fsds(
-    quarters, client=None, ticker_map: dict[str, int] | None = None, http=None,
+    quarters,
+    client=None,
+    ticker_map: dict[str, int] | None = None,
+    http=None,
     limit: int | None = None,
     time_budget_seconds: float | None = None,
 ) -> dict:
@@ -220,13 +252,15 @@ def run_fsds(
 
     data = config.data_dir()
     outcome: dict = {
-        "enriched": 0, "quarters": [], "unmatched": 0, "outage": None, "skipped": None,
+        "enriched": 0,
+        "quarters": [],
+        "unmatched": 0,
+        "outage": None,
+        "skipped": None,
         "stopped": None,
     }
     # wall-clock budget, per-quarter granularity (one archive = one unit)
-    stage_deadline = (
-        None if time_budget_seconds is None else time.monotonic() + time_budget_seconds
-    )
+    stage_deadline = None if time_budget_seconds is None else time.monotonic() + time_budget_seconds
 
     con = _connect()
     try:
@@ -261,8 +295,13 @@ def run_fsds(
                 break
             try:
                 result = fetch_if_stale(
-                    data, "edgar-fsds", f"{year}q{quarter}.zip", quarter_url(year, quarter),
-                    http=http, headers=headers, max_age_seconds=FSDS_MAX_AGE,
+                    data,
+                    "edgar-fsds",
+                    f"{year}q{quarter}.zip",
+                    quarter_url(year, quarter),
+                    http=http,
+                    headers=headers,
+                    max_age_seconds=FSDS_MAX_AGE,
                 )
             except Exception as exc:  # noqa: BLE001 — one bad quarter never sinks the run
                 outcome["outage"] = f"{year}q{quarter}: {exc}"
@@ -271,8 +310,12 @@ def run_fsds(
             count = 0
             for cik, frames in iter_fsds(result.path, set(by_cik)):
                 write_audited_frames(
-                    data, symbol=by_cik[cik], provider_id="edgar-fsds",
-                    frames=frames, fetched_at=fetched_at, skip_identical=True,
+                    data,
+                    symbol=by_cik[cik],
+                    provider_id="edgar-fsds",
+                    frames=frames,
+                    fetched_at=fetched_at,
+                    skip_identical=True,
                 )
                 count += 1
                 outcome["enriched"] += 1
@@ -285,4 +328,3 @@ def run_fsds(
         return outcome
     finally:
         con.close()
-

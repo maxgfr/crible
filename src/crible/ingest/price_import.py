@@ -50,8 +50,15 @@ HF_SHARDS = [
 # align with the universe. Stooq's per-country stock archives are limited
 # (d_us/uk/jp/hk/pl/hu_txt); d_world_txt is instruments only (no stocks).
 STOOQ_SUFFIXES = {
-    "us": "", "de": ".DE", "uk": ".L", "fr": ".PA", "jp": ".T",
-    "pl": ".WA", "hu": ".BD", "it": ".MI", "hk": ".HK",
+    "us": "",
+    "de": ".DE",
+    "uk": ".L",
+    "fr": ".PA",
+    "jp": ".T",
+    "pl": ".WA",
+    "hu": ".BD",
+    "it": ".MI",
+    "hk": ".HK",
 }
 
 # Markets whose universe tickers are zero-padded numeric codes but whose Stooq
@@ -108,8 +115,13 @@ def load_prices_latest(data_dir: Path | str) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame(
             columns=[
-                "symbol", "close", "price_asof", *FEATURE_COLUMNS,
-                "source", "imported_at", *MOMENTUM_META,
+                "symbol",
+                "close",
+                "price_asof",
+                *FEATURE_COLUMNS,
+                "source",
+                "imported_at",
+                *MOMENTUM_META,
             ]
         )
     table = pd.read_parquet(path)
@@ -131,10 +143,7 @@ def latest_import_age_days(data_dir: Path | str, source: str | None = None) -> f
     if source is not None:
         stamps = [float(v) for v in table.loc[table["source"] == source, "imported_at"].dropna()]
         stamps += [
-            float(v)
-            for v in table.loc[
-                table["momentum_source"] == source, "momentum_imported_at"
-            ].dropna()
+            float(v) for v in table.loc[table["momentum_source"] == source, "momentum_imported_at"].dropna()
         ]
         if not stamps:
             return None
@@ -163,10 +172,9 @@ def _merge_and_publish(data_dir: Path | str, fresh: pd.DataFrame) -> None:
     fresh = _stamp_momentum_provenance(fresh.copy())
     current = load_prices_latest(data_dir)
     combined = pd.concat([current, fresh], ignore_index=True)
-    quotes = (
-        combined.sort_values("price_asof", na_position="first")
-        .drop_duplicates("symbol", keep="last")[["symbol", *QUOTE_COLUMNS]]
-    )
+    quotes = combined.sort_values("price_asof", na_position="first").drop_duplicates("symbol", keep="last")[
+        ["symbol", *QUOTE_COLUMNS]
+    ]
     features = (
         combined.dropna(subset=FEATURE_COLUMNS, how="all")
         .sort_values("momentum_asof", na_position="first")
@@ -186,9 +194,7 @@ def _distill(bars: pd.DataFrame) -> dict | None:
     return momentum_features(bars["date"], bars["close"])
 
 
-def import_huggingface(
-    data_dir: Path | str, shards: list[str] | None = None
-) -> ImportReport:
+def import_huggingface(data_dir: Path | str, shards: list[str] | None = None) -> ImportReport:
     """Import the HF daily-price shards: windowed OHLCV series + distillate.
 
     One DuckDB pass over the shards (only the series window of bars is read);
@@ -227,9 +233,7 @@ def import_huggingface(
         features = momentum_features(group["date"], group["adj_close"])
         if features is None:
             continue
-        records.append(
-            {"symbol": symbol, **features, "source": "huggingface", "imported_at": now}
-        )
+        records.append({"symbol": symbol, **features, "source": "huggingface", "imported_at": now})
     fresh = pd.DataFrame(records)
     skipped = total_symbols - len(fresh)
     if not fresh.empty:
@@ -237,8 +241,7 @@ def import_huggingface(
     series = series[series["symbol"].isin(known)]
     if len(series):
         write_series(data_dir, "huggingface", series.assign(source="huggingface"))
-    log.info("import-prices: %d symbols from huggingface (%d outside the universe)",
-             len(fresh), skipped)
+    log.info("import-prices: %d symbols from huggingface (%d outside the universe)", len(fresh), skipped)
     return ImportReport(source="huggingface", imported=len(fresh), skipped_unknown=skipped)
 
 
@@ -297,27 +300,25 @@ def import_stooq(data_dir: Path | str, archive: Path | str) -> ImportReport:
                     if not date or not close:
                         continue
                     rows.append(
-                        {"date": f"{date[:4]}-{date[4:6]}-{date[6:8]}",
-                         "open": _stooq_number(normalized.get("open")),
-                         "high": _stooq_number(normalized.get("high")),
-                         "low": _stooq_number(normalized.get("low")),
-                         "close": float(close),
-                         "volume": _stooq_number(normalized.get("vol"))}
+                        {
+                            "date": f"{date[:4]}-{date[4:6]}-{date[6:8]}",
+                            "open": _stooq_number(normalized.get("open")),
+                            "high": _stooq_number(normalized.get("high")),
+                            "low": _stooq_number(normalized.get("low")),
+                            "close": float(close),
+                            "volume": _stooq_number(normalized.get("vol")),
+                        }
                     )
             if not rows:
                 continue
             distilled = _distill(pd.DataFrame(rows))
             if distilled is None:
                 continue
-            records.append(
-                {"symbol": symbol, **distilled, "source": "stooq", "imported_at": now}
-            )
+            records.append({"symbol": symbol, **distilled, "source": "stooq", "imported_at": now})
             bars = pd.DataFrame(rows).assign(date=lambda f: pd.to_datetime(f["date"]))
             cutoff = bars["date"].max() - pd.Timedelta(days=SERIES_WINDOW_DAYS)
             series_parts.append(
-                bars[bars["date"] > cutoff].assign(
-                    symbol=symbol, adj_close=float("nan"), source="stooq"
-                )
+                bars[bars["date"] > cutoff].assign(symbol=symbol, adj_close=float("nan"), source="stooq")
             )
     fresh = pd.DataFrame(records)
     if not fresh.empty:

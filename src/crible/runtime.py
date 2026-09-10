@@ -48,9 +48,7 @@ class Runtime:
         """
         snapshot = self.snapshot_path()
         if not snapshot.exists():
-            raise SnapshotMissingError(
-                "no snapshot yet — run `crible ingest` then `crible compute` first"
-            )
+            raise SnapshotMissingError("no snapshot yet — run `crible ingest` then `crible compute` first")
         con.execute(
             f"""
             CREATE OR REPLACE TEMP VIEW snapshot_latest AS
@@ -76,9 +74,7 @@ class Runtime:
         try:
             self.mount_snapshot(con)
             whitelist = whitelist_from_relation(con, "snapshot_latest")
-            rows = store_screen(
-                con, query, whitelist=whitelist, sort=sort, limit=limit, offset=offset
-            )
+            rows = store_screen(con, query, whitelist=whitelist, sort=sort, limit=limit, offset=offset)
             total = screen_count(con, query, whitelist=whitelist)
             return rows, total
         finally:
@@ -171,9 +167,7 @@ class Runtime:
             ).fetchall()
         finally:
             con.close()
-        return [
-            {"symbol": s, "name": n, "country": c, "sector": sec} for s, n, c, sec in rows
-        ]
+        return [{"symbol": s, "name": n, "country": c, "sector": sec} for s, n, c, sec in rows]
 
     def status(self) -> dict:
         out: dict = {"data_dir": str(self.data_dir)}
@@ -181,9 +175,7 @@ class Runtime:
             con = duckdb.connect()
             try:
                 path = self.universe_path().as_posix()
-                out["universe"] = con.execute(
-                    f"SELECT count(*) FROM read_parquet('{path}')"
-                ).fetchone()[0]
+                out["universe"] = con.execute(f"SELECT count(*) FROM read_parquet('{path}')").fetchone()[0]
                 out["by_region"] = dict(
                     con.execute(
                         f"SELECT region, count(*) FROM read_parquet('{path}') GROUP BY region"

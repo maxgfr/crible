@@ -256,8 +256,8 @@ def test_fr010_reconcile_adds_audited_only_periods_deeper_than_scraped() -> None
     result = reconcile(scraped, audited, symbol="X")
     merged = result.merged
     assert merged.loc["2024", "revenue"] == 110.0  # audited overrides the overlap
-    assert merged.loc["2023", "revenue"] == 90.0   # deeper history is added…
-    assert merged.loc["2022", "revenue"] == 80.0   # …not truncated to the scraped window
+    assert merged.loc["2023", "revenue"] == 90.0  # deeper history is added…
+    assert merged.loc["2022", "revenue"] == 80.0  # …not truncated to the scraped window
     assert "2022" in result.audited_fields and "2023" in result.audited_fields
     # the merged frame MUST stay chronologically sorted (latest period last):
     # build_symbol_snapshot assigns the current price/return_6m to .iloc[-1]
@@ -292,16 +292,12 @@ def test_fr010_audited_year_labels_align_to_dated_scraped_periods() -> None:
     ("2024-12-31") — align_periods must bridge them or the audited layer
     never overrides anything (the Finding-A fix)."""
     scraped_frames = {
-        ("income", "annual"): income_frame(
-            {"TotalRevenue": [1000.0, 1100.0]}, ["2023-12-31", "2024-12-31"]
-        ),
+        ("income", "annual"): income_frame({"TotalRevenue": [1000.0, 1100.0]}, ["2023-12-31", "2024-12-31"]),
     }
     audited_frames = {
         ("income", "annual"): income_frame({"TotalRevenue": [1200.0]}, ["2024"]),
     }
-    snapshot = build_symbol_snapshot(
-        "MC.PA", scraped_frames, audited_frames=audited_frames, computed_at=1.0
-    )
+    snapshot = build_symbol_snapshot("MC.PA", scraped_frames, audited_frames=audited_frames, computed_at=1.0)
     by_period = snapshot.set_index("period")
     assert by_period.loc["2024-12-31", "revenue"] == 1200.0
     assert "revenue" in by_period.loc["2024-12-31", "audited_fields"]
@@ -318,13 +314,14 @@ def test_fr010_snapshot_marks_audited_provenance() -> None:
     audited_frames = {
         ("income", "annual"): income_frame({"TotalRevenue": [1200.0]}, ["2024"]),
     }
-    snapshot = build_symbol_snapshot(
-        "MC.PA", scraped_frames, audited_frames=audited_frames, computed_at=1.0
-    )
+    snapshot = build_symbol_snapshot("MC.PA", scraped_frames, audited_frames=audited_frames, computed_at=1.0)
     by_period = snapshot.set_index("period")
     assert by_period.loc["2024", "revenue"] == 1200.0
     assert "revenue" in by_period.loc["2024", "audited_fields"]
-    assert by_period.loc["2023", "audited_fields"] is None or by_period.loc["2023", "audited_fields"] != by_period.loc["2024", "audited_fields"]
+    assert (
+        by_period.loc["2023", "audited_fields"] is None
+        or by_period.loc["2023", "audited_fields"] != by_period.loc["2024", "audited_fields"]
+    )
 
 
 # (the outage path is exercised for real by
@@ -339,7 +336,11 @@ def test_fr010_audited_only_symbol_carries_field_provenance(tmp_path) -> None:
     from crible.ingest.raw import write_raw_statement
 
     write_raw_statement(
-        tmp_path, symbol="SAP.DE", provider="esef", statement_type="income", freq="annual",
+        tmp_path,
+        symbol="SAP.DE",
+        provider="esef",
+        statement_type="income",
+        freq="annual",
         frame=pd.DataFrame({"period": ["2024"], "TotalRevenue": [34e9], "NetIncome": [6e9]}),
         fetched_at=1000.0,
     )
@@ -493,15 +494,12 @@ def test_fr010_sweep_covers_the_gb_slice(tmp_path, monkeypatch) -> None:
         def filings_index(self, page_size: int = 100, page_number: int = 1):
             if page_number > 1:
                 return [], 1
-            return [{"attributes": {"json_url": f"/{LEI_BARC}/2025-12-31/barc.json",
-                                    "country": "GB"}}], 1
+            return [{"attributes": {"json_url": f"/{LEI_BARC}/2025-12-31/barc.json", "country": "GB"}}], 1
 
         def fetch_xbrl_json(self, filing):
             return XBRL_JSON
 
-    outcome = run_esef_sweep(
-        limit=10, client=GbIndexClient(), mapping={"GB0031348658": LEI_BARC}
-    )
+    outcome = run_esef_sweep(limit=10, client=GbIndexClient(), mapping={"GB0031348658": LEI_BARC})
     assert outcome["enriched"] == ["BARC.L"]
     assert list(tmp_path.glob("raw/provider=esef/symbol=BARC.L/*.parquet"))
 
@@ -514,14 +512,19 @@ def test_esef_outranks_companies_house_and_ch_backfills(tmp_path) -> None:
 
     pd.DataFrame({"symbol": ["BARC.L"]}).to_parquet(tmp_path / "universe.parquet", index=False)
     write_raw_statement(
-        tmp_path, symbol="BARC.L", provider="companies-house", statement_type="income",
+        tmp_path,
+        symbol="BARC.L",
+        provider="companies-house",
+        statement_type="income",
         freq="annual",
-        frame=pd.DataFrame({"period": ["2024-12-31", "2025-12-31"],
-                            "TotalRevenue": [111.0, 222.0]}),
+        frame=pd.DataFrame({"period": ["2024-12-31", "2025-12-31"], "TotalRevenue": [111.0, 222.0]}),
         fetched_at=1.0,
     )
     write_raw_statement(
-        tmp_path, symbol="BARC.L", provider="esef", statement_type="income",
+        tmp_path,
+        symbol="BARC.L",
+        provider="esef",
+        statement_type="income",
         freq="annual",
         frame=pd.DataFrame({"period": ["2025-12-31"], "TotalRevenue": [999.0]}),
         fetched_at=2.0,
@@ -561,7 +564,10 @@ def test_fr010_index_sweep_stops_on_time_budget(tmp_path, monkeypatch) -> None:
     _seed_sweep_universe(tmp_path, monkeypatch)
     client = FakeIndexClient()
     outcome = run_esef_sweep(
-        limit=10, client=client, mapping={"NL0011540547": LEI_ABN}, time_budget_seconds=0,
+        limit=10,
+        client=client,
+        mapping={"NL0011540547": LEI_ABN},
+        time_budget_seconds=0,
     )
     assert outcome["stopped"] == "budget"
     assert outcome["enriched"] == []
@@ -584,12 +590,9 @@ def test_fr010_index_sweep_outage_records_and_resumes(tmp_path, monkeypatch) -> 
 
 # ------------------------------------------------- widened IFRS map (FR-010)
 
+
 def _wide_fact(concept: str, value: float, *, year: int = 2024, instant: bool = False) -> dict:
-    period = (
-        f"{year + 1}-01-01T00:00:00"
-        if instant
-        else f"{year}-01-01T00:00:00/{year + 1}-01-01T00:00:00"
-    )
+    period = f"{year + 1}-01-01T00:00:00" if instant else f"{year}-01-01T00:00:00/{year + 1}-01-01T00:00:00"
     return {
         "value": str(value),
         "dimensions": {
@@ -605,21 +608,25 @@ def _wide_json(facts: list[dict]) -> dict:
 
 
 def test_fr010_widened_ifrs_tags_fill_beneish_and_altman_inputs() -> None:
-    frames = facts_to_frames(_wide_json([
-        _wide_fact("ifrs-full:CostOfSales", 6e8),
-        _wide_fact("ifrs-full:ProfitLossBeforeTax", 1.2e8),
-        _wide_fact("ifrs-full:IncomeTaxExpenseContinuingOperations", 3e7),
-        _wide_fact("ifrs-full:InterestExpense", 1e7),
-        _wide_fact("ifrs-full:SellingGeneralAndAdministrativeExpense", 2e8),
-        _wide_fact("ifrs-full:WeightedAverageShares", 1e9),
-        _wide_fact("ifrs-full:Liabilities", 5e9, instant=True),
-        _wide_fact("ifrs-full:PropertyPlantAndEquipment", 2e9, instant=True),
-        _wide_fact("ifrs-full:Goodwill", 1e9, instant=True),
-        _wide_fact("ifrs-full:TradeAndOtherCurrentPayablesToTradeSuppliers", 4e8, instant=True),
-        _wide_fact("ifrs-full:LongtermBorrowings", 1.5e9, instant=True),
-        _wide_fact("ifrs-full:AdjustmentsForDepreciationAndAmortisationExpense", 2.5e8),
-        _wide_fact("ifrs-full:ProceedsFromIssuingShares", 5e7),
-    ]))
+    frames = facts_to_frames(
+        _wide_json(
+            [
+                _wide_fact("ifrs-full:CostOfSales", 6e8),
+                _wide_fact("ifrs-full:ProfitLossBeforeTax", 1.2e8),
+                _wide_fact("ifrs-full:IncomeTaxExpenseContinuingOperations", 3e7),
+                _wide_fact("ifrs-full:InterestExpense", 1e7),
+                _wide_fact("ifrs-full:SellingGeneralAndAdministrativeExpense", 2e8),
+                _wide_fact("ifrs-full:WeightedAverageShares", 1e9),
+                _wide_fact("ifrs-full:Liabilities", 5e9, instant=True),
+                _wide_fact("ifrs-full:PropertyPlantAndEquipment", 2e9, instant=True),
+                _wide_fact("ifrs-full:Goodwill", 1e9, instant=True),
+                _wide_fact("ifrs-full:TradeAndOtherCurrentPayablesToTradeSuppliers", 4e8, instant=True),
+                _wide_fact("ifrs-full:LongtermBorrowings", 1.5e9, instant=True),
+                _wide_fact("ifrs-full:AdjustmentsForDepreciationAndAmortisationExpense", 2.5e8),
+                _wide_fact("ifrs-full:ProceedsFromIssuingShares", 5e7),
+            ]
+        )
+    )
     income = frames[("income", "annual")].set_index("period").loc["2024"]
     assert income["CostOfRevenue"] == 6e8
     assert income["PretaxIncome"] == 1.2e8
@@ -639,13 +646,17 @@ def test_fr010_widened_ifrs_tags_fill_beneish_and_altman_inputs() -> None:
 
 
 def test_fr010_capex_and_dividends_negate_to_the_yfinance_convention() -> None:
-    frames = facts_to_frames(_wide_json([
-        _wide_fact(
-            "ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities", 9_447.0
-        ),
-        _wide_fact("ifrs-full:DividendsPaidClassifiedAsFinancingActivities", 1_000.0),
-        _wide_fact("ifrs-full:ProceedsFromIssuingShares", 500.0),
-    ]))
+    frames = facts_to_frames(
+        _wide_json(
+            [
+                _wide_fact(
+                    "ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities", 9_447.0
+                ),
+                _wide_fact("ifrs-full:DividendsPaidClassifiedAsFinancingActivities", 1_000.0),
+                _wide_fact("ifrs-full:ProceedsFromIssuingShares", 500.0),
+            ]
+        )
+    )
     cashflow = frames[("cashflow", "annual")].set_index("period").loc["2024"]
     assert cashflow["CapitalExpenditure"] == -9_447.0
     assert cashflow["CashDividendsPaid"] == -1_000.0
@@ -653,19 +664,31 @@ def test_fr010_capex_and_dividends_negate_to_the_yfinance_convention() -> None:
 
 
 def test_fr010_narrow_tag_outranks_broad_variant() -> None:
-    both = facts_to_frames(_wide_json([
-        _wide_fact("ifrs-full:PropertyPlantAndEquipment", 2e9, instant=True),
-        _wide_fact("ifrs-full:PropertyPlantAndEquipmentIncludingRightofuseAssets", 2.4e9, instant=True),
-        _wide_fact("ifrs-full:TradeAndOtherCurrentPayablesToTradeSuppliers", 4e8, instant=True),
-        _wide_fact("ifrs-full:TradeAndOtherCurrentPayables", 6e8, instant=True),
-    ]))
+    both = facts_to_frames(
+        _wide_json(
+            [
+                _wide_fact("ifrs-full:PropertyPlantAndEquipment", 2e9, instant=True),
+                _wide_fact(
+                    "ifrs-full:PropertyPlantAndEquipmentIncludingRightofuseAssets", 2.4e9, instant=True
+                ),
+                _wide_fact("ifrs-full:TradeAndOtherCurrentPayablesToTradeSuppliers", 4e8, instant=True),
+                _wide_fact("ifrs-full:TradeAndOtherCurrentPayables", 6e8, instant=True),
+            ]
+        )
+    )
     balance = both[("balance", "annual")].set_index("period").loc["2024"]
     assert balance["NetPPE"] == 2e9
     assert balance["AccountsPayable"] == 4e8
 
-    combined_only = facts_to_frames(_wide_json([
-        _wide_fact("ifrs-full:PropertyPlantAndEquipmentIncludingRightofuseAssets", 2.4e9, instant=True),
-    ]))
+    combined_only = facts_to_frames(
+        _wide_json(
+            [
+                _wide_fact(
+                    "ifrs-full:PropertyPlantAndEquipmentIncludingRightofuseAssets", 2.4e9, instant=True
+                ),
+            ]
+        )
+    )
     assert combined_only[("balance", "annual")].set_index("period").loc["2024", "NetPPE"] == 2.4e9
 
 
@@ -681,7 +704,8 @@ def test_fr010_widened_esef_reaches_scores_end_to_end() -> None:
             _wide_fact("ifrs-full:CashFlowsFromUsedInOperatingActivities", 2e8 * scale, year=year),
             _wide_fact(
                 "ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
-                5e7 * scale, year=year,
+                5e7 * scale,
+                year=year,
             ),
             # dimensional SOCIE fact — the recovered RetainedEarnings path
             {
@@ -709,9 +733,7 @@ def test_fr010_widened_esef_reaches_scores_end_to_end() -> None:
 _LEI = "969500A1G9QKR8Q79815"
 
 
-def _history_filing(
-    period_end: str, date_added: str, *, lei: str = _LEI, tag_period: bool = True
-) -> dict:
+def _history_filing(period_end: str, date_added: str, *, lei: str = _LEI, tag_period: bool = True) -> dict:
     attrs = {
         "json_url": f"/{lei}/{period_end}/{date_added}.json",
         "date_added": date_added,
@@ -950,9 +972,7 @@ def _esef_task_depth(tmp_path, symbol: str):
 
     con = _duckdb.connect(str(tmp_path / "crible.duckdb"))
     try:
-        row = con.execute(
-            "SELECT history_depth FROM esef_tasks WHERE symbol = ?", [symbol]
-        ).fetchone()
+        row = con.execute("SELECT history_depth FROM esef_tasks WHERE symbol = ?", [symbol]).fetchone()
         return row[0] if row else None
     finally:
         con.close()
@@ -963,9 +983,7 @@ def test_fr010_cycle_merges_filing_history_and_records_depth(tmp_path, monkeypat
 
     _seed_sweep_universe(tmp_path, monkeypatch)
     client = _DeepClient(LEI_ABN)
-    outcome = run_esef_cycle(
-        limit=10, client=client, mapping={"NL0011540547": LEI_ABN}, history=3
-    )
+    outcome = run_esef_cycle(limit=10, client=client, mapping={"NL0011540547": LEI_ABN}, history=3)
     assert outcome["enriched"] == ["ABN.AS"]
     assert client.json_fetches == 3
     files = list(tmp_path.glob("raw/provider=esef/symbol=ABN.AS/income-annual-*.parquet"))
@@ -1014,14 +1032,12 @@ def test_fr010_lowering_history_never_discards_backfilled_years(tmp_path, monkey
 
     _seed_sweep_universe(tmp_path, monkeypatch)
     mapping = {"NL0011540547": LEI_ABN}
-    assert run_esef_sweep(limit=10, client=_DeepClient(LEI_ABN), mapping=mapping, history=3)[
-        "enriched"
-    ] == ["ABN.AS"]
+    assert run_esef_sweep(limit=10, client=_DeepClient(LEI_ABN), mapping=mapping, history=3)["enriched"] == [
+        "ABN.AS"
+    ]
 
     # a shallower run while the filer is due again (refresh_seconds=0)
-    run_esef_sweep(
-        limit=10, client=_DeepClient(LEI_ABN), mapping=mapping, history=1, refresh_seconds=0
-    )
+    run_esef_sweep(limit=10, client=_DeepClient(LEI_ABN), mapping=mapping, history=1, refresh_seconds=0)
     prune_raw(tmp_path)
     files = list(tmp_path.glob("raw/provider=esef/symbol=ABN.AS/income-annual-*.parquet"))
     raw = pd.read_parquet(max(files, key=lambda f: f.name))
@@ -1039,7 +1055,11 @@ def test_fr010_legacy_raw_without_depth_column_seeds_as_depth_one(tmp_path, monk
 
     _seed_sweep_universe(tmp_path, monkeypatch)
     write_raw_statement(
-        tmp_path, symbol="ABN.AS", provider="esef", statement_type="income", freq="annual",
+        tmp_path,
+        symbol="ABN.AS",
+        provider="esef",
+        statement_type="income",
+        freq="annual",
         frame=pd.DataFrame({"period": ["2024"], "TotalRevenue": [1.0]}),
         fetched_at=_time.time(),  # fresh — only the depth clause can make it due
     )
@@ -1055,9 +1075,9 @@ def test_fr010_cycle_depth_gate_requeues_and_then_rests(tmp_path, monkeypatch) -
 
     _seed_sweep_universe(tmp_path, monkeypatch)
     mapping = {"NL0011540547": LEI_ABN}
-    assert run_esef_cycle(limit=10, client=_DeepClient(LEI_ABN), mapping=mapping, history=1)[
-        "enriched"
-    ] == ["ABN.AS"]
+    assert run_esef_cycle(limit=10, client=_DeepClient(LEI_ABN), mapping=mapping, history=1)["enriched"] == [
+        "ABN.AS"
+    ]
     assert _esef_task_depth(tmp_path, "ABN.AS") == 1
 
     deep = _DeepClient(LEI_ABN)
@@ -1096,8 +1116,6 @@ def test_fr010_sweep_max_age_zero_refetches_fresh_symbols(tmp_path, monkeypatch)
 
     _seed_sweep_universe(tmp_path, monkeypatch)
     mapping = {"NL0011540547": LEI_ABN}
-    assert run_esef_sweep(limit=10, client=FakeIndexClient(), mapping=mapping)["enriched"] == [
-        "ABN.AS"
-    ]
+    assert run_esef_sweep(limit=10, client=FakeIndexClient(), mapping=mapping)["enriched"] == ["ABN.AS"]
     redo = run_esef_sweep(limit=10, client=FakeIndexClient(), mapping=mapping, refresh_seconds=0)
     assert redo["enriched"] == ["ABN.AS"]

@@ -64,4 +64,6 @@ class YFinanceProvider:
             raise
 
         # 3 statement types × 2 freqs + 1 history call ≈ 7 Yahoo requests
-        return FetchResult(symbol=symbol, provider=self.id, statements=statements, prices=prices, requests_used=7)
+        return FetchResult(
+            symbol=symbol, provider=self.id, statements=statements, prices=prices, requests_used=7
+        )

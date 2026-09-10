@@ -53,8 +53,7 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
     # SG&A → Beneish SGAI; function-of-expense filers tagging
     # DistributionCosts + AdministrativeExpense separately keep honest NaN
     # (no fabricated sums)
-    "ifrs-full:SellingGeneralAndAdministrativeExpense":
-        ("SellingGeneralAndAdministration", "income"),
+    "ifrs-full:SellingGeneralAndAdministrativeExpense": ("SellingGeneralAndAdministration", "income"),
     "ifrs-full:WeightedAverageShares": ("BasicAverageShares", "income"),
     # balance sheet (instant facts)
     "ifrs-full:Assets": ("TotalAssets", "balance"),
@@ -80,18 +79,20 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
     # borrowings, not NoncurrentLiabilities (provisions, deferred tax and
     # pensions would corrupt Beneish LVGI and any debt ratio)
     "ifrs-full:LongtermBorrowings": ("LongTermDebt", "balance"),
-    "ifrs-full:CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings":
-        ("CurrentDebt", "balance"),
+    "ifrs-full:CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings": ("CurrentDebt", "balance"),
     # cash flow (duration facts)
     "ifrs-full:CashFlowsFromUsedInOperatingActivities": ("OperatingCashFlow", "cashflow"),
-    "ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities":
-        ("CapitalExpenditure", "cashflow"),
-    "ifrs-full:PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwillInvestmentPropertyAndOtherNoncurrentAssets":
-        ("CapitalExpenditure", "cashflow"),
+    "ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities": (
+        "CapitalExpenditure",
+        "cashflow",
+    ),
+    "ifrs-full:PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwillInvestmentPropertyAndOtherNoncurrentAssets": (
+        "CapitalExpenditure",
+        "cashflow",
+    ),
     "ifrs-full:DividendsPaidClassifiedAsFinancingActivities": ("CashDividendsPaid", "cashflow"),
     # D&A: cash-flow reconciliation line first (the edgar DD&A-first pattern)
-    "ifrs-full:AdjustmentsForDepreciationAndAmortisationExpense":
-        ("DepreciationAndAmortization", "cashflow"),
+    "ifrs-full:AdjustmentsForDepreciationAndAmortisationExpense": ("DepreciationAndAmortization", "cashflow"),
     "ifrs-full:DepreciationAndAmortisationExpense": ("DepreciationAndAmortization", "cashflow"),
     "ifrs-full:ProceedsFromIssuingShares": ("CommonStockIssuance", "cashflow"),
 }
@@ -116,10 +117,14 @@ NEGATED_CONCEPTS = {
 # parent-company caveat above.
 _EQUITY_COMPONENTS_AXIS = "ifrs-full:ComponentsOfEquityAxis"
 DIMENSIONAL_RECOVERY: dict[tuple[str, str, str], tuple[str, str]] = {
-    ("ifrs-full:Equity", _EQUITY_COMPONENTS_AXIS, "ifrs-full:RetainedEarningsMember"):
-        ("RetainedEarnings", "balance"),
-    ("ifrs-full:RetainedEarnings", _EQUITY_COMPONENTS_AXIS, "ifrs-full:RetainedEarningsMember"):
-        ("RetainedEarnings", "balance"),
+    ("ifrs-full:Equity", _EQUITY_COMPONENTS_AXIS, "ifrs-full:RetainedEarningsMember"): (
+        "RetainedEarnings",
+        "balance",
+    ),
+    ("ifrs-full:RetainedEarnings", _EQUITY_COMPONENTS_AXIS, "ifrs-full:RetainedEarningsMember"): (
+        "RetainedEarnings",
+        "balance",
+    ),
 }
 
 # canonical (yfinance-vocabulary) column → statement type, for frame assembly
@@ -362,9 +367,7 @@ class EsefClient:
         count = int(payload.get("meta", {}).get("count", 0) or 0)
         return payload.get("data", []), count
 
-    def entities_index(
-        self, page_size: int = 100, page_number: int = 1
-    ) -> tuple[list[tuple[str, str]], int]:
+    def entities_index(self, page_size: int = 100, page_number: int = 1) -> tuple[list[tuple[str, str]], int]:
         """One page of the entities index as (LEI, name) pairs.
 
         Feeds the name→LEI→ISIN backfill (FR-010 reach): every ESEF filer is
@@ -389,9 +392,7 @@ class EsefClient:
         import json
 
         params = {
-            "filter": json.dumps(
-                [{"name": "entity.identifier", "op": "eq", "val": lei}]
-            ),
+            "filter": json.dumps([{"name": "entity.identifier", "op": "eq", "val": lei}]),
             "sort": "-date_added",
         }
         response = self._get(FILINGS_API, params=params)

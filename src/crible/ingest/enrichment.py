@@ -15,7 +15,13 @@ from crible.ingest.enrich.uk import load_uk_company_numbers, run_companies_house
 from crible.ingest.enrich.us import run_edgar_bulk, run_edgar_cycle, run_fsds
 
 __all__ = [
-    "run_esef_cycle", "run_esef_sweep", "run_edgar_cycle", "run_edgar_bulk",
-    "run_fsds", "run_companies_house", "load_uk_company_numbers",
-    "run_cvm", "run_twse",
+    "run_esef_cycle",
+    "run_esef_sweep",
+    "run_edgar_cycle",
+    "run_edgar_bulk",
+    "run_fsds",
+    "run_companies_house",
+    "load_uk_company_numbers",
+    "run_cvm",
+    "run_twse",
 ]

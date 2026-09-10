@@ -113,12 +113,22 @@ def test_prune_raw_keeps_only_newest_per_key(tmp_path) -> None:
     frame = pd.DataFrame({"period": ["2025"], "TotalRevenue": [100.0]})
     for fetched_at in (1_000.0, 2_000.0, 3_000.0):
         write_raw_statement(
-            tmp_path, symbol="AIR.PA", provider="yfinance",
-            statement_type="income", freq="annual", frame=frame, fetched_at=fetched_at,
+            tmp_path,
+            symbol="AIR.PA",
+            provider="yfinance",
+            statement_type="income",
+            freq="annual",
+            frame=frame,
+            fetched_at=fetched_at,
         )
     write_raw_statement(
-        tmp_path, symbol="AIR.PA", provider="yfinance",
-        statement_type="prices", freq="daily", frame=frame, fetched_at=1_500.0,
+        tmp_path,
+        symbol="AIR.PA",
+        provider="yfinance",
+        statement_type="prices",
+        freq="daily",
+        frame=frame,
+        fetched_at=1_500.0,
     )
     before = latest_raw_frames(tmp_path, "AIR.PA")
 
@@ -130,9 +140,7 @@ def test_prune_raw_keeps_only_newest_per_key(tmp_path) -> None:
     after = latest_raw_frames(tmp_path, "AIR.PA")
     assert set(before) == set(after)
     for key in before:
-        pd.testing.assert_frame_equal(
-            before[key].reset_index(drop=True), after[key].reset_index(drop=True)
-        )
+        pd.testing.assert_frame_equal(before[key].reset_index(drop=True), after[key].reset_index(drop=True))
 
 
 def test_prune_raw_empty_data_dir_is_a_noop(tmp_path) -> None:

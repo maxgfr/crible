@@ -30,8 +30,12 @@ def fetch_gleif(data_dir: Path | str, http=None, max_age_seconds: float = 7 * 24
     from crible.ingest.mirror import fetch_if_stale
 
     result = fetch_if_stale(
-        data_dir, "gleif", "isin-lei.zip", ISIN_LEI_LATEST_URL,
-        http=http, max_age_seconds=max_age_seconds,
+        data_dir,
+        "gleif",
+        "isin-lei.zip",
+        ISIN_LEI_LATEST_URL,
+        http=http,
+        max_age_seconds=max_age_seconds,
     )
     log.info("gleif: mirror %s (%s)", result.path, result.source)
     return result.path
@@ -99,9 +103,7 @@ def load_mapping(
         return None, None, f"gleif mapping unreadable: {exc}"
 
 
-def resolve_leis(
-    companies: list[dict], mapping: dict[str, str]
-) -> tuple[dict[str, str], list[str]]:
+def resolve_leis(companies: list[dict], mapping: dict[str, str]) -> tuple[dict[str, str], list[str]]:
     """symbol→LEI for companies whose ISIN resolves; plus unmatched symbols.
 
     Companies without an ISIN or without a GLEIF relationship land in the

@@ -51,7 +51,11 @@ CONCEPT_RANK = {local: rank for rank, local in enumerate(CONCEPT_MAP)}
 
 def _full_year(start: str, end: str) -> bool:
     try:
-        return FULL_YEAR_DAYS[0] <= (date.fromisoformat(end[:10]) - date.fromisoformat(start[:10])).days <= FULL_YEAR_DAYS[1]
+        return (
+            FULL_YEAR_DAYS[0]
+            <= (date.fromisoformat(end[:10]) - date.fromisoformat(start[:10])).days
+            <= FULL_YEAR_DAYS[1]
+        )
     except ValueError:
         return False
 
@@ -60,9 +64,14 @@ class _IxbrlParser(HTMLParser):
     """Collect xbrli:context periods and ix:nonFraction facts. html.parser
     lowercases tag and attribute names, so everything is matched lowercased."""
 
-    _DATE_TAGS = {"xbrli:startdate": "start", "startdate": "start",
-                  "xbrli:enddate": "end", "enddate": "end",
-                  "xbrli:instant": "instant", "instant": "instant"}
+    _DATE_TAGS = {
+        "xbrli:startdate": "start",
+        "startdate": "start",
+        "xbrli:enddate": "end",
+        "enddate": "end",
+        "xbrli:instant": "instant",
+        "instant": "instant",
+    }
     _CTX_TAGS = {"xbrli:context", "context"}
     _FACT_TAGS = {"ix:nonfraction", "nonfraction"}
 
@@ -86,8 +95,10 @@ class _IxbrlParser(HTMLParser):
             self._buf = []
         elif tag in self._FACT_TAGS:
             self._fact = {
-                "name": a.get("name"), "context": a.get("contextref"),
-                "sign": a.get("sign"), "scale": a.get("scale"),
+                "name": a.get("name"),
+                "context": a.get("contextref"),
+                "sign": a.get("sign"),
+                "scale": a.get("scale"),
             }
             self._buf = []
 

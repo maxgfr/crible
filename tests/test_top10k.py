@@ -41,9 +41,17 @@ CREATE TABLE companies (
 def _fd_frame(symbols=("AAPL",)) -> pd.DataFrame:
     return pd.DataFrame(
         [
-            {"symbol": s, "name": s, "country": "United States", "sector": "T",
-             "industry": "T", "exchange": "NMS", "currency": "USD",
-             "market_cap": "Mega Cap", "isin": None}
+            {
+                "symbol": s,
+                "name": s,
+                "country": "United States",
+                "sector": "T",
+                "industry": "T",
+                "exchange": "NMS",
+                "currency": "USD",
+                "market_cap": "Mega Cap",
+                "isin": None,
+            }
             for s in symbols
         ]
     )
@@ -54,9 +62,7 @@ def test_restore_accepts_an_old_schema_parquet(tmp_path) -> None:
     universe.parquet written by the OLD code — BY NAME, never positional."""
     old = duckdb.connect()
     old.execute(OLD_SCHEMA)
-    old.execute(
-        "INSERT INTO companies (symbol, region, crawl_priority) VALUES ('AAPL', 'us', 8)"
-    )
+    old.execute("INSERT INTO companies (symbol, region, crawl_priority) VALUES ('AAPL', 'us', 8)")
     old.execute(f"COPY companies TO '{(tmp_path / 'universe.parquet').as_posix()}' (FORMAT parquet)")
 
     fresh = duckdb.connect()
@@ -79,8 +85,7 @@ def test_cap_columns_round_trip_through_the_parquet(tmp_path) -> None:
     fresh = duckdb.connect()
     restore_universe_from_parquet(fresh, tmp_path / "universe.parquet")
     row = fresh.execute(
-        "SELECT cap_eur, cap_source, company_group, primary_listing,"
-        " cap_rank_global, top10k FROM companies"
+        "SELECT cap_eur, cap_source, company_group, primary_listing, cap_rank_global, top10k FROM companies"
     ).fetchone()
     assert row == (1e12, "tradingview", "g1", True, 1, True)
 
@@ -126,26 +131,40 @@ def _uni(rows) -> pd.DataFrame:
 
 
 def _census(rows) -> pd.DataFrame:
-    defaults = {"census_isin": None, "market_cap": float("nan"), "currency": "USD",
-                "census_volume": float("nan"), "census_country": "america", "cap_asof": FRESH}
+    defaults = {
+        "census_isin": None,
+        "market_cap": float("nan"),
+        "currency": "USD",
+        "census_volume": float("nan"),
+        "census_country": "america",
+        "cap_asof": FRESH,
+    }
     return pd.DataFrame([{**defaults, "symbol": r.pop("symbol"), **r} for r in rows])
 
 
 def test_cap_precedence_census_snapshot_carryover() -> None:
     from crible.universe_caps import build_cap_table
 
-    universe = _uni([{"symbol": "FRESH"}, {"symbol": "STALE"}, {"symbol": "PREV"},
-                     {"symbol": "NONE"}])
-    census = _census([
-        {"symbol": "FRESH", "market_cap": 110.0},
-        {"symbol": "STALE", "market_cap": 220.0, "cap_asof": STALE},
-    ])
+    universe = _uni([{"symbol": "FRESH"}, {"symbol": "STALE"}, {"symbol": "PREV"}, {"symbol": "NONE"}])
+    census = _census(
+        [
+            {"symbol": "FRESH", "market_cap": 110.0},
+            {"symbol": "STALE", "market_cap": 220.0, "cap_asof": STALE},
+        ]
+    )
     snaps = pd.DataFrame(
         [{"symbol": "STALE", "snap_cap": 330.0, "snap_currency": "USD", "snap_asof": "2027-01-05"}]
     )
     previous = pd.DataFrame(
-        [{"symbol": "PREV", "cap_eur": 42.0, "cap_asof": "2026-06-30",
-          "cap_source": "tradingview", "top10k": True}]
+        [
+            {
+                "symbol": "PREV",
+                "cap_eur": 42.0,
+                "cap_asof": "2026-06-30",
+                "cap_source": "tradingview",
+                "top10k": True,
+            }
+        ]
     )
     caps = build_cap_table(universe, census, snaps, previous, RATES, NOW).set_index("symbol")
 
@@ -171,14 +190,18 @@ def test_missing_rate_yields_null_never_imputed() -> None:
 def test_grouping_prefers_universe_isin_then_census_then_symbol() -> None:
     from crible.universe_caps import build_cap_table
 
-    universe = _uni([
-        {"symbol": "A.PA", "isin": "FR001"},
-        {"symbol": "B.DE", "isin": None},          # census ISIN fills in
-        {"symbol": "C.MI", "isin": None},          # no ISIN anywhere
-    ])
-    census = _census([
-        {"symbol": "B.DE", "census_isin": "FR001", "market_cap": 1.0},
-    ])
+    universe = _uni(
+        [
+            {"symbol": "A.PA", "isin": "FR001"},
+            {"symbol": "B.DE", "isin": None},  # census ISIN fills in
+            {"symbol": "C.MI", "isin": None},  # no ISIN anywhere
+        ]
+    )
+    census = _census(
+        [
+            {"symbol": "B.DE", "census_isin": "FR001", "market_cap": 1.0},
+        ]
+    )
     caps = build_cap_table(universe, census, None, None, RATES, NOW).set_index("symbol")
     assert caps.loc["A.PA", "company_group"] == "FR001"
     assert caps.loc["B.DE", "company_group"] == "FR001"  # deduped with A.PA
@@ -188,23 +211,25 @@ def test_grouping_prefers_universe_isin_then_census_then_symbol() -> None:
 def test_primary_listing_tie_breaks() -> None:
     from crible.universe_caps import build_cap_table, pick_primary
 
-    universe = _uni([
-        # one group across two countries: the home venue beats the foreign one
-        {"symbol": "SAP.DE", "isin": "DE001", "country": "DE"},
-        {"symbol": "SAPUS", "isin": "DE001", "country": "DE"},
-        # one group, two same-country venues: TV caps are the COMPANY's (equal
-        # across venues) → volume decides, then symbol asc
-        {"symbol": "AA.L", "isin": "GB001", "country": "GB"},
-        {"symbol": "AB.L", "isin": "GB001", "country": "GB"},
-    ])
-    census = _census([
-        {"symbol": "SAP.DE", "market_cap": 100.0, "census_country": "germany"},
-        {"symbol": "SAPUS", "market_cap": 100.0, "census_country": "america",
-         "census_volume": 999.0},
-        {"symbol": "AA.L", "market_cap": 50.0, "census_country": "uk"},
-        {"symbol": "AB.L", "market_cap": 50.0, "census_country": "uk",
-         "census_volume": 10.0},
-    ])
+    universe = _uni(
+        [
+            # one group across two countries: the home venue beats the foreign one
+            {"symbol": "SAP.DE", "isin": "DE001", "country": "DE"},
+            {"symbol": "SAPUS", "isin": "DE001", "country": "DE"},
+            # one group, two same-country venues: TV caps are the COMPANY's (equal
+            # across venues) → volume decides, then symbol asc
+            {"symbol": "AA.L", "isin": "GB001", "country": "GB"},
+            {"symbol": "AB.L", "isin": "GB001", "country": "GB"},
+        ]
+    )
+    census = _census(
+        [
+            {"symbol": "SAP.DE", "market_cap": 100.0, "census_country": "germany"},
+            {"symbol": "SAPUS", "market_cap": 100.0, "census_country": "america", "census_volume": 999.0},
+            {"symbol": "AA.L", "market_cap": 50.0, "census_country": "uk"},
+            {"symbol": "AB.L", "market_cap": 50.0, "census_country": "uk", "census_volume": 10.0},
+        ]
+    )
     caps = pick_primary(build_cap_table(universe, census, None, None, RATES, NOW))
     primaries = set(caps.loc[caps["primary_listing"], "symbol"])
     assert "SAP.DE" in primaries and "SAPUS" not in primaries  # home beats volume
@@ -218,15 +243,24 @@ def test_top10k_hysteresis_and_class_floor(monkeypatch) -> None:
     monkeypatch.setattr(uc, "TOP10K_SIZE", 2)
     monkeypatch.setattr(uc, "TOP10K_EXIT_RANK", 3)
 
-    universe = _uni([
-        {"symbol": "R1"}, {"symbol": "R2"}, {"symbol": "R3"}, {"symbol": "R4"},
-        {"symbol": "FLOOR", "market_cap_class": "Mega Cap"},
-        {"symbol": "TINY", "market_cap_class": "Nano Cap"},
-    ])
-    census = _census([
-        {"symbol": "R1", "market_cap": 400.0}, {"symbol": "R2", "market_cap": 300.0},
-        {"symbol": "R3", "market_cap": 200.0}, {"symbol": "R4", "market_cap": 100.0},
-    ])
+    universe = _uni(
+        [
+            {"symbol": "R1"},
+            {"symbol": "R2"},
+            {"symbol": "R3"},
+            {"symbol": "R4"},
+            {"symbol": "FLOOR", "market_cap_class": "Mega Cap"},
+            {"symbol": "TINY", "market_cap_class": "Nano Cap"},
+        ]
+    )
+    census = _census(
+        [
+            {"symbol": "R1", "market_cap": 400.0},
+            {"symbol": "R2", "market_cap": 300.0},
+            {"symbol": "R3", "market_cap": 200.0},
+            {"symbol": "R4", "market_cap": 100.0},
+        ]
+    )
     caps = uc.pick_primary(uc.build_cap_table(universe, census, None, None, RATES, NOW))
 
     # no previous members: strict top-2 + the cap-less Mega floor
@@ -257,37 +291,77 @@ def test_apply_cap_census_end_to_end(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(uc, "TOP10K_EXIT_RANK", 1)
 
     con = duckdb.connect()
-    frame = pd.DataFrame([
-        {"symbol": "TOP.PA", "name": "Top", "country": "France", "sector": "T",
-         "industry": "T", "exchange": "PAR", "currency": "EUR",
-         "market_cap": "Mega Cap", "isin": "FR001"},
-        {"symbol": "MID.DE", "name": "Mid", "country": "Germany", "sector": "T",
-         "industry": "T", "exchange": "GER", "currency": "EUR",
-         "market_cap": "Nano Cap", "isin": "DE001"},
-        {"symbol": "NOCAP", "name": "No", "country": "United States", "sector": "T",
-         "industry": "T", "exchange": "NMS", "currency": "USD",
-         "market_cap": None, "isin": None},
-    ])
+    frame = pd.DataFrame(
+        [
+            {
+                "symbol": "TOP.PA",
+                "name": "Top",
+                "country": "France",
+                "sector": "T",
+                "industry": "T",
+                "exchange": "PAR",
+                "currency": "EUR",
+                "market_cap": "Mega Cap",
+                "isin": "FR001",
+            },
+            {
+                "symbol": "MID.DE",
+                "name": "Mid",
+                "country": "Germany",
+                "sector": "T",
+                "industry": "T",
+                "exchange": "GER",
+                "currency": "EUR",
+                "market_cap": "Nano Cap",
+                "isin": "DE001",
+            },
+            {
+                "symbol": "NOCAP",
+                "name": "No",
+                "country": "United States",
+                "sector": "T",
+                "industry": "T",
+                "exchange": "NMS",
+                "currency": "USD",
+                "market_cap": None,
+                "isin": None,
+            },
+        ]
+    )
     bootstrap_universe(con, frame)
 
     (tmp_path / "caps").mkdir(parents=True)
     asof = date.today().isoformat()
-    pd.DataFrame([
-        {"symbol": "TOP.PA", "isin": "FR001", "market_cap": 1e12, "currency": "EUR",
-         "volume": 1.0, "country": "france", "asof": asof},
-        {"symbol": "MID.DE", "isin": "DE001", "market_cap": 10.0, "currency": "EUR",
-         "volume": 1.0, "country": "germany", "asof": asof},
-    ]).to_parquet(tmp_path / "caps" / "tradingview.parquet", index=False)
+    pd.DataFrame(
+        [
+            {
+                "symbol": "TOP.PA",
+                "isin": "FR001",
+                "market_cap": 1e12,
+                "currency": "EUR",
+                "volume": 1.0,
+                "country": "france",
+                "asof": asof,
+            },
+            {
+                "symbol": "MID.DE",
+                "isin": "DE001",
+                "market_cap": 10.0,
+                "currency": "EUR",
+                "volume": 1.0,
+                "country": "germany",
+                "asof": asof,
+            },
+        ]
+    ).to_parquet(tmp_path / "caps" / "tradingview.parquet", index=False)
 
     report = uc.apply_cap_census(con, tmp_path, rates={}, now=_time.time())
     assert report is not None and report.member_groups == 1 and report.ranked_groups == 2
 
-    rows = dict(con.execute(
-        "SELECT symbol, crawl_priority FROM companies"
-    ).fetchall())
-    assert rows["TOP.PA"] == 0          # rank-1 member primary → tier 0
+    rows = dict(con.execute("SELECT symbol, crawl_priority FROM companies").fetchall())
+    assert rows["TOP.PA"] == 0  # rank-1 member primary → tier 0
     assert rows["MID.DE"] == 0 + 5 + 8  # europe nano, shifted base
-    assert rows["NOCAP"] == 8 + 6 + 8   # us unknown-class, shifted base
+    assert rows["NOCAP"] == 8 + 6 + 8  # us unknown-class, shifted base
     top = con.execute("SELECT top10k, cap_eur FROM companies WHERE symbol='TOP.PA'").fetchone()
     assert top == (True, 1e12)
 
@@ -332,7 +406,8 @@ def test_top10k_stats_counts_groups_not_listings(tmp_path) -> None:
     con.execute(SCHEMA)
     rows = [
         # group G1: two listings, only A.PA has audited raw
-        ("A.PA", "G1", 1, True, True), ("A.F", "G1", 1, False, True),
+        ("A.PA", "G1", 1, True, True),
+        ("A.F", "G1", 1, False, True),
         # group G2: priced via the distillate, floor member (no rank)
         ("B.DE", "G2", None, True, True),
         # non-member: never counted
@@ -346,13 +421,24 @@ def test_top10k_stats_counts_groups_not_listings(tmp_path) -> None:
             [symbol, group, rank, primary, member, date.today().isoformat()],
         )
     write_raw_statement(
-        tmp_path, symbol="A.PA", provider="edgar", statement_type="income",
-        freq="annual", frame=pd.DataFrame({"period": ["2025"], "TotalRevenue": [1.0]}),
+        tmp_path,
+        symbol="A.PA",
+        provider="edgar",
+        statement_type="income",
+        freq="annual",
+        frame=pd.DataFrame({"period": ["2025"], "TotalRevenue": [1.0]}),
         fetched_at=1.0,
     )
     pd.DataFrame(
-        [{"symbol": "B.DE", "close": 5.0, "price_asof": date.today().isoformat(),
-          "source": "tradingview", "imported_at": 1.0}]
+        [
+            {
+                "symbol": "B.DE",
+                "close": 5.0,
+                "price_asof": date.today().isoformat(),
+                "source": "tradingview",
+                "imported_at": 1.0,
+            }
+        ]
     ).to_parquet(tmp_path / "prices-latest.parquet", index=False)
 
     block = _top10k_stats(con, tmp_path)["coverage_top10k"]
@@ -411,8 +497,9 @@ def test_top10k_stats_reports_fundamentals_completeness(tmp_path) -> None:
             [symbol, group, date.today().isoformat()],
         )
     full = dict.fromkeys(COMPLETENESS_COLUMNS, 1.0)
-    half = {c: (1.0 if i < len(COMPLETENESS_COLUMNS) // 2 else None)
-            for i, c in enumerate(COMPLETENESS_COLUMNS)}
+    half = {
+        c: (1.0 if i < len(COMPLETENESS_COLUMNS) // 2 else None) for i, c in enumerate(COMPLETENESS_COLUMNS)
+    }
     snap = pd.DataFrame([{"symbol": "A.PA", **full}, {"symbol": "B.DE", **half}])
     (tmp_path / "snapshot").mkdir(parents=True)
     snap.to_parquet(tmp_path / "snapshot" / "snapshot.parquet", index=False)

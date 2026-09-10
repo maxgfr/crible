@@ -21,13 +21,20 @@ from __future__ import annotations
 import pandas as pd
 
 MOHANRAM_INPUTS = [
-    "mohanram_roa", "mohanram_cfo_roa", "mohanram_accruals_pass",
-    "mohanram_roa_var", "mohanram_growth_var", "mohanram_capex_intensity",
+    "mohanram_roa",
+    "mohanram_cfo_roa",
+    "mohanram_accruals_pass",
+    "mohanram_roa_var",
+    "mohanram_growth_var",
+    "mohanram_capex_intensity",
 ]
 
 MOHANRAM_SIGNALS = [
-    "mohanram_g1_roa", "mohanram_g2_cfo_roa", "mohanram_g3_accruals",
-    "mohanram_g4_roa_stability", "mohanram_g5_growth_stability",
+    "mohanram_g1_roa",
+    "mohanram_g2_cfo_roa",
+    "mohanram_g3_accruals",
+    "mohanram_g4_roa_stability",
+    "mohanram_g5_growth_stability",
     "mohanram_g6_capex_intensity",
 ]
 
@@ -74,9 +81,7 @@ def mohanram_signals(members: pd.DataFrame) -> pd.DataFrame:
     out["mohanram_g3_accruals"] = members["mohanram_accruals_pass"]
     out["mohanram_g4_roa_stability"] = _signal_vs_median(members["mohanram_roa_var"], above=False)
     out["mohanram_g5_growth_stability"] = _signal_vs_median(members["mohanram_growth_var"], above=False)
-    out["mohanram_g6_capex_intensity"] = _signal_vs_median(
-        members["mohanram_capex_intensity"], above=True
-    )
+    out["mohanram_g6_capex_intensity"] = _signal_vs_median(members["mohanram_capex_intensity"], above=True)
     # one undecidable signal nulls the score — the house never-impute rule
     out["mohanram_g"] = out[MOHANRAM_SIGNALS].sum(axis=1, skipna=False)
     return out

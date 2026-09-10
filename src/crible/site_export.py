@@ -47,17 +47,15 @@ def export_site(data_dir: Path | str, out_dir: Path | str, min_symbols: int = 50
         snapshot_rows, snapshot_symbols = con.execute(
             f"SELECT count(*), count(DISTINCT symbol) FROM read_parquet('{snapshot.as_posix()}')"
         ).fetchone()
-        universe_rows = con.execute(
-            f"SELECT count(*) FROM read_parquet('{universe.as_posix()}')"
-        ).fetchone()[0]
+        universe_rows = con.execute(f"SELECT count(*) FROM read_parquet('{universe.as_posix()}')").fetchone()[
+            0
+        ]
         # coverage honesty: how the covered companies split by region (the
         # banner shows it; attach_universe embeds region in real snapshots —
         # a snapshot without the column, e.g. a minimal fixture, reports {})
         columns = {
             r[0]
-            for r in con.execute(
-                f"DESCRIBE SELECT * FROM read_parquet('{snapshot.as_posix()}')"
-            ).fetchall()
+            for r in con.execute(f"DESCRIBE SELECT * FROM read_parquet('{snapshot.as_posix()}')").fetchall()
         }
         snapshot_by_region: dict[str, int] = {}
         if "region" in columns:
@@ -72,9 +70,7 @@ def export_site(data_dir: Path | str, out_dir: Path | str, min_symbols: int = 50
         top10k: dict[str, int] = {}
         universe_columns = {
             r[0]
-            for r in con.execute(
-                f"DESCRIBE SELECT * FROM read_parquet('{universe.as_posix()}')"
-            ).fetchall()
+            for r in con.execute(f"DESCRIBE SELECT * FROM read_parquet('{universe.as_posix()}')").fetchall()
         }
         if "top10k" in universe_columns:
             members = con.execute(

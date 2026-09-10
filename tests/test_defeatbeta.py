@@ -33,9 +33,15 @@ def _prices_table(tmp_path, name="stock_prices.parquet") -> str:
     for symbol, base in (("AAPL", 100.0), ("ZZUNKNOWN", 5.0)):
         for month in range(1, 13):
             rows.append(
-                {"symbol": symbol, "report_date": f"2026-{month:02d}-01",
-                 "open": base, "close": base + month, "high": base, "low": base,
-                 "volume": 1000}
+                {
+                    "symbol": symbol,
+                    "report_date": f"2026-{month:02d}-01",
+                    "open": base,
+                    "close": base + month,
+                    "high": base,
+                    "low": base,
+                    "volume": 1000,
+                }
             )
     path = tmp_path / name
     pd.DataFrame(rows).to_parquet(path, index=False)
@@ -50,15 +56,15 @@ def _tables_with_events(tmp_path) -> dict[str, str]:
     tables = _tables(tmp_path)
     events = {
         "dividends": pd.DataFrame(
-            {"symbol": ["AAPL", "ZZUNKNOWN"], "report_date": ["2026-05-08", "2026-05-08"],
-             "amount": [0.26, 1.0]}
+            {
+                "symbol": ["AAPL", "ZZUNKNOWN"],
+                "report_date": ["2026-05-08", "2026-05-08"],
+                "amount": [0.26, 1.0],
+            }
         ),
-        "splits": pd.DataFrame(
-            {"symbol": ["AAPL"], "report_date": ["2020-08-31"], "split_factor": ["4:1"]}
-        ),
+        "splits": pd.DataFrame({"symbol": ["AAPL"], "report_date": ["2020-08-31"], "split_factor": ["4:1"]}),
         "shares": pd.DataFrame(
-            {"symbol": ["AAPL"], "report_date": ["2026-03-31"],
-             "shares_outstanding": [15_000_000_000]}
+            {"symbol": ["AAPL"], "report_date": ["2026-03-31"], "shares_outstanding": [15_000_000_000]}
         ),
     }
     for name, frame in events.items():
@@ -90,7 +96,15 @@ def test_defeatbeta_import_persists_the_series_store(tmp_path) -> None:
     series = pd.read_parquet(tmp_path / "prices" / "defeatbeta.parquet")
     assert set(series["symbol"]) == {"AAPL"}
     assert list(series.columns) == [
-        "symbol", "date", "open", "high", "low", "close", "adj_close", "volume", "source",
+        "symbol",
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "adj_close",
+        "volume",
+        "source",
     ]
     assert (series["source"] == "defeatbeta").all()
     assert series["adj_close"].isna().all()
@@ -124,11 +138,20 @@ def test_defeatbeta_import_without_event_tables_is_prices_only(tmp_path) -> None
 def test_defeatbeta_loses_price_ties_to_the_crawl_but_beats_the_dumps() -> None:
     """Crawled yfinance bars stay canonical on equal dates; among dumps the
     ~weekly defeatbeta outranks the ~monthly huggingface rotation."""
+
     def bars(source):
         return pd.DataFrame(
-            {"symbol": "AAPL", "date": ["2026-07-01"], "open": 1.0, "high": 1.0,
-             "low": 1.0, "close": 1.0, "adj_close": float("nan"), "volume": 1.0,
-             "source": source}
+            {
+                "symbol": "AAPL",
+                "date": ["2026-07-01"],
+                "open": 1.0,
+                "high": 1.0,
+                "low": 1.0,
+                "close": 1.0,
+                "adj_close": float("nan"),
+                "volume": 1.0,
+                "source": source,
+            }
         )
 
     against_crawl = _resolve(pd.concat([bars("yfinance"), bars("defeatbeta")]), 400)
@@ -157,9 +180,14 @@ def _statements_table(tmp_path, symbols=("AAPL",)) -> str:
                 ("cash_flow", "capital_expenditure", -20.0),
             ):
                 rows.append(
-                    {"symbol": symbol, "report_date": period, "item_name": item,
-                     "item_value": value, "finance_type": finance_type,
-                     "period_type": "annual"}
+                    {
+                        "symbol": symbol,
+                        "report_date": period,
+                        "item_name": item,
+                        "item_value": value,
+                        "finance_type": finance_type,
+                        "period_type": "annual",
+                    }
                 )
     path = tmp_path / "stock_statement.parquet"
     pd.DataFrame(rows).to_parquet(path, index=False)
@@ -193,14 +221,26 @@ def test_fundamentals_pivot_to_yfinance_vocabulary(tmp_path) -> None:
 def test_fundamentals_import_targets_gap_symbols_only(tmp_path) -> None:
     """AAPL has crawled yfinance statements, BRK-B has audited EDGAR raw —
     neither is a gap symbol; only the unserved listing gets defeatbeta raw."""
-    pd.DataFrame({"symbol": ["AAPL", "BRK-B", "GAP1"]}).to_parquet(
-        tmp_path / "universe.parquet", index=False
-    )
+    pd.DataFrame({"symbol": ["AAPL", "BRK-B", "GAP1"]}).to_parquet(tmp_path / "universe.parquet", index=False)
     frame = pd.DataFrame({"period": ["2025-12-31"], "TotalRevenue": [1.0]})
-    write_raw_statement(tmp_path, symbol="AAPL", provider="yfinance", statement_type="income",
-                        freq="annual", frame=frame, fetched_at=1.0)
-    write_raw_statement(tmp_path, symbol="BRK-B", provider="edgar", statement_type="income",
-                        freq="annual", frame=frame, fetched_at=1.0)
+    write_raw_statement(
+        tmp_path,
+        symbol="AAPL",
+        provider="yfinance",
+        statement_type="income",
+        freq="annual",
+        frame=frame,
+        fetched_at=1.0,
+    )
+    write_raw_statement(
+        tmp_path,
+        symbol="BRK-B",
+        provider="edgar",
+        statement_type="income",
+        freq="annual",
+        frame=frame,
+        fetched_at=1.0,
+    )
 
     assert fundamentals_gap_symbols(tmp_path) == ["GAP1"]
     report = import_defeatbeta_fundamentals(
@@ -225,8 +265,15 @@ def test_snapshot_falls_back_to_defeatbeta_fundamentals(tmp_path) -> None:
 
     # crawled yfinance statements present → they stay the base
     yf = pd.DataFrame({"period": ["2025-12-31"], "TotalRevenue": [9999.0]})
-    write_raw_statement(tmp_path, symbol="AAPL", provider="yfinance", statement_type="income",
-                        freq="annual", frame=yf, fetched_at=2.0)
+    write_raw_statement(
+        tmp_path,
+        symbol="AAPL",
+        provider="yfinance",
+        statement_type="income",
+        freq="annual",
+        frame=yf,
+        fetched_at=2.0,
+    )
     snapshot = build_snapshot(tmp_path, symbols=["AAPL"]).set_index("period")
     row = snapshot.loc["2025-12-31"]
     assert row["provider"] == "yfinance"
@@ -239,8 +286,15 @@ def test_audited_reconciles_on_top_of_defeatbeta(tmp_path) -> None:
     _universe(tmp_path)
     import_defeatbeta_fundamentals(tmp_path, table=_statements_table(tmp_path))
     audited = pd.DataFrame({"period": ["2025-12-31"], "TotalRevenue": [3000.0]})
-    write_raw_statement(tmp_path, symbol="AAPL", provider="edgar", statement_type="income",
-                        freq="annual", frame=audited, fetched_at=2.0)
+    write_raw_statement(
+        tmp_path,
+        symbol="AAPL",
+        provider="edgar",
+        statement_type="income",
+        freq="annual",
+        frame=audited,
+        fetched_at=2.0,
+    )
 
     snapshot = build_snapshot(tmp_path, symbols=["AAPL"]).set_index("period")
     row = snapshot.loc["2025-12-31"]
@@ -259,21 +313,25 @@ def test_defer_covered_symbols_frees_the_marathon_head(tmp_path) -> None:
 
     _universe(tmp_path, symbols=("AAPL", "MSFT", "SAP.DE"))
     import_defeatbeta(tmp_path, tables=_tables(tmp_path))  # prices AAPL only
-    import_defeatbeta_fundamentals(
-        tmp_path, table=_statements_table(tmp_path, symbols=("AAPL", "MSFT"))
-    )
+    import_defeatbeta_fundamentals(tmp_path, table=_statements_table(tmp_path, symbols=("AAPL", "MSFT")))
     # MSFT has fundamentals but no defeatbeta prices; AAPL has both
     frame = pd.DataFrame({"period": ["2025-12-31"], "TotalRevenue": [1.0]})
-    write_raw_statement(tmp_path, symbol="SAP.DE", provider="yfinance", statement_type="income",
-                        freq="annual", frame=frame, fetched_at=1.0)
+    write_raw_statement(
+        tmp_path,
+        symbol="SAP.DE",
+        provider="yfinance",
+        statement_type="income",
+        freq="annual",
+        frame=frame,
+        fetched_at=1.0,
+    )
 
     con = duckdb.connect()
     con.execute(SCHEMA)
     now = 1_000_000.0
     for symbol, crawled in (("AAPL", None), ("MSFT", None), ("SAP.DE", 999.0)):
         con.execute(
-            "INSERT INTO crawl_tasks (symbol, priority, next_due, last_crawled_at)"
-            " VALUES (?, 1, 0, ?)",
+            "INSERT INTO crawl_tasks (symbol, priority, next_due, last_crawled_at) VALUES (?, 1, 0, ?)",
             [symbol, crawled],
         )
     deferred = defer_covered_symbols(con, tmp_path, now=now)
@@ -314,9 +372,7 @@ def test_defeatbeta_gate_ignores_other_dumps(tmp_path, monkeypatch) -> None:
 
     hf_shard = tmp_path / "hf.parquet"
     frame = pd.read_parquet(_prices_table(tmp_path, name="src.parquet"))
-    frame.assign(date=frame["report_date"], adj_close=frame["close"]).to_parquet(
-        hf_shard, index=False
-    )
+    frame.assign(date=frame["report_date"], adj_close=frame["close"]).to_parquet(hf_shard, index=False)
     monkeypatch.setattr("crible.ingest.price_import.HF_SHARDS", [str(hf_shard)])
     monkeypatch.setattr("crible.ingest.defeatbeta.DB_TABLES", _tables(tmp_path))
 
@@ -337,12 +393,27 @@ def test_defer_covered_symbols_counts_any_dump_series_source(tmp_path) -> None:
 
     _universe(tmp_path, symbols=("SAP.DE",))
     frame = pd.DataFrame({"period": ["2025-12-31"], "TotalRevenue": [1.0]})
-    write_raw_statement(tmp_path, symbol="SAP.DE", provider="esef", statement_type="income",
-                        freq="annual", frame=frame, fetched_at=1.0)
+    write_raw_statement(
+        tmp_path,
+        symbol="SAP.DE",
+        provider="esef",
+        statement_type="income",
+        freq="annual",
+        frame=frame,
+        fetched_at=1.0,
+    )
     bars = pd.DataFrame(
-        {"symbol": ["SAP.DE"], "date": ["2026-07-01"], "open": [1.0], "high": [1.0],
-         "low": [1.0], "close": [1.0], "adj_close": [1.0], "volume": [0.0],
-         "source": ["stooq"]}
+        {
+            "symbol": ["SAP.DE"],
+            "date": ["2026-07-01"],
+            "open": [1.0],
+            "high": [1.0],
+            "low": [1.0],
+            "close": [1.0],
+            "adj_close": [1.0],
+            "volume": [0.0],
+            "source": ["stooq"],
+        }
     )
     write_series(tmp_path, "stooq", bars)
 

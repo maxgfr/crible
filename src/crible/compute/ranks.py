@@ -70,7 +70,10 @@ def _blend(group: pd.DataFrame, inputs: dict[str, int]) -> pd.Series:
     ]
     blended = pd.concat(pcts, axis=1).mean(axis=1)
     has_all = pd.concat(
-        [group[col].notna() if col in group.columns else pd.Series(False, index=group.index) for col in inputs],
+        [
+            group[col].notna() if col in group.columns else pd.Series(False, index=group.index)
+            for col in inputs
+        ],
         axis=1,
     ).all(axis=1)
     return blended.where(has_all)

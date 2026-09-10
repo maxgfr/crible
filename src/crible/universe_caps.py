@@ -47,8 +47,13 @@ FLOOR_TIERS = {"Mega Cap": 1, "Large Cap": 5}
 BASE_PRIORITY_SHIFT = 8
 
 CAP_UPDATE_COLUMNS = [
-    "cap_eur", "cap_asof", "cap_source", "company_group",
-    "primary_listing", "cap_rank_global", "top10k",
+    "cap_eur",
+    "cap_asof",
+    "cap_source",
+    "company_group",
+    "primary_listing",
+    "cap_rank_global",
+    "top10k",
 ]
 
 
@@ -76,8 +81,14 @@ def load_census(data_dir: Path | str) -> pd.DataFrame | None:
     return (
         table.sort_values("market_cap", na_position="first")
         .drop_duplicates("symbol", keep="last")
-        .rename(columns={"isin": "census_isin", "volume": "census_volume",
-                         "country": "census_country", "asof": "cap_asof"})
+        .rename(
+            columns={
+                "isin": "census_isin",
+                "volume": "census_volume",
+                "country": "census_country",
+                "asof": "cap_asof",
+            }
+        )
         .reset_index(drop=True)
     )
 
@@ -103,9 +114,7 @@ def snapshot_caps(data_dir: Path | str) -> pd.DataFrame | None:
     if not path.exists():
         return None
     try:
-        table = pd.read_parquet(
-            path, columns=["symbol", "period", "market_cap", "currency", "price_asof"]
-        )
+        table = pd.read_parquet(path, columns=["symbol", "period", "market_cap", "currency", "price_asof"])
     except Exception:  # noqa: BLE001 — an old snapshot without the columns
         return None
     table = table[table["market_cap"].notna()]
@@ -114,8 +123,7 @@ def snapshot_caps(data_dir: Path | str) -> pd.DataFrame | None:
     latest = (
         table.sort_values("period")
         .drop_duplicates("symbol", keep="last")
-        .rename(columns={"market_cap": "snap_cap", "currency": "snap_currency",
-                         "price_asof": "snap_asof"})
+        .rename(columns={"market_cap": "snap_cap", "currency": "snap_currency", "price_asof": "snap_asof"})
     )
     return latest[["symbol", "snap_cap", "snap_currency", "snap_asof"]].reset_index(drop=True)
 
@@ -140,9 +148,17 @@ def build_cap_table(
     fresh census → snapshot → carryover → NULL (competes via the class floor,
     never silently vanishes)."""
     caps = universe[["symbol", "isin", "country", "market_cap_class"]].copy()
-    caps = caps.merge(census, on="symbol", how="left") if census is not None else caps.assign(
-        census_isin=None, market_cap=float("nan"), currency=None,
-        census_volume=float("nan"), census_country=None, cap_asof=None,
+    caps = (
+        caps.merge(census, on="symbol", how="left")
+        if census is not None
+        else caps.assign(
+            census_isin=None,
+            market_cap=float("nan"),
+            currency=None,
+            census_volume=float("nan"),
+            census_country=None,
+            cap_asof=None,
+        )
     )
     if snapcaps is not None:
         caps = caps.merge(snapcaps, on="symbol", how="left")
@@ -150,13 +166,16 @@ def build_cap_table(
         caps = caps.assign(snap_cap=float("nan"), snap_currency=None, snap_asof=None)
     if previous is not None:
         prev = previous.rename(
-            columns={"cap_eur": "prev_cap_eur", "cap_asof": "prev_asof",
-                     "cap_source": "prev_source", "top10k": "prev_top10k"}
+            columns={
+                "cap_eur": "prev_cap_eur",
+                "cap_asof": "prev_asof",
+                "cap_source": "prev_source",
+                "top10k": "prev_top10k",
+            }
         )
         caps = caps.merge(prev, on="symbol", how="left")
     else:
-        caps = caps.assign(prev_cap_eur=float("nan"), prev_asof=None,
-                           prev_source=None, prev_top10k=None)
+        caps = caps.assign(prev_cap_eur=float("nan"), prev_asof=None, prev_source=None, prev_top10k=None)
 
     cap_eur, cap_asof, cap_source = [], [], []
     for row in caps.itertuples():
@@ -218,9 +237,7 @@ def assign_top10k(caps: pd.DataFrame, previous_members: set[str]) -> pd.DataFram
     ranked = group_cap.dropna().sort_values(ascending=False)
     rank_of_group = {group: index + 1 for index, group in enumerate(ranked.index)}
 
-    caps = caps.assign(
-        cap_rank_global=caps["company_group"].map(rank_of_group).astype("Int64")
-    )
+    caps = caps.assign(cap_rank_global=caps["company_group"].map(rank_of_group).astype("Int64"))
     if not rank_of_group:
         return caps.assign(top10k=False, _floor=False)
 
@@ -309,7 +326,11 @@ def apply_cap_census(
 
     caps = build_cap_table(
         active[["symbol", "isin", "country", "market_cap_class"]],
-        census, snapshot_caps(data_dir), previous, rates, now,
+        census,
+        snapshot_caps(data_dir),
+        previous,
+        rates,
+        now,
     )
     caps = pick_primary(caps)
     previous_members: set[str] = set()
@@ -344,6 +365,9 @@ def apply_cap_census(
     )
     log.info(
         "cap census: %d listings, %d ranked groups, %d top10k members (%d via class floor)",
-        report.listings, report.ranked_groups, report.member_groups, report.floor_groups,
+        report.listings,
+        report.ranked_groups,
+        report.member_groups,
+        report.floor_groups,
     )
     return report

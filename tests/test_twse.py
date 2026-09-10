@@ -13,19 +13,39 @@ from crible.providers.twse import frames_from_reports, roc_period
 
 
 def _income_row(code="2330", year="114", quarter="4", revenue="1000", net="200"):
-    return {"出表日期": "1150717", "年度": year, "季別": quarter, "公司代號": code,
-            "公司名稱": "X", "營業收入": revenue, "營業成本": "600",
-            "營業毛利（毛損）淨額": "400", "營業費用": "100",
-            "營業利益（損失）": "300", "稅前淨利（淨損）": "250",
-            "所得稅費用（利益）": "50", "本期淨利（淨損）": net,
-            "繼續營業單位本期淨利（淨損）": "999"}
+    return {
+        "出表日期": "1150717",
+        "年度": year,
+        "季別": quarter,
+        "公司代號": code,
+        "公司名稱": "X",
+        "營業收入": revenue,
+        "營業成本": "600",
+        "營業毛利（毛損）淨額": "400",
+        "營業費用": "100",
+        "營業利益（損失）": "300",
+        "稅前淨利（淨損）": "250",
+        "所得稅費用（利益）": "50",
+        "本期淨利（淨損）": net,
+        "繼續營業單位本期淨利（淨損）": "999",
+    }
 
 
 def _balance_row(code="2330", year="115", quarter="1", assets="5000"):
-    return {"出表日期": "1150717", "年度": year, "季別": quarter, "公司代號": code,
-            "公司名稱": "X", "流動資產": "2000", "資產總額": assets,
-            "流動負債": "800", "負債總額": "1500", "保留盈餘": "900",
-            "歸屬於母公司業主之權益合計": "3300", "權益總額": "3500"}
+    return {
+        "出表日期": "1150717",
+        "年度": year,
+        "季別": quarter,
+        "公司代號": code,
+        "公司名稱": "X",
+        "流動資產": "2000",
+        "資產總額": assets,
+        "流動負債": "800",
+        "負債總額": "1500",
+        "保留盈餘": "900",
+        "歸屬於母公司業主之權益合計": "3300",
+        "權益總額": "3500",
+    }
 
 
 def test_roc_period_conversion() -> None:
@@ -87,11 +107,24 @@ def _seed_tw_universe(tmp_path, monkeypatch) -> None:
 
     monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
     con = duckdb.connect(str(tmp_path / "crible.duckdb"))
-    bootstrap_universe(con, pd.DataFrame([
-        {"symbol": "2330.TW", "name": "TSMC", "country": "Taiwan", "sector": "IT",
-         "industry": "Semi", "exchange": "TAI", "currency": "TWD",
-         "market_cap": "Mega Cap", "isin": None},
-    ]))
+    bootstrap_universe(
+        con,
+        pd.DataFrame(
+            [
+                {
+                    "symbol": "2330.TW",
+                    "name": "TSMC",
+                    "country": "Taiwan",
+                    "sector": "IT",
+                    "industry": "Semi",
+                    "exchange": "TAI",
+                    "currency": "TWD",
+                    "market_cap": "Mega Cap",
+                    "isin": None,
+                },
+            ]
+        ),
+    )
     con.close()
 
 
@@ -101,16 +134,22 @@ def test_run_twse_accumulates_forward_in_the_raw_layer(tmp_path, monkeypatch) ->
     from crible.ingest.enrichment import run_twse
 
     _seed_tw_universe(tmp_path, monkeypatch)
-    first = _JsonHttp({"t187ap06": [_income_row(year="114")],
-                       "t187ap07": [_balance_row(year="114", quarter="4")]})
+    first = _JsonHttp(
+        {"t187ap06": [_income_row(year="114")], "t187ap07": [_balance_row(year="114", quarter="4")]}
+    )
     outcome = run_twse(limit=10, http=first)
     assert outcome["enriched"] == 1
 
     # a year later: the endpoint now serves FY2026 only — mirror must refetch
     import shutil
+
     shutil.rmtree(tmp_path / "mirror" / "twse")
-    second = _JsonHttp({"t187ap06": [_income_row(year="115", revenue="2000")],
-                        "t187ap07": [_balance_row(year="115", quarter="4")]})
+    second = _JsonHttp(
+        {
+            "t187ap06": [_income_row(year="115", revenue="2000")],
+            "t187ap07": [_balance_row(year="115", quarter="4")],
+        }
+    )
     outcome = run_twse(limit=10, http=second)
     assert outcome["enriched"] == 1
 

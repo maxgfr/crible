@@ -24,7 +24,7 @@ mcp = FastMCP(
     "crible",
     instructions=(
         "Keyless fundamental stock screener over the published open dataset. "
-        "screen() takes the crible DSL (e.g. \"piotroski_f >= 7 AND country "
+        'screen() takes the crible DSL (e.g. "piotroski_f >= 7 AND country '
         "IN ('FR','DE')\"; a blank query screens the whole covered universe); "
         "fields() lists every filterable column; presets() the published "
         "starting screens; company() one symbol's full period history; "

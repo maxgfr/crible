@@ -20,7 +20,15 @@ import pandas as pd
 SERIES_WINDOW_DAYS = 400  # covers the 1-year chart + the 6-month return base
 SERIES_DIR = "prices"
 SERIES_COLUMNS = [
-    "symbol", "date", "open", "high", "low", "close", "adj_close", "volume", "source",
+    "symbol",
+    "date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "adj_close",
+    "volume",
+    "source",
 ]
 # tie-break when two sources end on the same date: the crawled bars are the
 # canonical layer (the snapshot itself prefers them over the distillate);
@@ -81,8 +89,10 @@ def _load_yf_series(data_dir: Path | str, symbol: str | None = None) -> pd.DataF
         if not files:
             continue
         raw = pd.read_parquet(files[-1])
-        name = raw["_symbol"].iloc[0] if "_symbol" in raw.columns and len(raw) else (
-            directory.name.split("=", 1)[1]
+        name = (
+            raw["_symbol"].iloc[0]
+            if "_symbol" in raw.columns and len(raw)
+            else (directory.name.split("=", 1)[1])
         )
         parts.append(normalize_yf_bars(raw, str(name)))
     return _concat(parts)
@@ -127,23 +137,16 @@ def _resolve(candidates: pd.DataFrame, window_days: int) -> pd.DataFrame:
     candidates = candidates.assign(date=pd.to_datetime(candidates["date"]))
     latest = candidates.groupby(["symbol", "source"], as_index=False)["date"].max()
     latest["_priority"] = latest["source"].map(SOURCE_PRIORITY).fillna(len(SOURCE_PRIORITY))
-    winners = (
-        latest.sort_values(["symbol", "date", "_priority"], ascending=[True, False, True])
-        .drop_duplicates("symbol")[["symbol", "source"]]
-    )
+    winners = latest.sort_values(
+        ["symbol", "date", "_priority"], ascending=[True, False, True]
+    ).drop_duplicates("symbol")[["symbol", "source"]]
     resolved = candidates.merge(winners, on=["symbol", "source"])
     cutoff = resolved.groupby("symbol")["date"].transform("max") - pd.Timedelta(days=window_days)
     resolved = resolved[resolved["date"] > cutoff]
-    return (
-        resolved[SERIES_COLUMNS]
-        .sort_values(["symbol", "date"])
-        .reset_index(drop=True)
-    )
+    return resolved[SERIES_COLUMNS].sort_values(["symbol", "date"]).reset_index(drop=True)
 
 
-def load_all_series(
-    data_dir: Path | str, window_days: int = SERIES_WINDOW_DAYS
-) -> pd.DataFrame:
+def load_all_series(data_dir: Path | str, window_days: int = SERIES_WINDOW_DAYS) -> pd.DataFrame:
     """Every symbol's resolved, windowed series — the export's input."""
     candidates = _concat([_load_yf_series(data_dir), _load_store_series(data_dir)])
     return _resolve(candidates, window_days)
@@ -153,9 +156,7 @@ def load_symbol_series(
     data_dir: Path | str, symbol: str, window_days: int = SERIES_WINDOW_DAYS
 ) -> pd.DataFrame:
     """One symbol's resolved series — the API path (reads only its files)."""
-    candidates = _concat(
-        [_load_yf_series(data_dir, symbol), _load_store_series(data_dir, symbol)]
-    )
+    candidates = _concat([_load_yf_series(data_dir, symbol), _load_store_series(data_dir, symbol)])
     return _resolve(candidates, window_days)
 
 

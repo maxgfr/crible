@@ -67,7 +67,7 @@ def fetch_if_stale(
     max_age_seconds: float = DEFAULT_MAX_AGE,
     now: Callable[[], float] = time.time,
     chunk: int = 1 << 20,
-    max_bytes: int = 4 * 1024 ** 3,
+    max_bytes: int = 4 * 1024**3,
 ) -> MirrorResult:
     """Ensure the mirror holds a usably-fresh copy of ``url`` and return it.
 
@@ -104,9 +104,7 @@ def fetch_if_stale(
                 for block in response.iter_bytes(chunk):
                     written += len(block)
                     if written > max_bytes:
-                        raise MirrorError(
-                            f"{source}/{name} exceeded the {max_bytes}-byte ceiling — aborting"
-                        )
+                        raise MirrorError(f"{source}/{name} exceeded the {max_bytes}-byte ceiling — aborting")
                     out.write(block)
             tmp.rename(path)
         etag = getattr(response, "headers", {}) or {}
@@ -116,9 +114,7 @@ def fetch_if_stale(
     except Exception as exc:  # noqa: BLE001 — never regress coverage on a hiccup
         path.with_name(path.name + ".tmp").unlink(missing_ok=True)  # no partial left behind
         if path.exists():
-            log.warning(
-                "mirror: %s/%s fetch failed (%s) — serving last-good copy", source, name, exc
-            )
+            log.warning("mirror: %s/%s fetch failed (%s) — serving last-good copy", source, name, exc)
             return MirrorResult(path=path, source="last-good")
         if isinstance(exc, MirrorError):
             raise

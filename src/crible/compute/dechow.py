@@ -59,9 +59,7 @@ def dechow_components(canonical: pd.DataFrame) -> pd.DataFrame:
     avg_ta = _avg(c["total_assets"])
 
     short_term_debt = c["total_debt"] - c["long_term_debt"]
-    wc = (c["current_assets"] - c["cash_and_equivalents"]) - (
-        c["current_liabilities"] - short_term_debt
-    )
+    wc = (c["current_assets"] - c["cash_and_equivalents"]) - (c["current_liabilities"] - short_term_debt)
     nco = (c["total_assets"] - c["current_assets"] - c["marketable_securities"]) - (
         c["total_liabilities"] - c["current_liabilities"] - c["long_term_debt"]
     )
@@ -70,9 +68,9 @@ def dechow_components(canonical: pd.DataFrame) -> pd.DataFrame:
 
     out["dechow_ch_rec"] = c["accounts_receivable"].diff() / avg_ta
     out["dechow_ch_inv"] = c["inventory"].diff() / avg_ta
-    out["dechow_soft_assets"] = (
-        c["total_assets"] - c["net_ppe"] - c["cash_and_equivalents"]
-    ) / c["total_assets"]
+    out["dechow_soft_assets"] = (c["total_assets"] - c["net_ppe"] - c["cash_and_equivalents"]) / c[
+        "total_assets"
+    ]
 
     cash_sales = c["revenue"] - c["accounts_receivable"].diff()
     out["dechow_ch_cs"] = (cash_sales / cash_sales.shift(1) - 1).where(cash_sales.shift(1) > 0)
@@ -83,8 +81,6 @@ def dechow_components(canonical: pd.DataFrame) -> pd.DataFrame:
     # actual-issuance dummy — same fillna(0) stance as piotroski_no_dilution
     out["dechow_issuance"] = (c["common_stock_issuance"].fillna(0) > 0).astype(float)
 
-    logit = INTERCEPT + sum(
-        coefficient * out[component] for component, coefficient in COEFFICIENTS.items()
-    )
+    logit = INTERCEPT + sum(coefficient * out[component] for component, coefficient in COEFFICIENTS.items())
     out["dechow_f"] = (1.0 / (1.0 + np.exp(-logit))) / BASE_RATE
     return out

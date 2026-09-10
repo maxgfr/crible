@@ -25,9 +25,7 @@ BENCH_FACTOR = float(os.environ.get("CRIBLE_BENCH_FACTOR", "1"))
 @pytest.fixture(scope="module")
 def con(tmp_path_factory) -> duckdb.DuckDBPyConnection:
     path = tmp_path_factory.mktemp("bench") / "snapshot.parquet"
-    fillers = ",\n".join(
-        f"random() * 100 - 50 AS ratio_{i:03d}" for i in range(FILLER_COLUMNS)
-    )
+    fillers = ",\n".join(f"random() * 100 - 50 AS ratio_{i:03d}" for i in range(FILLER_COLUMNS))
     connection = duckdb.connect()
     connection.execute(
         f"""
@@ -72,9 +70,7 @@ def con(tmp_path_factory) -> duckdb.DuckDBPyConnection:
         ) TO '{path.as_posix()}' (FORMAT parquet)
         """
     )
-    connection.execute(
-        f"CREATE VIEW snapshot_latest AS SELECT * FROM read_parquet('{path.as_posix()}')"
-    )
+    connection.execute(f"CREATE VIEW snapshot_latest AS SELECT * FROM read_parquet('{path.as_posix()}')")
     return connection
 
 
@@ -129,7 +125,9 @@ def test_nfr008_rank_build_cost_bounded_on_full_universe() -> None:
             "symbol": [f"SYM{i}" for i in range(n)],
             "period": ["2025-12-31"] * n,
             "region": np.take(["europe", "us", "asia", "world"], rng.integers(0, 4, n)),
-            "sector": np.take(["Industrials", "Tech", "Financials", "Health", "Energy"], rng.integers(0, 5, n)),
+            "sector": np.take(
+                ["Industrials", "Tech", "Financials", "Health", "Energy"], rng.integers(0, 5, n)
+            ),
             "piotroski_f": rng.integers(0, 10, n),
             "altman_z": rng.uniform(-1, 7, n),
             "earnings_yield": rng.uniform(-0.05, 0.15, n),

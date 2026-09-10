@@ -52,7 +52,5 @@ def sec_user_agent() -> str:
     ua = os.environ.get("CRIBLE_SEC_USER_AGENT", DEFAULT_SEC_USER_AGENT)
     stripped = _URL_IN_UA.sub("", ua).strip()
     if stripped != ua:
-        log.warning(
-            "CRIBLE_SEC_USER_AGENT contained a URL (SEC 403s those) — using %r", stripped
-        )
+        log.warning("CRIBLE_SEC_USER_AGENT contained a URL (SEC 403s those) — using %r", stripped)
     return stripped or DEFAULT_SEC_USER_AGENT

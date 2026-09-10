@@ -73,10 +73,14 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
     # documented deviation): unlocks the EBIT derivation (pretax + interest,
     # canonical.py) → Altman x3, Greenblatt yield, interest coverage for
     # audited-only US symbols
-    "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest":
-        ("PretaxIncome", "income"),
-    "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments":
-        ("PretaxIncome", "income"),
+    "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest": (
+        "PretaxIncome",
+        "income",
+    ),
+    "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments": (
+        "PretaxIncome",
+        "income",
+    ),
     # balance sheet (instant facts)
     "Assets": ("TotalAssets", "balance"),
     "AssetsCurrent": ("CurrentAssets", "balance"),
@@ -91,14 +95,15 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
     # ASU 2016-18 combined tag (includes restricted cash — a documented
     # approximation): many post-2016 filers report ONLY this one; the classic
     # narrow tag above wins whenever both exist
-    "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents":
-        ("CashAndCashEquivalents", "balance"),
+    "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents": ("CashAndCashEquivalents", "balance"),
     "PropertyPlantAndEquipmentNet": ("NetPPE", "balance"),
     # ASC 842 combined presentation (finance-lease ROU assets included — a
     # documented approximation): some filers stopped tagging the narrow PPE
     # concept entirely (observed on HSIC from FY2022)
-    "PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization":
-        ("NetPPE", "balance"),
+    "PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization": (
+        "NetPPE",
+        "balance",
+    ),
     # gross PPE → Montier's depreciation-rate flag on audited-only symbols
     "PropertyPlantAndEquipmentGross": ("GrossPPE", "balance"),
     # exactly yfinance's non-current LTD → Beneish LVGI + long_term_debt;
@@ -190,7 +195,11 @@ def facts_to_frames(companyfacts: dict[str, Any]) -> dict[tuple[str, str], pd.Da
     def record(
         sink: dict[str, dict[str, tuple[str, float]]],
         claims: dict[tuple[str, str], str],
-        period: str, column: str, concept: str, filed: str, value: float,
+        period: str,
+        column: str,
+        concept: str,
+        filed: str,
+        value: float,
     ) -> None:
         owner = claims.get((period, column))
         if owner is not None and owner != concept:
@@ -234,7 +243,9 @@ def facts_to_frames(companyfacts: dict[str, Any]) -> dict[tuple[str, str], pd.Da
 
     def assemble(
         sink: dict[str, dict[str, tuple[str, float]]],
-        freq: str, statements: tuple[str, ...], keep: int,
+        freq: str,
+        statements: tuple[str, ...],
+        keep: int,
     ) -> None:
         periods = sorted(sink)[-keep:]
         for statement_type in statements:
@@ -280,9 +291,7 @@ def iter_bulk_companyfacts(zip_path, ciks: set[int]):
                 log.warning("edgar bulk: skipping %s: %s", stem, exc)
 
 
-def resolve_ciks(
-    companies: list[dict], tickers: dict[str, int]
-) -> tuple[dict[str, int], list[str]]:
+def resolve_ciks(companies: list[dict], tickers: dict[str, int]) -> tuple[dict[str, int], list[str]]:
     """symbol→CIK for listings whose ticker appears in the SEC directory;
     plus unmatched symbols — counted, never errored (the ESEF AC-4 pattern).
     The SEC directory uses dash-form tickers (BRK-B), matching the universe.

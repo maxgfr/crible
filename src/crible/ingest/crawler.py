@@ -84,7 +84,10 @@ class Crawler:
                 delay = self.backoff.delay(attempt)
                 log.warning(
                     "rate-limited on %s (attempt %d): %s — backing off %.0fs",
-                    symbol, attempt, exc, delay,
+                    symbol,
+                    attempt,
+                    exc,
+                    delay,
                 )
                 self.sleep(delay)
                 continue
@@ -117,7 +120,10 @@ class Crawler:
             self.queue.mark_done(symbol, fetched_at)
             log.info(
                 "fetched %s via %s (%d statement(s), budget used %d/h)",
-                symbol, result.provider, len(result.statements), self.budget.used_in_window(),
+                symbol,
+                result.provider,
+                len(result.statements),
+                self.budget.used_in_window(),
             )
             return True
 

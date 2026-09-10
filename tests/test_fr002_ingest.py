@@ -36,8 +36,13 @@ def test_leftover_tmp_partial_is_ignored_by_readers_and_prune(tmp_path) -> None:
     misparse its stem into a bogus (statement, freq) key."""
     frame = pd.DataFrame({"period": ["2024"], "TotalRevenue": [100.0]})
     write_raw_statement(
-        tmp_path, symbol="AIR.PA", provider="yfinance",
-        statement_type="income", freq="annual", frame=frame, fetched_at=1000.0,
+        tmp_path,
+        symbol="AIR.PA",
+        provider="yfinance",
+        statement_type="income",
+        freq="annual",
+        frame=frame,
+        fetched_at=1000.0,
     )
     sym_dir = tmp_path / "raw" / "provider=yfinance" / "symbol=AIR.PA"
     (sym_dir / ".tmp-income-annual-000000002000000.parquet").write_bytes(b"not a parquet")
@@ -164,9 +169,7 @@ def test_fr002_budget_charges_per_upstream_request_not_per_symbol(con, tmp_path)
 
     provider = ExpensiveProvider()
     # sleeper advances the fake clock so budget waits actually release
-    crawler, _ = make_crawler(
-        con, provider, clock, tmp_path, budget_capacity=20, sleeper=clock.advance
-    )
+    crawler, _ = make_crawler(con, provider, clock, tmp_path, budget_capacity=20, sleeper=clock.advance)
     crawler.run_cycle(limit=3)
 
     assert len(provider.call_times) == 3
@@ -182,9 +185,7 @@ def test_fr002_europe_is_crawled_before_us_before_world(con, tmp_path) -> None:
 
     crawler.run_cycle(limit=8)
 
-    regions = dict(
-        con.execute("SELECT symbol, region FROM companies").fetchall()
-    )
+    regions = dict(con.execute("SELECT symbol, region FROM companies").fetchall())
     seen_order = [regions[s] for s in provider.calls]
     # all europe first, then us, then world
     assert seen_order == sorted(seen_order, key=["europe", "us", "world"].index)
@@ -207,9 +208,7 @@ def test_fr002_backoff_doubles_with_cap_and_reschedules(con, tmp_path) -> None:
     assert backoff_sleeps[:2] == [60.0, 120.0]
     # the symbol was rescheduled, not dropped: eventually fetched
     assert provider.calls.count("ABN.AS") == 3
-    status = con.execute(
-        "SELECT consecutive_failures FROM crawl_tasks WHERE symbol = 'ABN.AS'"
-    ).fetchone()[0]
+    status = con.execute("SELECT consecutive_failures FROM crawl_tasks WHERE symbol = 'ABN.AS'").fetchone()[0]
     assert status == 0  # success reset
 
 
@@ -240,12 +239,22 @@ def test_fr002_crash_resume_skips_fresh_symbols(con, tmp_path) -> None:
 def test_fr002_raw_parquet_is_versioned_and_readable(tmp_path) -> None:
     frame = pd.DataFrame({"period": ["2025"], "revenue": [100.0]})
     path1 = write_raw_statement(
-        tmp_path, symbol="AIR.PA", provider="yfinance",
-        statement_type="income", freq="annual", frame=frame, fetched_at=1_000.0,
+        tmp_path,
+        symbol="AIR.PA",
+        provider="yfinance",
+        statement_type="income",
+        freq="annual",
+        frame=frame,
+        fetched_at=1_000.0,
     )
     path2 = write_raw_statement(
-        tmp_path, symbol="AIR.PA", provider="yfinance",
-        statement_type="income", freq="annual", frame=frame, fetched_at=2_000.0,
+        tmp_path,
+        symbol="AIR.PA",
+        provider="yfinance",
+        statement_type="income",
+        freq="annual",
+        frame=frame,
+        fetched_at=2_000.0,
     )
     assert path1 != path2  # versioned, append-only
     assert path1.exists() and path2.exists()
@@ -260,12 +269,22 @@ def test_fr002_skip_identical_reuses_the_newest_version(tmp_path) -> None:
     degrades incremental compute to a full rebuild."""
     frame = pd.DataFrame({"period": ["2025"], "revenue": [100.0]})
     first = write_raw_statement(
-        tmp_path, symbol="AAPL", provider="edgar",
-        statement_type="income", freq="annual", frame=frame, fetched_at=1_000.0,
+        tmp_path,
+        symbol="AAPL",
+        provider="edgar",
+        statement_type="income",
+        freq="annual",
+        frame=frame,
+        fetched_at=1_000.0,
     )
     again = write_raw_statement(
-        tmp_path, symbol="AAPL", provider="edgar",
-        statement_type="income", freq="annual", frame=frame.copy(), fetched_at=2_000.0,
+        tmp_path,
+        symbol="AAPL",
+        provider="edgar",
+        statement_type="income",
+        freq="annual",
+        frame=frame.copy(),
+        fetched_at=2_000.0,
         skip_identical=True,
     )
     assert again == first  # no new file, no new stamp
@@ -275,16 +294,26 @@ def test_fr002_skip_identical_reuses_the_newest_version(tmp_path) -> None:
     # a changed value DOES write a new version
     changed = frame.assign(revenue=[120.0])
     third = write_raw_statement(
-        tmp_path, symbol="AAPL", provider="edgar",
-        statement_type="income", freq="annual", frame=changed, fetched_at=3_000.0,
+        tmp_path,
+        symbol="AAPL",
+        provider="edgar",
+        statement_type="income",
+        freq="annual",
+        frame=changed,
+        fetched_at=3_000.0,
         skip_identical=True,
     )
     assert third != first
     assert len(list(directory.glob("*.parquet"))) == 2
     # a different (statement, freq) key never matches the income file
     other = write_raw_statement(
-        tmp_path, symbol="AAPL", provider="edgar",
-        statement_type="balance", freq="annual", frame=frame, fetched_at=4_000.0,
+        tmp_path,
+        symbol="AAPL",
+        provider="edgar",
+        statement_type="balance",
+        freq="annual",
+        frame=frame,
+        fetched_at=4_000.0,
         skip_identical=True,
     )
     assert other.name.startswith("balance-annual-")
@@ -297,29 +326,52 @@ def test_fr002_compare_meta_columns_participate_in_skip_identical(tmp_path) -> N
     would be refetched forever)."""
     frame = pd.DataFrame({"period": ["2025"], "revenue": [100.0]})
     first = write_raw_statement(
-        tmp_path, symbol="CA.PA", provider="esef",
-        statement_type="income", freq="annual", frame=frame.assign(_history_depth=3),
-        fetched_at=1_000.0, skip_identical=True, compare_meta=("_history_depth",),
+        tmp_path,
+        symbol="CA.PA",
+        provider="esef",
+        statement_type="income",
+        freq="annual",
+        frame=frame.assign(_history_depth=3),
+        fetched_at=1_000.0,
+        skip_identical=True,
+        compare_meta=("_history_depth",),
     )
     again = write_raw_statement(
-        tmp_path, symbol="CA.PA", provider="esef",
-        statement_type="income", freq="annual", frame=frame.assign(_history_depth=3),
-        fetched_at=2_000.0, skip_identical=True, compare_meta=("_history_depth",),
+        tmp_path,
+        symbol="CA.PA",
+        provider="esef",
+        statement_type="income",
+        freq="annual",
+        frame=frame.assign(_history_depth=3),
+        fetched_at=2_000.0,
+        skip_identical=True,
+        compare_meta=("_history_depth",),
     )
     assert again == first  # same data, same depth → reused
 
     deeper = write_raw_statement(
-        tmp_path, symbol="CA.PA", provider="esef",
-        statement_type="income", freq="annual", frame=frame.assign(_history_depth=5),
-        fetched_at=3_000.0, skip_identical=True, compare_meta=("_history_depth",),
+        tmp_path,
+        symbol="CA.PA",
+        provider="esef",
+        statement_type="income",
+        freq="annual",
+        frame=frame.assign(_history_depth=5),
+        fetched_at=3_000.0,
+        skip_identical=True,
+        compare_meta=("_history_depth",),
     )
     assert deeper != first  # same data, deeper backfill → re-stamped once
 
     # legacy callers (no compare_meta) still ignore every meta column
     plain = write_raw_statement(
-        tmp_path, symbol="CA.PA", provider="esef",
-        statement_type="income", freq="annual", frame=frame.copy(),
-        fetched_at=4_000.0, skip_identical=True,
+        tmp_path,
+        symbol="CA.PA",
+        provider="esef",
+        statement_type="income",
+        freq="annual",
+        frame=frame.copy(),
+        fetched_at=4_000.0,
+        skip_identical=True,
     )
     assert plain == deeper
 

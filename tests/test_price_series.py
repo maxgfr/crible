@@ -54,8 +54,13 @@ def store_frame(symbol: str, days: int, start: str, close0: float = 50.0) -> pd.
 
 def write_yf_bars(data_dir, symbol: str, frame: pd.DataFrame, fetched_at: float = 1_000.0) -> None:
     write_raw_statement(
-        data_dir, symbol=symbol, provider="yfinance", statement_type="prices",
-        freq="daily", frame=frame, fetched_at=fetched_at,
+        data_dir,
+        symbol=symbol,
+        provider="yfinance",
+        statement_type="prices",
+        freq="daily",
+        frame=frame,
+        fetched_at=fetched_at,
     )
 
 
@@ -70,7 +75,15 @@ def test_normalize_keeps_the_exchange_local_date() -> None:
 def test_normalize_maps_columns_to_the_lean_schema() -> None:
     out = normalize_yf_bars(yf_frame(days=2), "ML.PA")
     assert list(out.columns) == [
-        "symbol", "date", "open", "high", "low", "close", "adj_close", "volume", "source",
+        "symbol",
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "adj_close",
+        "volume",
+        "source",
     ]
     assert out["adj_close"].iloc[0] == 100.4  # "Adj Close" → adj_close
     assert (out["source"] == "yfinance").all()
@@ -109,7 +122,9 @@ def test_export_packs_whole_symbols_into_sorted_disjoint_shards(tmp_path, tmp_pa
 
     block = export_price_shards(tmp_path, out, max_rows_per_shard=12)
     assert [s["file"] for s in block["shards"]] == [
-        "prices-00.parquet", "prices-01.parquet", "prices-02.parquet",
+        "prices-00.parquet",
+        "prices-01.parquet",
+        "prices-02.parquet",
     ]
     assert block["symbols"] == 3 and block["bars"] == 30 and block["window_days"] == 400
     # whole symbols per shard, symbol-sorted and disjoint

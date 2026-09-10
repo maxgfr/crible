@@ -34,9 +34,16 @@ def _shard(tmp_path, name="shard.parquet") -> str:
     for symbol, base in (("AAPL", 100.0), ("ZZUNKNOWN", 5.0)):
         for month in range(1, 13):
             rows.append(
-                {"symbol": symbol, "date": f"2026-{month:02d}-01",
-                 "open": base, "high": base, "low": base,
-                 "close": base + month, "volume": 1000, "adj_close": base + month}
+                {
+                    "symbol": symbol,
+                    "date": f"2026-{month:02d}-01",
+                    "open": base,
+                    "high": base,
+                    "low": base,
+                    "close": base + month,
+                    "volume": 1000,
+                    "adj_close": base + month,
+                }
             )
     path = tmp_path / name
     pd.DataFrame(rows).to_parquet(path, index=False)
@@ -66,7 +73,15 @@ def test_huggingface_import_persists_the_series_store(tmp_path) -> None:
     series = pd.read_parquet(tmp_path / "prices" / "huggingface.parquet")
     assert set(series["symbol"]) == {"AAPL"}  # ZZUNKNOWN dropped
     assert list(series.columns) == [
-        "symbol", "date", "open", "high", "low", "close", "adj_close", "volume", "source",
+        "symbol",
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "adj_close",
+        "volume",
+        "source",
     ]
     assert (series["source"] == "huggingface").all()
     assert series["close"].notna().all()
@@ -87,8 +102,7 @@ def test_stooq_import_maps_exchange_suffixes(tmp_path) -> None:
     _universe(tmp_path)
     body = "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>\n"
     body += "".join(
-        f"BMW.DE,D,2026{month:02d}01,000000,50,51,49,{50 + month},1000,0\n"
-        for month in range(1, 13)
+        f"BMW.DE,D,2026{month:02d}01,000000,50,51,49,{50 + month},1000,0\n" for month in range(1, 13)
     )
     archive = tmp_path / "d_de_txt.zip"
     with zipfile.ZipFile(archive, "w") as bundle:
@@ -114,8 +128,18 @@ def test_merge_keeps_the_newest_asof_per_symbol(tmp_path) -> None:
 
     stale = tmp_path / "stale.parquet"
     pd.DataFrame(
-        [{"symbol": "AAPL", "date": "2025-01-01", "open": 1, "high": 1, "low": 1,
-          "close": 1.0, "volume": 1, "adj_close": 1.0}]
+        [
+            {
+                "symbol": "AAPL",
+                "date": "2025-01-01",
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1.0,
+                "volume": 1,
+                "adj_close": 1.0,
+            }
+        ]
     ).to_parquet(stale, index=False)
     import_huggingface(tmp_path, shards=[str(stale)])  # older asof — must lose
 
@@ -130,12 +154,16 @@ def test_snapshot_falls_back_to_the_distilled_quote(tmp_path) -> None:
     _universe(tmp_path)
     import_huggingface(tmp_path, shards=[_shard(tmp_path)])
     frame = pd.DataFrame(
-        {"period": ["2025-12-31"], "TotalRevenue": [400.0], "NetIncome": [56.0],
-         "BasicAverageShares": [10.0]}
+        {"period": ["2025-12-31"], "TotalRevenue": [400.0], "NetIncome": [56.0], "BasicAverageShares": [10.0]}
     )
     write_raw_statement(
-        tmp_path, symbol="AAPL", provider="edgar", statement_type="income",
-        freq="annual", frame=frame, fetched_at=1_000.0,
+        tmp_path,
+        symbol="AAPL",
+        provider="edgar",
+        statement_type="income",
+        freq="annual",
+        frame=frame,
+        fetched_at=1_000.0,
     )
     snapshot = build_snapshot(tmp_path, symbols=["AAPL"]).set_index("period")
     row = snapshot.loc["2025-12-31"]
@@ -170,8 +198,15 @@ def test_quote_only_source_never_clobbers_momentum(tmp_path) -> None:
     import_huggingface(tmp_path, shards=[_shard(tmp_path)])  # asof 2026-12-01
 
     quote = pd.DataFrame(
-        [{"symbol": "AAPL", "close": 999.0, "price_asof": "2026-12-15",
-          "source": "tradingview", "imported_at": 2_000_000.0}]
+        [
+            {
+                "symbol": "AAPL",
+                "close": 999.0,
+                "price_asof": "2026-12-15",
+                "source": "tradingview",
+                "imported_at": 2_000_000.0,
+            }
+        ]
     )
     _merge_and_publish(tmp_path, quote)
 
@@ -188,8 +223,15 @@ def test_stale_quote_only_row_loses_the_quote_entirely(tmp_path) -> None:
     _universe(tmp_path)
     import_huggingface(tmp_path, shards=[_shard(tmp_path)])
     stale = pd.DataFrame(
-        [{"symbol": "AAPL", "close": 1.0, "price_asof": "2026-01-02",
-          "source": "tradingview", "imported_at": 2_000_000.0}]
+        [
+            {
+                "symbol": "AAPL",
+                "close": 1.0,
+                "price_asof": "2026-01-02",
+                "source": "tradingview",
+                "imported_at": 2_000_000.0,
+            }
+        ]
     )
     _merge_and_publish(tmp_path, stale)
     row = load_prices_latest(tmp_path).set_index("symbol").loc["AAPL"]
@@ -205,8 +247,15 @@ def test_age_gate_sees_through_a_quote_only_takeover(tmp_path) -> None:
     _universe(tmp_path)
     import_huggingface(tmp_path, shards=[_shard(tmp_path)])
     quote = pd.DataFrame(
-        [{"symbol": "AAPL", "close": 999.0, "price_asof": "2026-12-15",
-          "source": "tradingview", "imported_at": 2_000_000.0}]
+        [
+            {
+                "symbol": "AAPL",
+                "close": 999.0,
+                "price_asof": "2026-12-15",
+                "source": "tradingview",
+                "imported_at": 2_000_000.0,
+            }
+        ]
     )
     _merge_and_publish(tmp_path, quote)
 
@@ -218,8 +267,16 @@ def test_age_gate_sees_through_a_quote_only_takeover(tmp_path) -> None:
 
 def test_load_backfills_momentum_provenance_for_legacy_files(tmp_path) -> None:
     legacy = pd.DataFrame(
-        [{"symbol": "AAPL", "close": 5.0, "price_asof": "2026-06-01",
-          "return_6m": 0.1, "source": "stooq", "imported_at": 1.0}]
+        [
+            {
+                "symbol": "AAPL",
+                "close": 5.0,
+                "price_asof": "2026-06-01",
+                "return_6m": 0.1,
+                "source": "stooq",
+                "imported_at": 1.0,
+            }
+        ]
     )
     legacy.to_parquet(tmp_path / "prices-latest.parquet", index=False)
     row = load_prices_latest(tmp_path).set_index("symbol").loc["AAPL"]

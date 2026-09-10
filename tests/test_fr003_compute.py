@@ -24,9 +24,7 @@ def income_frame(rows: dict[str, list[float]], periods: list[str]) -> pd.DataFra
 
 
 def canonical_from(values: dict[str, dict[str, list[float]]], periods: list[str]) -> pd.DataFrame:
-    frames = {
-        (stmt, "annual"): income_frame(rows, periods) for stmt, rows in values.items()
-    }
+    frames = {(stmt, "annual"): income_frame(rows, periods) for stmt, rows in values.items()}
     return build_canonical(frames)
 
 
@@ -261,8 +259,12 @@ def test_fr003_montier_c_flags_aggressive_accounting() -> None:
     out = montier_components(canonical_from(MONTIER_MANIP, ["2024", "2025"]))
     row = out.loc["2025"]
     for flag in (
-        "montier_ni_cfo_diverging", "montier_dso_rising", "montier_dsi_rising",
-        "montier_oca_to_rev_rising", "montier_depr_declining", "montier_asset_growth_high",
+        "montier_ni_cfo_diverging",
+        "montier_dso_rising",
+        "montier_dsi_rising",
+        "montier_oca_to_rev_rising",
+        "montier_depr_declining",
+        "montier_asset_growth_high",
     ):
         assert row[flag] == 1.0, flag
     assert row["montier_c"] == 6
@@ -326,7 +328,12 @@ def test_fr003_extras_without_price_null_the_price_dependent_block() -> None:
     assert out["ncav"] == pytest.approx(100.0)
     assert out["greenblatt_roc"] == pytest.approx(150 / 700)
     # price-dependent metrics are NaN, never fabricated
-    for col in ("graham_number", "graham_margin_of_safety", "ncav_to_market_cap", "greenblatt_earnings_yield"):
+    for col in (
+        "graham_number",
+        "graham_margin_of_safety",
+        "ncav_to_market_cap",
+        "greenblatt_earnings_yield",
+    ):
         assert pd.isna(out[col]), col
 
 
@@ -334,8 +341,10 @@ def test_fr003_graham_number_null_when_earnings_not_positive() -> None:
     frame = {
         "income": {"TotalRevenue": [1000.0], "NetIncome": [-50.0]},
         "balance": {
-            "StockholdersEquity": [900.0], "BasicAverageShares": [100.0],
-            "CurrentAssets": [500.0], "TotalLiabilitiesNetMinorityInterest": [400.0],
+            "StockholdersEquity": [900.0],
+            "BasicAverageShares": [100.0],
+            "CurrentAssets": [500.0],
+            "TotalLiabilitiesNetMinorityInterest": [400.0],
         },
     }
     canonical = canonical_from(frame, ["2025"])
@@ -352,10 +361,13 @@ def test_fr003_greenblatt_undefined_on_nonpositive_capital_or_ev() -> None:
         {
             "income": {"TotalRevenue": [1000.0], "EBIT": [150.0], "NetIncome": [100.0]},
             "balance": {
-                "CurrentAssets": [100.0], "CurrentLiabilities": [500.0],  # working capital = -400
-                "NetPPE": [100.0],                                        # invested capital = -300
-                "TotalDebt": [0.0], "CashAndCashEquivalents": [500.0],
-                "BasicAverageShares": [100.0], "StockholdersEquity": [50.0],
+                "CurrentAssets": [100.0],
+                "CurrentLiabilities": [500.0],  # working capital = -400
+                "NetPPE": [100.0],  # invested capital = -300
+                "TotalDebt": [0.0],
+                "CashAndCashEquivalents": [500.0],
+                "BasicAverageShares": [100.0],
+                "StockholdersEquity": [50.0],
                 "TotalLiabilitiesNetMinorityInterest": [600.0],
             },
         },
@@ -363,8 +375,8 @@ def test_fr003_greenblatt_undefined_on_nonpositive_capital_or_ev() -> None:
     )
     price = pd.Series([1.0], index=canonical.index)  # market cap = 100 → EV = 100 + 0 - 500 = -400
     out = compute_extras(canonical, price).loc["2025"]
-    assert pd.isna(out["greenblatt_roc"])              # invested capital ≤ 0 → undefined
-    assert pd.isna(out["greenblatt_earnings_yield"])   # enterprise value ≤ 0 → undefined
+    assert pd.isna(out["greenblatt_roc"])  # invested capital ≤ 0 → undefined
+    assert pd.isna(out["greenblatt_earnings_yield"])  # enterprise value ≤ 0 → undefined
 
 
 # ------------------------------------------------------------- Dechow F-Score
@@ -408,7 +420,11 @@ def test_fr003_dechow_flat_company_matches_hand_computed_logit() -> None:
     out = dechow_components(_dechow_canonical())
     row = out.iloc[-1]  # the third period: every Δ term is defined and 0
     for component in (
-        "dechow_rsst", "dechow_ch_rec", "dechow_ch_inv", "dechow_ch_cs", "dechow_ch_roa",
+        "dechow_rsst",
+        "dechow_ch_rec",
+        "dechow_ch_inv",
+        "dechow_ch_cs",
+        "dechow_ch_roa",
     ):
         assert row[component] == pytest.approx(0.0)
     assert row["dechow_soft_assets"] == pytest.approx(0.6)
@@ -498,9 +514,7 @@ def test_fr003_quick_win_extras_are_analytically_exact() -> None:
     # EXACTLY the published earnings CAGR (one definition, never two)
     assert out["revenue_cagr_3y"] == pytest.approx(0.1)
     assert out["net_income_cagr_3y"] == pytest.approx(0.1)
-    assert out["peg_ratio"] == pytest.approx(
-        (1000.0 / 133.1) / (out["net_income_cagr_3y"] * 100)
-    )
+    assert out["peg_ratio"] == pytest.approx((1000.0 / 133.1) / (out["net_income_cagr_3y"] * 100))
     assert pd.isna(compute_extras(_quickwin_canonical(), price).loc["2024", "revenue_cagr_3y"])
 
     # price applies to the LATEST period only — older rows stay NaN
@@ -590,8 +604,12 @@ def test_fr003_raw_layer_round_trip_builds_snapshot(tmp_path) -> None:
 
     for stmt, rows in IMPROVING.items():
         write_raw_statement(
-            tmp_path, symbol="RT.PA", provider="yfinance", statement_type=stmt,
-            freq="annual", frame=income_frame(rows, ["2023", "2024", "2025"]),
+            tmp_path,
+            symbol="RT.PA",
+            provider="yfinance",
+            statement_type=stmt,
+            freq="annual",
+            frame=income_frame(rows, ["2023", "2024", "2025"]),
             fetched_at=1000.0,
         )
     frames = latest_raw_frames(tmp_path, "RT.PA", provider="yfinance")
@@ -607,9 +625,7 @@ def test_fr003_price_ratio_growths_and_ncav_duplicate_are_not_emitted() -> None:
     YoY growth can never resolve — the snapshot no longer emits those
     always-NaN columns, nor net_current_asset_value (≡ extras.ncav)."""
     frames = {(s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()}
-    snapshot = build_symbol_snapshot(
-        "P.PA", frames, computed_at=1.0, price_quote=(10.0, "2025-12-31")
-    )
+    snapshot = build_symbol_snapshot("P.PA", frames, computed_at=1.0, price_quote=(10.0, "2025-12-31"))
 
     assert "price_to_earnings_ratio" in snapshot.columns  # the ratio itself stays
     assert "price_to_earnings_ratio_growth" not in snapshot.columns
@@ -653,11 +669,7 @@ def test_fr003_stale_base_cache_columns_are_scrubbed() -> None:
 def test_fr003_null_cells_carry_a_note_naming_the_missing_inputs() -> None:
     """FR-003 AC-2: the snapshot names the canonical inputs the provider did
     not supply — every NULL ratio is explainable."""
-    frames = {
-        ("income", "annual"): income_frame(
-            {"TotalRevenue": [1000.0], "NetIncome": [80.0]}, ["2025"]
-        )
-    }
+    frames = {("income", "annual"): income_frame({"TotalRevenue": [1000.0], "NetIncome": [80.0]}, ["2025"])}
     snapshot = build_symbol_snapshot("X.PA", frames, computed_at=1.0)
     note = snapshot["missing_inputs"].iloc[0]
     assert "operating_cashflow" in note
@@ -680,8 +692,13 @@ def test_incremental_compute_recomputes_only_dirty_symbols(tmp_path, monkeypatch
     frame = pd.DataFrame({"period": ["2024"], "TotalRevenue": [100.0]})
     for sym in ("AAA", "BBB"):
         write_raw_statement(
-            tmp_path, symbol=sym, provider="yfinance",
-            statement_type="income", freq="annual", frame=frame, fetched_at=1000.0,
+            tmp_path,
+            symbol=sym,
+            provider="yfinance",
+            statement_type="income",
+            freq="annual",
+            frame=frame,
+            fetched_at=1000.0,
         )
 
     first = snap.build_snapshot_incremental(tmp_path)  # no base → full build
@@ -702,8 +719,11 @@ def test_incremental_compute_recomputes_only_dirty_symbols(tmp_path, monkeypatch
     # the past (raw is always fetched before the compute that follows it)
     time.sleep(0.02)
     write_raw_statement(
-        tmp_path, symbol="BBB", provider="yfinance",
-        statement_type="income", freq="annual",
+        tmp_path,
+        symbol="BBB",
+        provider="yfinance",
+        statement_type="income",
+        freq="annual",
         frame=pd.DataFrame({"period": ["2024"], "TotalRevenue": [250.0]}),
         fetched_at=time.time(),
     )
@@ -730,17 +750,20 @@ def test_incremental_full_rebuild_on_engine_schema_bump(tmp_path, monkeypatch) -
     frame = pd.DataFrame({"period": ["2024"], "TotalRevenue": [100.0]})
     for sym in ("AAA", "BBB"):
         write_raw_statement(
-            tmp_path, symbol=sym, provider="yfinance",
-            statement_type="income", freq="annual", frame=frame, fetched_at=1000.0,
+            tmp_path,
+            symbol=sym,
+            provider="yfinance",
+            statement_type="income",
+            freq="annual",
+            frame=frame,
+            fetched_at=1000.0,
         )
     snap.build_snapshot_incremental(tmp_path)  # base + schema stamp
     assert (tmp_path / "snapshot" / "base-schema.json").exists()
 
     calls: list[list[str]] = []
     original = snap.build_symbol_rows
-    monkeypatch.setattr(
-        snap, "build_symbol_rows", lambda d, s: (calls.append(list(s)), original(d, s))[1]
-    )
+    monkeypatch.setattr(snap, "build_symbol_rows", lambda d, s: (calls.append(list(s)), original(d, s))[1])
 
     # same engine version, nothing changed → no per-symbol work at all
     assert snap.build_snapshot_incremental(tmp_path) is None
@@ -769,8 +792,13 @@ def test_incremental_compute_rebuilds_all_when_the_price_distillate_refreshes(tm
     frame = pd.DataFrame({"period": ["2024"], "TotalRevenue": [100.0]})
     for sym in ("AAA", "BBB"):
         write_raw_statement(
-            tmp_path, symbol=sym, provider="yfinance",
-            statement_type="income", freq="annual", frame=frame, fetched_at=1000.0,
+            tmp_path,
+            symbol=sym,
+            provider="yfinance",
+            statement_type="income",
+            freq="annual",
+            frame=frame,
+            fetched_at=1000.0,
         )
     snap.build_snapshot_incremental(tmp_path)  # base built
 
@@ -792,19 +820,13 @@ def test_fr003_freshest_price_asof_wins_between_bars_and_quote() -> None:
     """A dump/TV quote NEWER than the last crawled bar supplies the price;
     older quotes still lose to the bars (freshest as-of wins, either way)."""
     frames = {(s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()}
-    frames[("prices", "daily")] = pd.DataFrame(
-        {"date": ["2026-07-15", "2026-07-16"], "close": [40.0, 41.0]}
-    )
+    frames[("prices", "daily")] = pd.DataFrame({"date": ["2026-07-15", "2026-07-16"], "close": [40.0, 41.0]})
 
-    fresher_quote = build_symbol_snapshot(
-        "P.PA", frames, computed_at=1.0, price_quote=(42.0, "2026-07-17")
-    )
+    fresher_quote = build_symbol_snapshot("P.PA", frames, computed_at=1.0, price_quote=(42.0, "2026-07-17"))
     latest = fresher_quote[fresher_quote["period"] == "2025"].iloc[0]
     assert latest["price_asof"] == "2026-07-17"
 
-    stale_quote = build_symbol_snapshot(
-        "P.PA", frames, computed_at=1.0, price_quote=(39.0, "2026-07-10")
-    )
+    stale_quote = build_symbol_snapshot("P.PA", frames, computed_at=1.0, price_quote=(39.0, "2026-07-10"))
     latest = stale_quote[stale_quote["period"] == "2025"].iloc[0]
     assert latest["price_asof"] == "2026-07-16"
 
@@ -841,24 +863,28 @@ def test_fr003_total_debt_derives_from_the_sided_audited_tags() -> None:
     (LTD alone would understate leverage and EV)."""
     from crible.compute.canonical import build_canonical
 
-    both = build_canonical({
-        ("balance", "annual"): pd.DataFrame(
-            {"period": ["2024"], "LongTermDebt": [1.5e9], "CurrentDebt": [3e8]}
-        )
-    })
+    both = build_canonical(
+        {
+            ("balance", "annual"): pd.DataFrame(
+                {"period": ["2024"], "LongTermDebt": [1.5e9], "CurrentDebt": [3e8]}
+            )
+        }
+    )
     assert both.loc["2024", "total_debt"] == 1.8e9
     assert both.loc["2024", "short_term_debt"] == 3e8
 
-    one_side = build_canonical({
-        ("balance", "annual"): pd.DataFrame({"period": ["2024"], "LongTermDebt": [1.5e9]})
-    })
+    one_side = build_canonical(
+        {("balance", "annual"): pd.DataFrame({"period": ["2024"], "LongTermDebt": [1.5e9]})}
+    )
     assert pd.isna(one_side.loc["2024", "total_debt"])
 
-    provider_wins = build_canonical({
-        ("balance", "annual"): pd.DataFrame(
-            {"period": ["2024"], "TotalDebt": [2e9], "LongTermDebt": [1.5e9], "CurrentDebt": [3e8]}
-        )
-    })
+    provider_wins = build_canonical(
+        {
+            ("balance", "annual"): pd.DataFrame(
+                {"period": ["2024"], "TotalDebt": [2e9], "LongTermDebt": [1.5e9], "CurrentDebt": [3e8]}
+            )
+        }
+    )
     assert provider_wins.loc["2024", "total_debt"] == 2e9
 
 
@@ -868,11 +894,8 @@ def test_fr003_symbol_snapshot_builds_without_fragmenting() -> None:
     import warnings
 
     frames = {(s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()}
-    frames[("prices", "daily")] = pd.DataFrame(
-        {"date": ["2026-07-15", "2026-07-16"], "close": [40.0, 41.0]}
-    )
+    frames[("prices", "daily")] = pd.DataFrame({"date": ["2026-07-15", "2026-07-16"], "close": [40.0, 41.0]})
     with warnings.catch_warnings():
         warnings.simplefilter("error", pd.errors.PerformanceWarning)
-        snapshot = build_symbol_snapshot("P.PA", frames, computed_at=1.0,
-                                         price_quote=(42.0, "2026-07-17"))
+        snapshot = build_symbol_snapshot("P.PA", frames, computed_at=1.0, price_quote=(42.0, "2026-07-17"))
     assert len(snapshot) == 3

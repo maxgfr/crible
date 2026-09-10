@@ -16,7 +16,9 @@ import pytest
 from crible.compute.momentum import momentum_features, trailing_return
 
 
-def daily_bars(n: int = 400, start: str = "2025-06-01", base: float = 100.0, step: float = 0.5) -> pd.DataFrame:
+def daily_bars(
+    n: int = 400, start: str = "2025-06-01", base: float = 100.0, step: float = 0.5
+) -> pd.DataFrame:
     dates = pd.date_range(start, periods=n, freq="D")
     return pd.DataFrame({"date": dates, "close": [base + i * step for i in range(n)]})
 
@@ -63,9 +65,7 @@ def test_momentum_features_flat_series_has_zero_volatility() -> None:
 def test_trailing_return_matches_features() -> None:
     bars = daily_bars(400)
     feats = momentum_features(bars["date"], bars["close"])
-    assert trailing_return(bars["date"], bars["close"], 182) == pytest.approx(
-        feats["return_6m"], abs=1e-12
-    )
+    assert trailing_return(bars["date"], bars["close"], 182) == pytest.approx(feats["return_6m"], abs=1e-12)
 
 
 def test_parity_across_the_three_historical_paths(tmp_path) -> None:
@@ -88,9 +88,14 @@ def test_parity_across_the_three_historical_paths(tmp_path) -> None:
     shard = tmp_path / "shard.parquet"
     pd.DataFrame(
         {
-            "symbol": "AAPL", "date": dates.astype(str),
-            "open": closes, "high": closes, "low": closes,
-            "close": closes, "adj_close": closes, "volume": 1000,
+            "symbol": "AAPL",
+            "date": dates.astype(str),
+            "open": closes,
+            "high": closes,
+            "low": closes,
+            "close": closes,
+            "adj_close": closes,
+            "volume": 1000,
         }
     ).to_parquet(shard, index=False)
     import_huggingface(tmp_path, shards=[str(shard)])

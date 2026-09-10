@@ -55,7 +55,7 @@ class PriceRefresher:
         for symbol in symbols:
             if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
                 outcome.aborted = True
-                outcome.skipped.extend(symbols[len(outcome.refreshed) + len(outcome.skipped):])
+                outcome.skipped.extend(symbols[len(outcome.refreshed) + len(outcome.skipped) :])
                 log.warning(
                     "price refresh aborted after %d consecutive rate-limits — "
                     "remaining symbols keep their last price (visible via price_asof)",

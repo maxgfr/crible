@@ -32,8 +32,24 @@ log = logging.getLogger("crible.ingest.enrich.backfill")
 # trailing legal forms stripped ONCE from the normalized name — conservative
 # on purpose: only unambiguous company-form tokens, never real words
 LEGAL_FORMS = {
-    "SA", "SE", "SAS", "SCA", "PLC", "NV", "BV", "AG", "KGAA", "SPA", "SRL",
-    "AB", "ASA", "OYJ", "OY", "GMBH", "AS", "SAB",
+    "SA",
+    "SE",
+    "SAS",
+    "SCA",
+    "PLC",
+    "NV",
+    "BV",
+    "AG",
+    "KGAA",
+    "SPA",
+    "SRL",
+    "AB",
+    "ASA",
+    "OYJ",
+    "OY",
+    "GMBH",
+    "AS",
+    "SAB",
 }
 
 
@@ -59,8 +75,7 @@ def backfill_missing_isins(
     report = {"backfilled": 0, "ambiguous": 0, "no_isin_for_lei": 0, "unmatched": 0}
 
     nameless = con.execute(
-        "SELECT symbol, name FROM companies"
-        " WHERE region = 'europe' AND NOT delisted AND isin IS NULL"
+        "SELECT symbol, name FROM companies WHERE region = 'europe' AND NOT delisted AND isin IS NULL"
     ).fetchall()
     if not nameless:
         return report

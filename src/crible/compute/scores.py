@@ -56,7 +56,10 @@ def piotroski(canonical: pd.DataFrame) -> pd.DataFrame:
             (c["net_income"] / avg_assets) > (c["net_income"] / avg_assets).shift(1)
         ),
         "piotroski_accruals": piotroski_model.get_accruals_criteria(
-            _wide(c["net_income"]), _wide(avg_assets), _wide(c["operating_cashflow"]), _wide(c["total_assets"])
+            _wide(c["net_income"]),
+            _wide(avg_assets),
+            _wide(c["operating_cashflow"]),
+            _wide(c["total_assets"]),
         ),
         "piotroski_leverage_decreasing": piotroski_model.get_change_in_leverage_criteria(
             _wide(c["total_debt"]), _wide(c["total_assets"])

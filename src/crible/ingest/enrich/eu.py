@@ -7,8 +7,14 @@ import time
 import duckdb
 
 from crible.ingest.enrich._base import (
-    ESEF_DEFAULT_HISTORY, ESEF_REFRESH_SECONDS, _connect, config, ensure_esef_schema,
-    log, seed_tasks_from_raw, update_heartbeat,
+    ESEF_DEFAULT_HISTORY,
+    ESEF_REFRESH_SECONDS,
+    _connect,
+    config,
+    ensure_esef_schema,
+    log,
+    seed_tasks_from_raw,
+    update_heartbeat,
 )
 
 # entities-index paging cap for the name→LEI→ISIN backfill: ~10k ESEF filers
@@ -24,8 +30,7 @@ def _backfill_nameless_isins(con: duckdb.DuckDBPyConnection, client, mapping: di
     from crible.ingest.enrich.backfill import backfill_missing_isins
 
     nameless = con.execute(
-        "SELECT count(*) FROM companies"
-        " WHERE region = 'europe' AND NOT delisted AND isin IS NULL"
+        "SELECT count(*) FROM companies WHERE region = 'europe' AND NOT delisted AND isin IS NULL"
     ).fetchone()[0]
     if not nameless or not hasattr(client, "entities_index"):
         return 0
@@ -42,7 +47,9 @@ def _backfill_nameless_isins(con: duckdb.DuckDBPyConnection, client, mapping: di
         if report["backfilled"]:
             log.info(
                 "esef backfill: %d ISIN(s) recovered by name (%d ambiguous, %d without ISIN)",
-                report["backfilled"], report["ambiguous"], report["no_isin_for_lei"],
+                report["backfilled"],
+                report["ambiguous"],
+                report["no_isin_for_lei"],
             )
         return report["backfilled"]
     except Exception as exc:  # noqa: BLE001 — enrichment reach, never a gate
@@ -91,15 +98,23 @@ def _write_history_frames(data, symbol: str, frames: dict, fetched_at: float, hi
     merged = merge_filing_frames([frames, existing]) if existing else frames
     for (statement_type, freq), frame in merged.items():
         write_raw_statement(
-            data, symbol=symbol, provider="esef", statement_type=statement_type,
-            freq=freq, frame=frame.assign(_history_depth=depth), fetched_at=fetched_at,
-            skip_identical=True, compare_meta=("_history_depth",),
+            data,
+            symbol=symbol,
+            provider="esef",
+            statement_type=statement_type,
+            freq=freq,
+            frame=frame.assign(_history_depth=depth),
+            fetched_at=fetched_at,
+            skip_identical=True,
+            compare_meta=("_history_depth",),
         )
     return depth
 
 
 def run_esef_cycle(
-    limit: int = 5, client=None, mapping: dict[str, str] | None = None,
+    limit: int = 5,
+    client=None,
+    mapping: dict[str, str] | None = None,
     history: int = ESEF_DEFAULT_HISTORY,
 ) -> dict:
     """FR-010 — the ESEF enrichment cycle: EU companies whose ISIN resolves to
@@ -162,8 +177,7 @@ def run_esef_cycle(
                 filings = client.filings_for_lei(lei)
                 if not filings:
                     con.execute(
-                        "UPDATE esef_tasks SET last_fetched_at = ?, history_depth = ?"
-                        " WHERE symbol = ?",
+                        "UPDATE esef_tasks SET last_fetched_at = ?, history_depth = ? WHERE symbol = ?",
                         [time.time(), history, symbol],
                     )
                     continue
@@ -171,14 +185,17 @@ def run_esef_cycle(
                 fetched_at = time.time()
                 depth = _write_history_frames(data, symbol, frames, fetched_at, history)
                 con.execute(
-                    "UPDATE esef_tasks SET last_fetched_at = ?, history_depth = ?"
-                    " WHERE symbol = ?",
+                    "UPDATE esef_tasks SET last_fetched_at = ?, history_depth = ? WHERE symbol = ?",
                     [fetched_at, depth, symbol],
                 )
                 if frames:
                     outcome["enriched"].append(symbol)
-                    log.info("esef: enriched %s (%d statement frame(s)) from filing of LEI %s",
-                             symbol, len(frames), lei)
+                    log.info(
+                        "esef: enriched %s (%d statement frame(s)) from filing of LEI %s",
+                        symbol,
+                        len(frames),
+                        lei,
+                    )
             except Exception as exc:  # noqa: BLE001 — outage: record, resume next cycle
                 outcome["outage"] = f"{symbol}: {exc}"
                 log.warning("esef: outage on %s: %s — resuming next cycle", symbol, exc)
@@ -197,8 +214,11 @@ def _esef_due(con: duckdb.DuckDBPyConnection, symbol: str, cutoff: float, histor
 
 
 def run_esef_sweep(
-    limit: int = 100, client=None, mapping: dict[str, str] | None = None,
-    page_size: int = 100, max_pages: int = 300,
+    limit: int = 100,
+    client=None,
+    mapping: dict[str, str] | None = None,
+    page_size: int = 100,
+    max_pages: int = 300,
     time_budget_seconds: float | None = None,
     refresh_seconds: float = ESEF_REFRESH_SECONDS,
     history: int = ESEF_DEFAULT_HISTORY,
@@ -216,7 +236,11 @@ def run_esef_sweep(
 
     data = config.data_dir()
     outcome: dict = {
-        "enriched": [], "skipped_unknown": 0, "outage": None, "skipped": None, "stopped": None,
+        "enriched": [],
+        "skipped_unknown": 0,
+        "outage": None,
+        "skipped": None,
+        "stopped": None,
     }
     if limit <= 0:
         # the crawl-marathon runs `refresh --esef-limit 0`: a pure no-op —
@@ -225,9 +249,7 @@ def run_esef_sweep(
         return outcome
     # wall-clock budget (run_refresh --max-minutes): a partial sweep is fine —
     # freshness state makes the next run resume where this one stopped
-    stage_deadline = (
-        None if time_budget_seconds is None else time.monotonic() + time_budget_seconds
-    )
+    stage_deadline = None if time_budget_seconds is None else time.monotonic() + time_budget_seconds
 
     def out_of_time() -> bool:
         return stage_deadline is not None and time.monotonic() >= stage_deadline
@@ -252,8 +274,7 @@ def run_esef_sweep(
         ensure_esef_schema(con)
         outcome["backfilled"] = _backfill_nameless_isins(con, client, mapping)
         rows = con.execute(
-            "SELECT symbol, isin FROM companies"
-            " WHERE region = 'europe' AND NOT delisted AND isin IS NOT NULL"
+            "SELECT symbol, isin FROM companies WHERE region = 'europe' AND NOT delisted AND isin IS NOT NULL"
         ).fetchall()
         by_lei: dict[str, list[str]] = {}
         for symbol, isin in rows:
@@ -267,7 +288,11 @@ def run_esef_sweep(
         # a fresh operational DB (every CI run) must not forget what previous
         # runs fetched — re-derive freshness from the restored raw layer
         seed_tasks_from_raw(
-            con, data, provider="esef", table="esef_tasks", key_column="lei",
+            con,
+            data,
+            provider="esef",
+            table="esef_tasks",
+            key_column="lei",
             keys={s: lei for lei, symbols in by_lei.items() for s in symbols},
             history_column="history_depth",
         )
@@ -335,10 +360,12 @@ def run_esef_sweep(
             if outcome["stopped"]:
                 break
         if outcome["enriched"]:
-            log.info("esef sweep: enriched %d listings (%d filers outside the universe)%s",
-                     len(outcome["enriched"]), outcome["skipped_unknown"],
-                     " — stopped on time budget" if outcome["stopped"] else "")
+            log.info(
+                "esef sweep: enriched %d listings (%d filers outside the universe)%s",
+                len(outcome["enriched"]),
+                outcome["skipped_unknown"],
+                " — stopped on time budget" if outcome["stopped"] else "",
+            )
         return outcome
     finally:
         con.close()
-

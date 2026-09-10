@@ -90,8 +90,13 @@ def tokenize(text: str) -> list[Token]:
             continue
         value = match.group()
         kind = {
-            "op": "OP", "lparen": "LPAREN", "rparen": "RPAREN", "comma": "COMMA",
-            "number": "NUMBER", "string": "STRING", "word": "WORD",
+            "op": "OP",
+            "lparen": "LPAREN",
+            "rparen": "RPAREN",
+            "comma": "COMMA",
+            "number": "NUMBER",
+            "string": "STRING",
+            "word": "WORD",
         }[match.lastgroup]
         if kind == "WORD":
             kind = KEYWORDS.get(value.lower(), "FIELD")

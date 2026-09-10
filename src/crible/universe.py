@@ -19,11 +19,39 @@ REQUIRED_COLUMNS = {"symbol", "name", "country", "sector", "industry", "exchange
 
 # EU-27 + EEA + UK + CH — full country names as used by FinanceDatabase.
 EUROPE_COUNTRIES = {
-    "Austria", "Belgium", "Bulgaria", "Croatia", "Cyprus", "Czech Republic", "Czechia",
-    "Denmark", "Estonia", "Finland", "France", "Germany", "Greece", "Hungary",
-    "Iceland", "Ireland", "Italy", "Latvia", "Liechtenstein", "Lithuania",
-    "Luxembourg", "Malta", "Monaco", "Netherlands", "Norway", "Poland", "Portugal",
-    "Romania", "Slovakia", "Slovenia", "Spain", "Sweden", "Switzerland",
+    "Austria",
+    "Belgium",
+    "Bulgaria",
+    "Croatia",
+    "Cyprus",
+    "Czech Republic",
+    "Czechia",
+    "Denmark",
+    "Estonia",
+    "Finland",
+    "France",
+    "Germany",
+    "Greece",
+    "Hungary",
+    "Iceland",
+    "Ireland",
+    "Italy",
+    "Latvia",
+    "Liechtenstein",
+    "Lithuania",
+    "Luxembourg",
+    "Malta",
+    "Monaco",
+    "Netherlands",
+    "Norway",
+    "Poland",
+    "Portugal",
+    "Romania",
+    "Slovakia",
+    "Slovenia",
+    "Spain",
+    "Sweden",
+    "Switzerland",
     "United Kingdom",
 }
 
@@ -34,8 +62,12 @@ REGION_PRIORITY = {"europe": 0, "us": 1, "world": 2}
 # actually screen — the long tail trickles in behind them. Region always
 # dominates (priority = region×8 + rank; max rank 6 < 8).
 CAP_RANK = {
-    "Mega Cap": 0, "Large Cap": 1, "Mid Cap": 2,
-    "Small Cap": 3, "Micro Cap": 4, "Nano Cap": 5,
+    "Mega Cap": 0,
+    "Large Cap": 1,
+    "Mid Cap": 2,
+    "Small Cap": 3,
+    "Micro Cap": 4,
+    "Nano Cap": 5,
 }
 UNKNOWN_CAP_RANK = 6
 
@@ -43,19 +75,67 @@ UNKNOWN_CAP_RANK = 6
 # codes (country IN ('FR','DE')); unmapped names fall back to the full name so
 # filtering stays possible either way (country_name always keeps the original).
 COUNTRY_TO_ISO = {
-    "Austria": "AT", "Belgium": "BE", "Bulgaria": "BG", "Croatia": "HR", "Cyprus": "CY",
-    "Czech Republic": "CZ", "Czechia": "CZ", "Denmark": "DK", "Estonia": "EE", "Finland": "FI",
-    "France": "FR", "Germany": "DE", "Greece": "GR", "Hungary": "HU", "Iceland": "IS",
-    "Ireland": "IE", "Italy": "IT", "Latvia": "LV", "Liechtenstein": "LI", "Lithuania": "LT",
-    "Luxembourg": "LU", "Malta": "MT", "Monaco": "MC", "Netherlands": "NL", "Norway": "NO",
-    "Poland": "PL", "Portugal": "PT", "Romania": "RO", "Slovakia": "SK", "Slovenia": "SI",
-    "Spain": "ES", "Sweden": "SE", "Switzerland": "CH", "United Kingdom": "GB",
-    "United States": "US", "Canada": "CA", "Japan": "JP", "China": "CN", "Hong Kong": "HK",
-    "Taiwan": "TW", "South Korea": "KR", "India": "IN", "Australia": "AU", "New Zealand": "NZ",
-    "Brazil": "BR", "Mexico": "MX", "Argentina": "AR", "Chile": "CL", "South Africa": "ZA",
-    "Israel": "IL", "Turkey": "TR", "Saudi Arabia": "SA", "United Arab Emirates": "AE",
-    "Singapore": "SG", "Malaysia": "MY", "Indonesia": "ID", "Thailand": "TH",
-    "Philippines": "PH", "Vietnam": "VN", "Russia": "RU", "Ukraine": "UA",
+    "Austria": "AT",
+    "Belgium": "BE",
+    "Bulgaria": "BG",
+    "Croatia": "HR",
+    "Cyprus": "CY",
+    "Czech Republic": "CZ",
+    "Czechia": "CZ",
+    "Denmark": "DK",
+    "Estonia": "EE",
+    "Finland": "FI",
+    "France": "FR",
+    "Germany": "DE",
+    "Greece": "GR",
+    "Hungary": "HU",
+    "Iceland": "IS",
+    "Ireland": "IE",
+    "Italy": "IT",
+    "Latvia": "LV",
+    "Liechtenstein": "LI",
+    "Lithuania": "LT",
+    "Luxembourg": "LU",
+    "Malta": "MT",
+    "Monaco": "MC",
+    "Netherlands": "NL",
+    "Norway": "NO",
+    "Poland": "PL",
+    "Portugal": "PT",
+    "Romania": "RO",
+    "Slovakia": "SK",
+    "Slovenia": "SI",
+    "Spain": "ES",
+    "Sweden": "SE",
+    "Switzerland": "CH",
+    "United Kingdom": "GB",
+    "United States": "US",
+    "Canada": "CA",
+    "Japan": "JP",
+    "China": "CN",
+    "Hong Kong": "HK",
+    "Taiwan": "TW",
+    "South Korea": "KR",
+    "India": "IN",
+    "Australia": "AU",
+    "New Zealand": "NZ",
+    "Brazil": "BR",
+    "Mexico": "MX",
+    "Argentina": "AR",
+    "Chile": "CL",
+    "South Africa": "ZA",
+    "Israel": "IL",
+    "Turkey": "TR",
+    "Saudi Arabia": "SA",
+    "United Arab Emirates": "AE",
+    "Singapore": "SG",
+    "Malaysia": "MY",
+    "Indonesia": "ID",
+    "Thailand": "TH",
+    "Philippines": "PH",
+    "Vietnam": "VN",
+    "Russia": "RU",
+    "Ukraine": "UA",
 }
 
 SCHEMA = """
@@ -135,9 +215,7 @@ def bootstrap_universe(con: duckdb.DuckDBPyConnection, frame: pd.DataFrame) -> B
     """
     missing = REQUIRED_COLUMNS - set(frame.columns)
     if missing:
-        raise UniverseSourceError(
-            f"FinanceDatabase frame is missing required columns: {sorted(missing)}"
-        )
+        raise UniverseSourceError(f"FinanceDatabase frame is missing required columns: {sorted(missing)}")
 
     rows = frame.copy()
     before = len(rows)
@@ -153,15 +231,25 @@ def bootstrap_universe(con: duckdb.DuckDBPyConnection, frame: pd.DataFrame) -> B
         rows["delisted"] = False
     market_cap = rows["market_cap"] if "market_cap" in rows.columns else None
     rows["market_cap_class"] = market_cap if market_cap is not None else None
-    rows["crawl_priority"] = (
-        rows["region"].map(REGION_PRIORITY) * 8
-        + rows["market_cap_class"].map(CAP_RANK).fillna(UNKNOWN_CAP_RANK).astype("int64")
-    )
+    rows["crawl_priority"] = rows["region"].map(REGION_PRIORITY) * 8 + rows["market_cap_class"].map(
+        CAP_RANK
+    ).fillna(UNKNOWN_CAP_RANK).astype("int64")
 
     staged = rows[
         [
-            "symbol", "name", "isin", "country", "country_name", "region", "crawl_priority",
-            "sector", "industry", "exchange", "currency", "market_cap_class", "delisted",
+            "symbol",
+            "name",
+            "isin",
+            "country",
+            "country_name",
+            "region",
+            "crawl_priority",
+            "sector",
+            "industry",
+            "exchange",
+            "currency",
+            "market_cap_class",
+            "delisted",
         ]
     ]
 
@@ -206,9 +294,7 @@ def bootstrap_universe(con: duckdb.DuckDBPyConnection, frame: pd.DataFrame) -> B
     finally:
         con.unregister("staged_universe")
 
-    by_region = dict(
-        con.execute("SELECT region, count(*) FROM companies GROUP BY region").fetchall()
-    )
+    by_region = dict(con.execute("SELECT region, count(*) FROM companies GROUP BY region").fetchall())
     return BootstrapReport(loaded=len(staged), dropped=dropped, by_region=by_region)
 
 
@@ -243,10 +329,7 @@ def restore_universe_from_parquet(con: duckdb.DuckDBPyConnection, path) -> int:
         raise UniverseSourceError(f"no last-good universe parquet at {file}")
     con.execute(SCHEMA)
     ensure_cap_columns(con)
-    con.execute(
-        f"INSERT OR REPLACE INTO companies BY NAME"
-        f" SELECT * FROM read_parquet('{file.as_posix()}')"
-    )
+    con.execute(f"INSERT OR REPLACE INTO companies BY NAME SELECT * FROM read_parquet('{file.as_posix()}')")
     return con.execute("SELECT count(*) FROM companies").fetchone()[0]
 
 

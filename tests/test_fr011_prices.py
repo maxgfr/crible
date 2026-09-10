@@ -66,14 +66,11 @@ def test_fr011_budget_exhaustion_skips_instead_of_blocking(tmp_path) -> None:
 
 def test_fr011_snapshot_exposes_price_asof_and_prices_latest_period_only(tmp_path) -> None:
     frames = {
-        (s, "annual"): income_frame(dict(rows), ["2023", "2024", "2025"])
-        for s, rows in IMPROVING.items()
+        (s, "annual"): income_frame(dict(rows), ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()
     }
     # add share count so price-dependent ratios compute to exact values
     frames[("income", "annual")]["BasicAverageShares"] = [10.0, 10.0, 10.0]
-    frames[("prices", "daily")] = pd.DataFrame(
-        {"Date": ["2026-07-03", "2026-07-04"], "Close": [95.0, 100.0]}
-    )
+    frames[("prices", "daily")] = pd.DataFrame({"Date": ["2026-07-03", "2026-07-04"], "Close": [95.0, 100.0]})
     snapshot = build_symbol_snapshot("TEST.PA", frames, computed_at=1000.0)
     assert (snapshot["price_asof"] == "2026-07-04").all()
     # exact valuation from the latest close: PE = (100 × 10 shares) / NI 120

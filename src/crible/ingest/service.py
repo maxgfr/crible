@@ -38,30 +38,127 @@ from crible.providers.yfinance_provider import YFinanceProvider
 from crible.universe import BootstrapReport, UniverseSourceError, refresh_universe
 
 __all__ = [
-    "run_esef_cycle", "run_esef_sweep", "run_edgar_cycle", "run_edgar_bulk", "run_fsds",
-    "run_once", "run_refresh", "run_loop", "run_bootstrap", "run_compute",
-    "run_price_refresh", "bootstrap_sample",
+    "run_esef_cycle",
+    "run_esef_sweep",
+    "run_edgar_cycle",
+    "run_edgar_bulk",
+    "run_fsds",
+    "run_once",
+    "run_refresh",
+    "run_loop",
+    "run_bootstrap",
+    "run_compute",
+    "run_price_refresh",
+    "bootstrap_sample",
 ]
 
 log = logging.getLogger("crible.ingest.service")
 
 CAC40 = [
-    "AI.PA", "AIR.PA", "ALO.PA", "MT.AS", "CS.PA", "BNP.PA", "EN.PA", "BVI.PA", "CAP.PA",
-    "CA.PA", "ACA.PA", "BN.PA", "DSY.PA", "EDEN.PA", "ENGI.PA", "EL.PA", "ERF.PA", "RMS.PA",
-    "KER.PA", "OR.PA", "LR.PA", "MC.PA", "ML.PA", "ORA.PA", "RI.PA", "PUB.PA", "RNO.PA",
-    "SAF.PA", "SGO.PA", "SAN.PA", "SU.PA", "GLE.PA", "STLAP.PA", "STMPA.PA", "TEP.PA",
-    "HO.PA", "TTE.PA", "URW.AS", "VIE.PA", "DG.PA",
+    "AI.PA",
+    "AIR.PA",
+    "ALO.PA",
+    "MT.AS",
+    "CS.PA",
+    "BNP.PA",
+    "EN.PA",
+    "BVI.PA",
+    "CAP.PA",
+    "CA.PA",
+    "ACA.PA",
+    "BN.PA",
+    "DSY.PA",
+    "EDEN.PA",
+    "ENGI.PA",
+    "EL.PA",
+    "ERF.PA",
+    "RMS.PA",
+    "KER.PA",
+    "OR.PA",
+    "LR.PA",
+    "MC.PA",
+    "ML.PA",
+    "ORA.PA",
+    "RI.PA",
+    "PUB.PA",
+    "RNO.PA",
+    "SAF.PA",
+    "SGO.PA",
+    "SAN.PA",
+    "SU.PA",
+    "GLE.PA",
+    "STLAP.PA",
+    "STMPA.PA",
+    "TEP.PA",
+    "HO.PA",
+    "TTE.PA",
+    "URW.AS",
+    "VIE.PA",
+    "DG.PA",
 ]
 DAX40 = [
-    "ADS.DE", "ALV.DE", "BAS.DE", "BAYN.DE", "BEI.DE", "BMW.DE", "BNR.DE", "CBK.DE", "CON.DE",
-    "1COV.DE", "DTG.DE", "DBK.DE", "DB1.DE", "DHL.DE", "DTE.DE", "EOAN.DE", "FRE.DE", "FME.DE",
-    "HNR1.DE", "HEI.DE", "HEN3.DE", "IFX.DE", "MBG.DE", "MRK.DE", "MTX.DE", "MUV2.DE",
-    "P911.DE", "QIA.DE", "RHM.DE", "RWE.DE", "SAP.DE", "SRT3.DE", "SIE.DE", "ENR.DE", "SHL.DE",
-    "SY1.DE", "VOW3.DE", "VNA.DE", "ZAL.DE", "PAH3.DE",
+    "ADS.DE",
+    "ALV.DE",
+    "BAS.DE",
+    "BAYN.DE",
+    "BEI.DE",
+    "BMW.DE",
+    "BNR.DE",
+    "CBK.DE",
+    "CON.DE",
+    "1COV.DE",
+    "DTG.DE",
+    "DBK.DE",
+    "DB1.DE",
+    "DHL.DE",
+    "DTE.DE",
+    "EOAN.DE",
+    "FRE.DE",
+    "FME.DE",
+    "HNR1.DE",
+    "HEI.DE",
+    "HEN3.DE",
+    "IFX.DE",
+    "MBG.DE",
+    "MRK.DE",
+    "MTX.DE",
+    "MUV2.DE",
+    "P911.DE",
+    "QIA.DE",
+    "RHM.DE",
+    "RWE.DE",
+    "SAP.DE",
+    "SRT3.DE",
+    "SIE.DE",
+    "ENR.DE",
+    "SHL.DE",
+    "SY1.DE",
+    "VOW3.DE",
+    "VNA.DE",
+    "ZAL.DE",
+    "PAH3.DE",
 ]
 US_MEGA = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "BRK-B", "LLY", "AVGO", "JPM",
-    "V", "TSLA", "XOM", "UNH", "MA", "PG", "JNJ", "HD", "COST", "ORCL",
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "AMZN",
+    "NVDA",
+    "META",
+    "BRK-B",
+    "LLY",
+    "AVGO",
+    "JPM",
+    "V",
+    "TSLA",
+    "XOM",
+    "UNH",
+    "MA",
+    "PG",
+    "JNJ",
+    "HD",
+    "COST",
+    "ORCL",
 ]
 
 
@@ -82,7 +179,9 @@ def prioritize_sample(con: duckdb.DuckDBPyConnection, symbols: list[str]) -> Non
 
 
 def defer_covered_symbols(
-    con: duckdb.DuckDBPyConnection, data_dir, now: float | None = None,
+    con: duckdb.DuckDBPyConnection,
+    data_dir,
+    now: float | None = None,
     defer_seconds: float = 30 * 86400,
 ) -> int:
     """Push never-crawled symbols already served by the dumps to the back of
@@ -135,9 +234,16 @@ def defer_covered_symbols(
 # covered/not-covered binary hides HOW MUCH of a company's row is usable —
 # this is the number the monthly ratchet should push up
 COMPLETENESS_COLUMNS = (
-    "revenue", "net_income", "total_assets", "free_cash_flow", "ebitda",
-    "return_on_equity", "price_to_earnings_ratio",
-    "piotroski_f", "altman_z", "beneish_m",
+    "revenue",
+    "net_income",
+    "total_assets",
+    "free_cash_flow",
+    "ebitda",
+    "return_on_equity",
+    "price_to_earnings_ratio",
+    "piotroski_f",
+    "altman_z",
+    "beneish_m",
 )
 
 
@@ -154,9 +260,7 @@ def _top10k_stats(con: duckdb.DuckDBPyConnection, data_dir) -> dict:
 
     from crible.ingest.defeatbeta import statement_served_symbols
 
-    tables = {
-        r[0] for r in con.execute("SELECT table_name FROM information_schema.tables").fetchall()
-    }
+    tables = {r[0] for r in con.execute("SELECT table_name FROM information_schema.tables").fetchall()}
     if "companies" not in tables:
         return {}
     columns = {r[0] for r in con.execute("DESCRIBE companies").fetchall()}
@@ -209,9 +313,7 @@ def _top10k_stats(con: duckdb.DuckDBPyConnection, data_dir) -> dict:
         "priced": covered_groups(raw_priced | dumped),
         "price_fresh_7d": covered_groups(fresh),
         "crawled_listings": int(crawled),
-        "unranked_mega_large": int(
-            members.loc[members["cap_rank_global"].isna(), "company_group"].nunique()
-        ),
+        "unranked_mega_large": int(members.loc[members["cap_rank_global"].isna(), "company_group"].nunique()),
         "cap_stale_30d": int((group_asof.astype(str) < stale_cutoff).sum()),
         "census_asof": str(census_asof) if pd.notna(census_asof) else None,
     }
@@ -233,7 +335,8 @@ def _top10k_stats(con: duckdb.DuckDBPyConnection, data_dir) -> dict:
             share = share.groupby(level=0).max()
             best = (
                 members.assign(_share=members["symbol"].map(share).fillna(0.0))
-                .groupby("company_group")["_share"].max()
+                .groupby("company_group")["_share"]
+                .max()
             )
             block["fundamentals_completeness_pct"] = round(
                 100.0 * float(best.reindex(groups.index).fillna(0.0).mean()), 2
@@ -244,9 +347,7 @@ def _top10k_stats(con: duckdb.DuckDBPyConnection, data_dir) -> dict:
 def _queue_stats(con: duckdb.DuckDBPyConnection) -> dict:
     """FR-005 AC-3 — coverage %, freshness histogram, per-region backlog."""
     stats: dict = {}
-    tables = {
-        r[0] for r in con.execute("SELECT table_name FROM information_schema.tables").fetchall()
-    }
+    tables = {r[0] for r in con.execute("SELECT table_name FROM information_schema.tables").fetchall()}
     if "companies" in tables:
         stats["universe"] = con.execute("SELECT count(*) FROM companies").fetchone()[0]
         stats["by_region"] = dict(
@@ -272,15 +373,14 @@ def _queue_stats(con: duckdb.DuckDBPyConnection) -> dict:
                 """
             ).fetchall()
         )
-        stats["parked"] = con.execute(
-            "SELECT count(*) FROM crawl_tasks WHERE status = 'parked'"
-        ).fetchone()[0]
+        stats["parked"] = con.execute("SELECT count(*) FROM crawl_tasks WHERE status = 'parked'").fetchone()[
+            0
+        ]
         # never-crawled symbols pushed out (dump-covered deferral + failure
         # backoff) — with defeatbeta imported, coverage_by_region plateauing
         # on US is by design, this is where those symbols show up
         stats["deferred"] = con.execute(
-            "SELECT count(*) FROM crawl_tasks"
-            " WHERE last_crawled_at IS NULL AND next_due > epoch(now())"
+            "SELECT count(*) FROM crawl_tasks WHERE last_crawled_at IS NULL AND next_due > epoch(now())"
         ).fetchone()[0]
         if "companies" in tables:
             # marathon progress at a glance: crawled/total per region
@@ -328,8 +428,7 @@ def restore_queue_from_raw(con: duckdb.DuckDBPyConnection, data_dir) -> int:
         con.execute(
             "UPDATE crawl_tasks SET last_crawled_at = ?, next_due = ?"
             " WHERE symbol = ? AND (last_crawled_at IS NULL OR last_crawled_at < ?)",
-            [crawled_at, crawled_at + QUARTER_SECONDS,
-             directory.name.split("=", 1)[1], crawled_at],
+            [crawled_at, crawled_at + QUARTER_SECONDS, directory.name.split("=", 1)[1], crawled_at],
         )
         restored += 1
     return restored
@@ -355,7 +454,11 @@ UNIVERSE_REFRESH_SECONDS = 7 * 24 * 3600
 
 
 def maybe_refresh_universe(
-    con: duckdb.DuckDBPyConnection, last_refresh: float, now: float, *, fetch=None,
+    con: duckdb.DuckDBPyConnection,
+    last_refresh: float,
+    now: float,
+    *,
+    fetch=None,
     interval: float = UNIVERSE_REFRESH_SECONDS,
 ) -> float:
     """Re-fetch the universe (idempotent upsert) and re-seed the queue at most
@@ -600,9 +703,7 @@ def run_refresh(
             if not (data / "universe.parquet").exists():
                 raise
             log.warning("universe source down — restoring last-good universe.parquet")
-            result["universe_loaded"] = restore_universe_from_parquet(
-                con, data / "universe.parquet"
-            )
+            result["universe_loaded"] = restore_universe_from_parquet(con, data / "universe.parquet")
             result["universe_restored"] = True
         # BEFORE the crawler seeds the queue AND before export_universe_parquet
         # overwrites the carryover source: top10k primaries take the head
@@ -644,12 +745,12 @@ def run_refresh(
     try:
         # index sweep, not per-LEI polling: every request lands on a real
         # filing, so the nightly covers actual EU filers at full speed
-        esef_kwargs = (
-            {} if esef_refresh_seconds is None else {"refresh_seconds": esef_refresh_seconds}
-        )
+        esef_kwargs = {} if esef_refresh_seconds is None else {"refresh_seconds": esef_refresh_seconds}
         result["esef"] = run_esef_sweep(
-            limit=esef_limit, time_budget_seconds=stage_budget(),
-            history=esef_history, **esef_kwargs,
+            limit=esef_limit,
+            time_budget_seconds=stage_budget(),
+            history=esef_history,
+            **esef_kwargs,
         )
     except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
         log.warning("esef sweep failed: %s", exc)
@@ -658,9 +759,7 @@ def run_refresh(
         if edgar_bulk:
             # the bulk sweep marks every issuer fetched, so the per-CIK
             # cycle below finds nothing due — no double work
-            result["edgar_bulk"] = run_edgar_bulk(
-                client=edgar_client, time_budget_seconds=stage_budget()
-            )
+            result["edgar_bulk"] = run_edgar_bulk(client=edgar_client, time_budget_seconds=stage_budget())
         result["edgar"] = run_edgar_cycle(limit=edgar_limit, client=edgar_client)
     except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
         log.warning("edgar cycle failed: %s", exc)
@@ -670,7 +769,8 @@ def run_refresh(
             from crible.providers.edgar_fsds import recent_quarters
 
             result["fsds"] = run_fsds(
-                recent_quarters(fsds_quarters), client=edgar_client,
+                recent_quarters(fsds_quarters),
+                client=edgar_client,
                 time_budget_seconds=stage_budget(),
             )
         except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
@@ -715,8 +815,7 @@ def run_refresh(
     update_heartbeat(
         last_refresh={
             k: result[k]
-            for k in ("fetched", "failed", "pruned", "snapshot_rows",
-                      "universe_restored", "took_seconds")
+            for k in ("fetched", "failed", "pruned", "snapshot_rows", "universe_restored", "took_seconds")
         },
         requests_last_hour=crawler.budget.used_in_window(),
         budget_per_hour=crawler.budget.capacity,
@@ -728,7 +827,9 @@ def run_refresh(
     return result
 
 
-def run_loop(cycle_limit: int = 40, compute_every_seconds: float = 1800.0) -> None:  # pragma: no cover — long-lived loop
+def run_loop(
+    cycle_limit: int = 40, compute_every_seconds: float = 1800.0
+) -> None:  # pragma: no cover — long-lived loop
     # cycle_limit × ~7 requests must stay under the hourly budget so a cycle
     # never stalls mid-way on the token bucket before its compute runs
     con = _connect()
@@ -745,7 +846,7 @@ def run_loop(cycle_limit: int = 40, compute_every_seconds: float = 1800.0) -> No
     last_price_refresh = 0.0
     last_universe_refresh = time.time()  # just bootstrapped — next refresh in a week
     last_gleif = 0.0  # fetch on the first cycle so ESEF is not idle out-of-the-box
-    last_fx = 0.0     # fetch on the first cycle so the snapshot gets *_eur columns
+    last_fx = 0.0  # fetch on the first cycle so the snapshot gets *_eur columns
     last_edgar_bulk = 0.0
     # ONE long-lived bucket shared by the crawl and the price refresh — both
     # hit Yahoo, so NFR-007 (330 req/h) is a single rolling window, not one per
@@ -770,7 +871,9 @@ def run_loop(cycle_limit: int = 40, compute_every_seconds: float = 1800.0) -> No
                 clear_request(config.data_dir(), symbol)
             log.info(
                 "on-demand fetch %s: +%d/-%d",
-                batch, len(targeted.fetched), len(targeted.failed),
+                batch,
+                len(targeted.fetched),
+                len(targeted.failed),
             )
             run_compute()
             last_compute = time.time()

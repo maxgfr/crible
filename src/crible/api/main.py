@@ -126,9 +126,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=f"unknown symbol {symbol!r}")
         queued = request_fetch(config.data_dir(), symbol)
         if not queued:
-            raise HTTPException(
-                status_code=429, detail="fetch queue is full — try again in a few minutes"
-            )
+            raise HTTPException(status_code=429, detail="fetch queue is full — try again in a few minutes")
         return {
             "queued": True,
             "symbol": symbol,

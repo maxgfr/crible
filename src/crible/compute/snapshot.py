@@ -61,7 +61,9 @@ def build_symbol_snapshot(
         audited = build_canonical(audited_frames)
         if canonical.empty:
             canonical = audited
-            audited_fields = {str(p): [c for c in audited.columns if pd.notna(audited.loc[p, c])] for p in audited.index}
+            audited_fields = {
+                str(p): [c for c in audited.columns if pd.notna(audited.loc[p, c])] for p in audited.index
+            }
         elif not audited.empty:
             audited = align_periods(audited, canonical.index)
             result = reconcile(canonical, audited, symbol=symbol)
@@ -102,12 +104,8 @@ def build_symbol_snapshot(
     # momentum + TTM columns ride the single concat as a NaN filler and the
     # .copy() consolidates the blocks — inserting them one by one onto the
     # many-block frame was pure PerformanceWarning spam at 57k rows
-    filler = pd.DataFrame(
-        float("nan"), index=canonical.index, columns=[*MOMENTUM_COLUMNS, *TTM_COLUMNS]
-    )
-    out = pd.concat(
-        [canonical, ratios, growth, ratio_growth, scores, extras, filler], axis=1
-    ).copy()
+    filler = pd.DataFrame(float("nan"), index=canonical.index, columns=[*MOMENTUM_COLUMNS, *TTM_COLUMNS])
+    out = pd.concat([canonical, ratios, growth, ratio_growth, scores, extras, filler], axis=1).copy()
     # price-derived momentum features (return_6m feeds momentum_rank; plus
     # 12-1, 52-week-high proximity, 1y volatility), latest period only —
     # cross-sectional like the price itself; NaN when history is too short.
@@ -139,15 +137,12 @@ def build_symbol_snapshot(
     out.insert(1, "period", out.index.astype(str))
     out["provider"] = provider
     out["price_asof"] = price_asof
-    out["audited_fields"] = [
-        ",".join(audited_fields.get(str(p), [])) or None for p in out["period"]
-    ]
+    out["audited_fields"] = [",".join(audited_fields.get(str(p), [])) or None for p in out["period"]]
     # FR-003 AC-2 — the provenance note naming the missing inputs: every NULL
     # ratio is explainable by the canonical fields the provider did not supply
     missing_per_period = canonical[CANONICAL_FIELDS].isna()
     out["missing_inputs"] = [
-        ",".join(missing_per_period.columns[missing_per_period.loc[p]]) or None
-        for p in canonical.index
+        ",".join(missing_per_period.columns[missing_per_period.loc[p]]) or None for p in canonical.index
     ]
     out["computed_at"] = computed_at if computed_at is not None else time.time()
     return out.reset_index(drop=True)
@@ -169,17 +164,27 @@ def latest_raw_frames(
 
 def crawled_symbols(data_dir: Path | str) -> list[str]:
     root = Path(data_dir) / "raw"
-    symbols = {
-        d.name.split("=", 1)[1] for d in root.glob("provider=*/symbol=*") if d.is_dir()
-    }
+    symbols = {d.name.split("=", 1)[1] for d in root.glob("provider=*/symbol=*") if d.is_dir()}
     return sorted(symbols)
 
 
 UNIVERSE_COLUMNS = [
-    "name", "country", "country_name", "region", "sector", "industry", "exchange", "currency", "isin",
+    "name",
+    "country",
+    "country_name",
+    "region",
+    "sector",
+    "industry",
+    "exchange",
+    "currency",
+    "isin",
     # the cap-census layer (universe_caps.py): screenable via the DSL
     # (top10k = true) and self-contained for every reader (ADR-0003)
-    "top10k", "primary_listing", "cap_eur", "cap_rank_global", "company_group",
+    "top10k",
+    "primary_listing",
+    "cap_eur",
+    "cap_rank_global",
+    "company_group",
 ]
 
 
@@ -399,9 +404,7 @@ def _publish_base(rows: pd.DataFrame, data_dir: Path | str) -> None:
     tmp = directory / f".tmp-{BASE_NAME}"
     rows.to_parquet(tmp, index=False)
     tmp.rename(directory / BASE_NAME)
-    (directory / BASE_SCHEMA_NAME).write_text(
-        json.dumps({"engine_schema_version": ENGINE_SCHEMA_VERSION})
-    )
+    (directory / BASE_SCHEMA_NAME).write_text(json.dumps({"engine_schema_version": ENGINE_SCHEMA_VERSION}))
 
 
 def publish_snapshot(snapshot: pd.DataFrame, data_dir: Path | str) -> Path:

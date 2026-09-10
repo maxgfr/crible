@@ -29,11 +29,13 @@ RATIO_MODULES = [profitability_model, liquidity_model, solvency_model, efficienc
 # weighted_dividend_yield is the real one); dividend_capex_coverage mixes the
 # negative canonical capex with positive dividends. The containment tool for
 # anything the `dividends` alias accidentally wires.
-RATIO_DENYLIST = frozenset({
-    "net_current_asset_value",
-    "dividend_yield",
-    "dividend_capex_coverage_ratio",
-})
+RATIO_DENYLIST = frozenset(
+    {
+        "net_current_asset_value",
+        "dividend_yield",
+        "dividend_capex_coverage_ratio",
+    }
+)
 
 
 def _avg(series: pd.Series) -> pd.Series:
@@ -114,9 +116,7 @@ def build_inputs(canonical: pd.DataFrame, price: pd.Series | None = None) -> dic
     dio = efficiency_model.get_days_of_inventory_outstanding(
         inputs["average_inventory"], c["cost_of_goods_sold"]
     )
-    dso = efficiency_model.get_days_of_sales_outstanding(
-        inputs["average_accounts_receivable"], c["revenue"]
-    )
+    dso = efficiency_model.get_days_of_sales_outstanding(inputs["average_accounts_receivable"], c["revenue"])
     dpo = efficiency_model.get_days_of_accounts_payable_outstanding(
         c["cost_of_goods_sold"], inputs["average_accounts_payable"]
     )

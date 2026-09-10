@@ -54,8 +54,12 @@ def test_export_site_emits_all_artifacts_and_manifest(data_dir, tmp_path_factory
     manifest = export_site(data_dir, out, min_symbols=2)
 
     for name in (
-        "universe.parquet", "snapshot.parquet", "presets.json",
-        "providers.json", "status.json", "manifest.json",
+        "universe.parquet",
+        "snapshot.parquet",
+        "presets.json",
+        "providers.json",
+        "status.json",
+        "manifest.json",
     ):
         assert (out / name).exists(), name
 
@@ -69,17 +73,21 @@ def test_export_site_emits_all_artifacts_and_manifest(data_dir, tmp_path_factory
     assert not list(out.glob("prices-*.parquet"))
     assert isinstance(manifest["sample"], list) and manifest["sample"]
     assert manifest["generated_at"] > 0
-    assert json.loads((out / "manifest.json").read_text()) == json.loads(
-        json.dumps(manifest)
-    )
+    assert json.loads((out / "manifest.json").read_text()) == json.loads(json.dumps(manifest))
     # the exported parquets are readable and complete
     con = duckdb.connect()
-    assert con.execute(
-        f"SELECT count(*) FROM read_parquet('{(out / 'universe.parquet').as_posix()}')"
-    ).fetchone()[0] == 8
-    assert con.execute(
-        f"SELECT count(DISTINCT symbol) FROM read_parquet('{(out / 'snapshot.parquet').as_posix()}')"
-    ).fetchone()[0] == 3
+    assert (
+        con.execute(
+            f"SELECT count(*) FROM read_parquet('{(out / 'universe.parquet').as_posix()}')"
+        ).fetchone()[0]
+        == 8
+    )
+    assert (
+        con.execute(
+            f"SELECT count(DISTINCT symbol) FROM read_parquet('{(out / 'snapshot.parquet').as_posix()}')"
+        ).fetchone()[0]
+        == 3
+    )
 
 
 def test_export_site_ships_the_price_series_shards(data_dir, tmp_path_factory) -> None:

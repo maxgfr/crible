@@ -47,9 +47,7 @@ def beneish_components(canonical: pd.DataFrame) -> pd.DataFrame:
 
     sgi = c["revenue"] / prev(c["revenue"])
 
-    dep_rate = c["depreciation_and_amortization"] / (
-        c["depreciation_and_amortization"] + c["net_ppe"]
-    )
+    dep_rate = c["depreciation_and_amortization"] / (c["depreciation_and_amortization"] + c["net_ppe"])
     depi = prev(dep_rate) / dep_rate
 
     sga_to_sales = c["sga_expenses"] / c["revenue"]
@@ -73,7 +71,5 @@ def beneish_components(canonical: pd.DataFrame) -> pd.DataFrame:
         },
         index=canonical.index,
     )
-    out["beneish_m"] = INTERCEPT + sum(
-        COEFFICIENTS[name] * out[f"beneish_{name}"] for name in COEFFICIENTS
-    )
+    out["beneish_m"] = INTERCEPT + sum(COEFFICIENTS[name] * out[f"beneish_{name}"] for name in COEFFICIENTS)
     return out

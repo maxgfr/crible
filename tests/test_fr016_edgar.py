@@ -42,9 +42,7 @@ COMPANYFACTS = {
                     ]
                 },
             },
-            "NetIncomeLoss": {
-                "units": {"USD": [_fact("2023-10-01", "2024-09-28", 93_736_000_000.0)]}
-            },
+            "NetIncomeLoss": {"units": {"USD": [_fact("2023-10-01", "2024-09-28", 93_736_000_000.0)]}},
             "Assets": {"units": {"USD": [_fact(None, "2024-09-28", 364_980_000_000.0)]}},
             "NetCashProvidedByUsedInOperatingActivities": {
                 "units": {"USD": [_fact("2023-10-01", "2024-09-28", 118_254_000_000.0)]}
@@ -55,9 +53,7 @@ COMPANYFACTS = {
             "WeightedAverageNumberOfSharesOutstandingBasic": {
                 "units": {"shares": [_fact("2023-10-01", "2024-09-28", 15_343_783_000.0)]}
             },
-            "ShortTermInvestments": {
-                "units": {"USD": [_fact(None, "2024-09-28", 35_228_000_000.0)]}
-            },
+            "ShortTermInvestments": {"units": {"USD": [_fact(None, "2024-09-28", 35_228_000_000.0)]}},
             "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest": {
                 "units": {"USD": [_fact("2023-10-01", "2024-09-28", 123_485_000_000.0)]}
             },
@@ -130,9 +126,7 @@ def test_fr016_companyfacts_emit_discrete_quarterly_frames() -> None:
                     }
                 },
                 "PaymentsToAcquirePropertyPlantAndEquipment": {
-                    "units": {
-                        "USD": [_fact("2023-10-01", "2023-12-30", 5.0, form="10-Q", fp="Q1")]
-                    }
+                    "units": {"USD": [_fact("2023-10-01", "2023-12-30", 5.0, form="10-Q", fp="Q1")]}
                 },
             }
         }
@@ -266,9 +260,7 @@ def test_fr016_bulk_ingests_every_resolved_us_issuer(tmp_path, monkeypatch) -> N
     # Q4-inside-10-K) now feed a quarterly income frame instead of being dropped
 
     con = _duckdb.connect(str(tmp_path / "crible.duckdb"))
-    fetched = con.execute(
-        "SELECT last_fetched_at FROM edgar_tasks WHERE symbol = 'AAPL'"
-    ).fetchone()[0]
+    fetched = con.execute("SELECT last_fetched_at FROM edgar_tasks WHERE symbol = 'AAPL'").fetchone()[0]
     con.close()
     assert fetched is not None
 
@@ -315,9 +307,7 @@ def test_fr016_bulk_without_archive_and_download_disabled_skips(tmp_path, monkey
     from crible.ingest.service import run_edgar_bulk
 
     _seed_universe(tmp_path, monkeypatch)
-    outcome = run_edgar_bulk(
-        zip_path=tmp_path / "missing.zip", ticker_map={"AAPL": 320193}, download=False
-    )
+    outcome = run_edgar_bulk(zip_path=tmp_path / "missing.zip", ticker_map={"AAPL": 320193}, download=False)
     assert outcome["skipped"] is not None
     assert list(tmp_path.glob("raw/provider=edgar/**/*.parquet")) == []
 
@@ -329,8 +319,7 @@ def test_fr016_facts_cap_at_eight_fiscal_years() -> None:
                 "NetIncomeLoss": {
                     "units": {
                         "USD": [
-                            _fact(f"{year}-01-01", f"{year}-12-31", float(year))
-                            for year in range(2010, 2026)
+                            _fact(f"{year}-01-01", f"{year}-12-31", float(year)) for year in range(2010, 2026)
                         ]
                     }
                 }
@@ -383,9 +372,7 @@ def test_fr016_sec_user_agent_never_contains_a_url() -> None:
 def test_fr016_sec_user_agent_strips_a_url_from_the_env(monkeypatch) -> None:
     from crible import config
 
-    monkeypatch.setenv(
-        "CRIBLE_SEC_USER_AGENT", "crible (me@example.com; +https://github.com/x/y)"
-    )
+    monkeypatch.setenv("CRIBLE_SEC_USER_AGENT", "crible (me@example.com; +https://github.com/x/y)")
     ua = config.sec_user_agent()
     assert "://" not in ua and "github.com" not in ua
     assert ua.startswith("crible") and "me@example.com" in ua
@@ -438,12 +425,15 @@ def test_fr016_align_periods_never_collapses_two_audited_periods_onto_one_label(
 
 
 def test_fr016_snapshot_provenance_for_audited_only_symbols(tmp_path) -> None:
-    frame = pd.DataFrame(
-        {"period": ["2024-09-28"], "TotalRevenue": [391.0], "NetIncome": [93.0]}
-    )
+    frame = pd.DataFrame({"period": ["2024-09-28"], "TotalRevenue": [391.0], "NetIncome": [93.0]})
     write_raw_statement(
-        tmp_path, symbol="AAPL", provider="edgar", statement_type="income",
-        freq="annual", frame=frame, fetched_at=1_000.0,
+        tmp_path,
+        symbol="AAPL",
+        provider="edgar",
+        statement_type="income",
+        freq="annual",
+        frame=frame,
+        fetched_at=1_000.0,
     )
     snapshot = build_snapshot(tmp_path, symbols=["AAPL"])
     assert set(snapshot["provider"]) == {"edgar"}  # not mislabeled yfinance
@@ -459,12 +449,8 @@ def test_fr016_variant_tags_fill_beneish_and_yield_inputs() -> None:
                 "DepreciationDepletionAndAmortization": {
                     "units": {"USD": [_fact("2023-01-01", "2023-12-30", 5e8)]}
                 },
-                "PropertyPlantAndEquipmentGross": {
-                    "units": {"USD": [_fact(None, "2023-12-30", 2e9)]}
-                },
-                "LongTermDebtNoncurrent": {
-                    "units": {"USD": [_fact(None, "2023-12-30", 1e9)]}
-                },
+                "PropertyPlantAndEquipmentGross": {"units": {"USD": [_fact(None, "2023-12-30", 2e9)]}},
+                "LongTermDebtNoncurrent": {"units": {"USD": [_fact(None, "2023-12-30", 1e9)]}},
                 # ASC 842 presentations (observed live on HSIC 2026-07-17):
                 # PPE and LTD only exist through the finance-lease combined tags
                 "PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization": {
@@ -505,9 +491,7 @@ def test_fr016_classic_cash_tag_outranks_the_restricted_variant() -> None:
     facts = {
         "facts": {
             "us-gaap": {
-                "CashAndCashEquivalentsAtCarryingValue": {
-                    "units": {"USD": [_fact(None, "2023-12-30", 3e8)]}
-                },
+                "CashAndCashEquivalentsAtCarryingValue": {"units": {"USD": [_fact(None, "2023-12-30", 3e8)]}},
                 "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents": {
                     "units": {"USD": [_fact(None, "2023-12-30", 4e8)]}
                 },
@@ -524,9 +508,7 @@ def test_fr016_lease_combined_debt_tag_is_a_fallback_only() -> None:
     facts = {
         "facts": {
             "us-gaap": {
-                "LongTermDebtNoncurrent": {
-                    "units": {"USD": [_fact(None, "2023-12-30", 1e9)]}
-                },
+                "LongTermDebtNoncurrent": {"units": {"USD": [_fact(None, "2023-12-30", 1e9)]}},
                 "LongTermDebtAndCapitalLeaseObligations": {
                     "units": {"USD": [_fact(None, "2023-12-30", 1.2e9)]}
                 },
@@ -571,7 +553,9 @@ def test_fr016_fsds_year_relabels_do_not_duplicate_fiscal_years() -> None:
     }
     merged = merge_audited(primary, fsds)
     assert sorted(merged[("income", "annual")]["period"].astype(str)) == [
-        "2016-12-31", "2023-12-30", "2024-12-28",
+        "2016-12-31",
+        "2023-12-30",
+        "2024-12-28",
     ]
 
 
@@ -580,15 +564,12 @@ def test_fr016_quarterly_merge_keeps_same_year_periods() -> None:
     only apply to annual frames."""
     from crible.providers.audited import merge_audited
 
-    primary = {
-        ("income", "quarterly"): pd.DataFrame({"period": ["2024-03-30"], "TotalRevenue": [1.0]})
-    }
-    fallback = {
-        ("income", "quarterly"): pd.DataFrame({"period": ["2024-06-29"], "TotalRevenue": [2.0]})
-    }
+    primary = {("income", "quarterly"): pd.DataFrame({"period": ["2024-03-30"], "TotalRevenue": [1.0]})}
+    fallback = {("income", "quarterly"): pd.DataFrame({"period": ["2024-06-29"], "TotalRevenue": [2.0]})}
     merged = merge_audited(primary, fallback)
     assert sorted(merged[("income", "quarterly")]["period"].astype(str)) == [
-        "2024-03-30", "2024-06-29",
+        "2024-03-30",
+        "2024-06-29",
     ]
 
 
@@ -596,12 +577,20 @@ def test_fr016_audited_deep_history_reaches_the_final_snapshot(tmp_path) -> None
     """8 audited fiscal years must survive to the FINAL snapshot rows — with
     growth and 3y CAGR resolving — including when a 2-period yfinance frame
     sits on top (the reconcile union, guarded end to end)."""
-    revenues = [10e9 * (1.05 ** i) for i in range(8)]
+    revenues = [10e9 * (1.05**i) for i in range(8)]
     periods = [f"{2018 + i}-12-28" for i in range(8)]
-    income = pd.DataFrame({"period": periods, "TotalRevenue": revenues,
-                           "NetIncome": [r * 0.1 for r in revenues]})
-    write_raw_statement(tmp_path, symbol="DEEP", provider="edgar", statement_type="income",
-                        freq="annual", frame=income, fetched_at=1.0)
+    income = pd.DataFrame(
+        {"period": periods, "TotalRevenue": revenues, "NetIncome": [r * 0.1 for r in revenues]}
+    )
+    write_raw_statement(
+        tmp_path,
+        symbol="DEEP",
+        provider="edgar",
+        statement_type="income",
+        freq="annual",
+        frame=income,
+        fetched_at=1.0,
+    )
 
     snapshot = build_snapshot(tmp_path, symbols=["DEEP"])
     assert len(snapshot) == 8
@@ -611,11 +600,22 @@ def test_fr016_audited_deep_history_reaches_the_final_snapshot(tmp_path) -> None
 
     # a shallow scraped frame on top must not shadow the audited depth —
     # yfinance labels the same fiscal years -12-31 (align_periods matches)
-    scraped = pd.DataFrame({"period": ["2024-12-31", "2025-12-31"],
-                            "TotalRevenue": revenues[-2:],
-                            "NetIncome": [r * 0.1 for r in revenues[-2:]]})
-    write_raw_statement(tmp_path, symbol="DEEP", provider="yfinance", statement_type="income",
-                        freq="annual", frame=scraped, fetched_at=2.0)
+    scraped = pd.DataFrame(
+        {
+            "period": ["2024-12-31", "2025-12-31"],
+            "TotalRevenue": revenues[-2:],
+            "NetIncome": [r * 0.1 for r in revenues[-2:]],
+        }
+    )
+    write_raw_statement(
+        tmp_path,
+        symbol="DEEP",
+        provider="yfinance",
+        statement_type="income",
+        freq="annual",
+        frame=scraped,
+        fetched_at=2.0,
+    )
     snapshot = build_snapshot(tmp_path, symbols=["DEEP"])
     assert len(snapshot) == 8
     assert snapshot.iloc[-1]["revenue_growth"] == pytest.approx(0.05)

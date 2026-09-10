@@ -163,9 +163,7 @@ def bootstrap_data(
                 f"no published dataset found for {repo} — unreadable archive: {exc}"
             ) from exc
         if files == 0:
-            raise BootstrapError(
-                f"no published dataset found for {repo} — archive contains no data/ layer"
-            )
+            raise BootstrapError(f"no published dataset found for {repo} — archive contains no data/ layer")
         _move_into(staging, data_dir)
         log.info("bootstrap: restored %d files from the release (%s)", files, url)
         return BootstrapDataReport(source="release", files=files)

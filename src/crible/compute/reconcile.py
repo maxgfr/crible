@@ -67,8 +67,9 @@ def _one_row_per_period(frame: pd.DataFrame, symbol: str, layer: str) -> pd.Data
     if not frame.index.has_duplicates:
         return frame
     dupes = sorted({str(p) for p in frame.index[frame.index.duplicated()]})
-    log.warning("reconcile %s: duplicate %s periods %s — keeping the last of each",
-                symbol, layer, ", ".join(dupes))
+    log.warning(
+        "reconcile %s: duplicate %s periods %s — keeping the last of each", symbol, layer, ", ".join(dupes)
+    )
     return frame[~frame.index.duplicated(keep="last")]
 
 
@@ -117,7 +118,12 @@ def reconcile(scraped: pd.DataFrame, audited: pd.DataFrame, symbol: str = "?") -
                     discrepancies.append(entry)
                     log.warning(
                         "reconcile %s %s@%s: scraped %.4g vs audited %.4g (%.1f%%) — audited wins",
-                        symbol, column, period, scraped_value, audited_value, relative * 100,
+                        symbol,
+                        column,
+                        period,
+                        scraped_value,
+                        audited_value,
+                        relative * 100,
                     )
             merged.loc[period, column] = audited_value
             audited_fields.setdefault(str(period), []).append(column)

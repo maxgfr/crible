@@ -28,7 +28,10 @@ def load_uk_company_numbers(data_dir) -> dict[str, str]:
 
 
 def run_companies_house(
-    mapping: dict[str, str] | None = None, url: str = "", http=None, name: str = "accounts.zip",
+    mapping: dict[str, str] | None = None,
+    url: str = "",
+    http=None,
+    name: str = "accounts.zip",
 ) -> dict:
     """UK audited layer: mirror an Accounts Data Product ZIP and write
     provider='companies-house' raw for the mapped listings. ``mapping`` is
@@ -60,10 +63,12 @@ def run_companies_house(
     fetched_at = time.time()
     for number, frames in iter_accounts(result.path, set(by_number)):
         write_audited_frames(
-            data, symbol=by_number[number], provider_id="companies-house",
-            frames=frames, fetched_at=fetched_at,
+            data,
+            symbol=by_number[number],
+            provider_id="companies-house",
+            frames=frames,
+            fetched_at=fetched_at,
         )
         outcome["enriched"] += 1
     log.info("companies-house: enriched %d UK listings", outcome["enriched"])
     return outcome
-

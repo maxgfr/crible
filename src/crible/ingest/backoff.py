@@ -11,6 +11,7 @@ import random
 from dataclasses import dataclass, field
 from typing import Callable
 
+
 @dataclass(frozen=True)
 class BackoffPolicy:
     base_seconds: float = 60.0

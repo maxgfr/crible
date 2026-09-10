@@ -32,8 +32,13 @@ FCA_URL = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/FCA/DADOS/fca_cia_abert
 FIRST_DFP_YEAR = 2010
 
 # statement member label → crible statement type
-_MEMBER_STATEMENTS = {"BPA": "balance", "BPP": "balance", "DRE": "income",
-                      "DFC_MD": "cashflow", "DFC_MI": "cashflow"}
+_MEMBER_STATEMENTS = {
+    "BPA": "balance",
+    "BPP": "balance",
+    "DRE": "income",
+    "DFC_MD": "cashflow",
+    "DFC_MI": "cashflow",
+}
 
 # CD_CONTA → (yfinance column, rank, negate). Lower rank wins when several
 # codes feed one column (3.11.01 'attributable to parent' over 3.11). Costs
@@ -68,7 +73,7 @@ def _member_kind(name: str) -> tuple[str, str] | None:
     stem = name.rsplit("/", 1)[-1]
     if not stem.startswith("dfp_cia_aberta_") or not stem.endswith(".csv"):
         return None
-    parts = stem[len("dfp_cia_aberta_"):-len(".csv")].rsplit("_", 2)
+    parts = stem[len("dfp_cia_aberta_") : -len(".csv")].rsplit("_", 2)
     if len(parts) != 3 or parts[1] not in ("con", "ind"):
         return None
     return (parts[0], parts[1]) if parts[0] in _MEMBER_STATEMENTS else None
@@ -81,9 +86,7 @@ def _rows(bundle: zipfile.ZipFile, member: str):
         )
 
 
-def parse_dfp(
-    zip_path: Path | str, wanted: set[str]
-) -> dict[str, dict[tuple[str, str], pd.DataFrame]]:
+def parse_dfp(zip_path: Path | str, wanted: set[str]) -> dict[str, dict[tuple[str, str], pd.DataFrame]]:
     """One DFP yearly ZIP → {CNPJ: frames} for the wanted companies.
 
     Consolidated members win whole statements; ``ÚLTIMO`` rows only; MIL
@@ -145,9 +148,7 @@ def parse_dfp(
     return frames
 
 
-def resolve_cvm(
-    symbols: list[str], fca_zip: Path | str
-) -> tuple[dict[str, str], list[str]]:
+def resolve_cvm(symbols: list[str], fca_zip: Path | str) -> tuple[dict[str, str], list[str]]:
     """Universe ``.SA`` symbols → CNPJ via the FCA trading-code register
     (``Codigo_Negociacao``; one company ⇒ several tickers, all enriched —
     the ESEF dual-listing pattern). Unmatched are counted, never errored."""

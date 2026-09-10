@@ -45,8 +45,14 @@ USER_AGENT = (
 # stocks. Company stocks live in the per-country archives (d_us/uk/jp/hk/pl/hu_txt);
 # those are what import-prices distils against the universe.
 KNOWN_DATASETS = (
-    "d_us_txt", "d_uk_txt", "d_jp_txt", "d_hk_txt",
-    "d_pl_txt", "d_hu_txt", "d_world_txt", "d_macro_txt",
+    "d_us_txt",
+    "d_uk_txt",
+    "d_jp_txt",
+    "d_hk_txt",
+    "d_pl_txt",
+    "d_hu_txt",
+    "d_world_txt",
+    "d_macro_txt",
 )
 _DATASET_RE = re.compile(r"^[dh5]_[a-z]+_(txt|ms)$")
 _POW_C_RE = re.compile(r'c="([^"]+)"')
@@ -82,8 +88,7 @@ def solve_pow(challenge: str, difficulty: int, max_iterations: int = MAX_POW_ITE
         if hashlib.sha256(f"{challenge}{n}".encode()).hexdigest().startswith(target):
             return n
     raise StooqError(
-        f"stooq proof-of-work unsolved after {max_iterations} iterations "
-        f"(difficulty {difficulty})"
+        f"stooq proof-of-work unsolved after {max_iterations} iterations (difficulty {difficulty})"
     )
 
 
@@ -128,9 +133,7 @@ class StooqDownloader:
 
             ocr = solve_captcha
         for attempt in range(1, attempts + 1):
-            image = self._http.get(
-                CAPTCHA_IMAGE_URL, params={"_": int(time.time() * 1000)}
-            ).content
+            image = self._http.get(CAPTCHA_IMAGE_URL, params={"_": int(time.time() * 1000)}).content
             code = ocr(image)
             if len(code) != _CAPTCHA_LEN:
                 log.debug("stooq captcha attempt %d: bad length %r", attempt, code)
@@ -147,24 +150,18 @@ class StooqDownloader:
         """Fetch a bulk archive to ``out``. Streams to disk; validates the ZIP
         magic so an auth failure surfaces as a StooqError, not a corrupt file."""
         if not _DATASET_RE.match(dataset):
-            raise StooqError(
-                f"unexpected dataset code {dataset!r} — e.g. {', '.join(KNOWN_DATASETS[:4])}"
-            )
+            raise StooqError(f"unexpected dataset code {dataset!r} — e.g. {', '.join(KNOWN_DATASETS[:4])}")
         out = Path(out)
         self.verify_browser()
         if not self.authorize(attempts):
-            raise StooqError(
-                f"could not solve the Stooq captcha in {attempts} attempts"
-            )
+            raise StooqError(f"could not solve the Stooq captcha in {attempts} attempts")
         with self._http.stream("GET", DOWNLOAD_URL, params={"b": dataset}) as response:
             response.raise_for_status()
             chunks = response.iter_bytes(chunk_size=1 << 16)
             first = next(chunks, b"")
             if first[:2] != b"PK":
                 body = (first + b"".join(chunks))[:200]
-                raise StooqError(
-                    f"stooq refused {dataset!r} (not a zip): {body!r}"
-                )
+                raise StooqError(f"stooq refused {dataset!r} (not a zip): {body!r}")
             out.parent.mkdir(parents=True, exist_ok=True)
             tmp = out.with_suffix(out.suffix + ".tmp")
             with open(tmp, "wb") as handle:

@@ -8,10 +8,23 @@ from crible import config
 from crible.ingest.state import connect as _connect
 from crible.ingest.state import update_heartbeat
 
-__all__ = ["config", "_connect", "update_heartbeat", "log", "seed_tasks_from_raw",
-           "ESEF_REFRESH_SECONDS", "ESEF_SCHEMA", "ESEF_DEFAULT_HISTORY",
-           "ensure_esef_schema", "EDGAR_REFRESH_SECONDS",
-           "EDGAR_SCHEMA", "FSDS_MAX_AGE", "CH_MAX_AGE", "CVM_MAX_AGE", "TWSE_MAX_AGE"]
+__all__ = [
+    "config",
+    "_connect",
+    "update_heartbeat",
+    "log",
+    "seed_tasks_from_raw",
+    "ESEF_REFRESH_SECONDS",
+    "ESEF_SCHEMA",
+    "ESEF_DEFAULT_HISTORY",
+    "ensure_esef_schema",
+    "EDGAR_REFRESH_SECONDS",
+    "EDGAR_SCHEMA",
+    "FSDS_MAX_AGE",
+    "CH_MAX_AGE",
+    "CVM_MAX_AGE",
+    "TWSE_MAX_AGE",
+]
 
 log = logging.getLogger("crible.ingest.enrichment")
 
@@ -36,6 +49,7 @@ def ensure_esef_schema(con) -> None:
     # long-lived self-hosted DBs created before the history backfill
     con.execute("ALTER TABLE esef_tasks ADD COLUMN IF NOT EXISTS history_depth INTEGER")
 
+
 EDGAR_REFRESH_SECONDS = 90 * 24 * 3600
 
 EDGAR_SCHEMA = """
@@ -56,7 +70,13 @@ TWSE_MAX_AGE = 24 * 3600  # daily snapshot endpoints — mirror for replayabilit
 
 
 def seed_tasks_from_raw(
-    con, data_dir, *, provider: str, table: str, key_column: str, keys: dict,
+    con,
+    data_dir,
+    *,
+    provider: str,
+    table: str,
+    key_column: str,
+    keys: dict,
     history_column: str | None = None,
 ) -> int:
     """Rebuild an enrichment table's freshness from the raw layer's stamps.
@@ -123,4 +143,3 @@ def _raw_history_depth(file) -> int | None:
     except Exception:  # noqa: BLE001 — pre-backfill file without the column
         return None
     return int(column["_history_depth"].iloc[0]) if len(column) else None
-

@@ -60,8 +60,12 @@ def fetch_rates(data_dir: Path | str, http=None, max_age_seconds: float = 24 * 3
     from crible.ingest.mirror import fetch_if_stale
 
     result = fetch_if_stale(
-        data_dir, "fx", "rates.json", FRANKFURTER_URL,
-        http=http, max_age_seconds=max_age_seconds,
+        data_dir,
+        "fx",
+        "rates.json",
+        FRANKFURTER_URL,
+        http=http,
+        max_age_seconds=max_age_seconds,
     )
     payload = json.loads(result.path.read_text())
     return {k: float(v) for k, v in payload.get("rates", {}).items()}

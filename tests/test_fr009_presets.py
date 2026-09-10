@@ -26,11 +26,25 @@ def test_fr009_every_indicator_has_a_preset() -> None:
     preset DSL (graham_number/ncav are covered through their screenable
     companions graham_margin_of_safety/ncav_to_market_cap)."""
     indicator_keys = [
-        "piotroski_f", "altman_z", "beneish_m", "zmijewski_score", "ohlson_o",
-        "montier_c", "composite_rank", "quality_rank", "value_rank",
-        "momentum_rank", "magic_formula_rank", "greenblatt_earnings_yield",
-        "greenblatt_roc", "graham_margin_of_safety", "ncav_to_market_cap",
-        "ebitda_margin", "fcf_margin", "fcf_conversion", "dividend_coverage",
+        "piotroski_f",
+        "altman_z",
+        "beneish_m",
+        "zmijewski_score",
+        "ohlson_o",
+        "montier_c",
+        "composite_rank",
+        "quality_rank",
+        "value_rank",
+        "momentum_rank",
+        "magic_formula_rank",
+        "greenblatt_earnings_yield",
+        "greenblatt_roc",
+        "graham_margin_of_safety",
+        "ncav_to_market_cap",
+        "ebitda_margin",
+        "fcf_margin",
+        "fcf_conversion",
+        "dividend_coverage",
     ]
     all_dsl = " ".join(p.dsl for p in PRESETS.values())
     missing = [key for key in indicator_keys if key not in all_dsl]
@@ -98,8 +112,9 @@ def test_fr009_running_a_preset_is_byte_for_byte_its_dsl() -> None:
     con.register("snapshot_latest", frame)
     whitelist = whitelist_from_relation(con, "snapshot_latest")
     for preset in PRESETS.values():
-        if any(field not in whitelist for field in ("price_to_earnings_ratio", "return_on_equity"))\
-           and preset.id in ("classic-value", "quality"):
+        if any(
+            field not in whitelist for field in ("price_to_earnings_ratio", "return_on_equity")
+        ) and preset.id in ("classic-value", "quality"):
             continue  # fields absent from this minimal fixture
         via_preset = screen(con, PRESETS[preset.id].dsl, whitelist=whitelist, limit=10, offset=0)
         direct = screen(con, preset.dsl, whitelist=whitelist, limit=10, offset=0)

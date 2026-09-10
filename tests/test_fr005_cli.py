@@ -36,7 +36,12 @@ def data_dir(tmp_path, monkeypatch):
             "return_on_equity": [0.18, 0.22, 0.45, 0.11],
             "name": ["Airbus", "SAP", "Apple", "Toyota"],
             "country": ["FR", "DE", "US", "JP"],
-            "sector": ["Industrials", "Information Technology", "Information Technology", "Consumer Discretionary"],
+            "sector": [
+                "Industrials",
+                "Information Technology",
+                "Information Technology",
+                "Consumer Discretionary",
+            ],
             "computed_at": [time.time()] * 4,
         }
     )
@@ -46,7 +51,15 @@ def data_dir(tmp_path, monkeypatch):
 
 def test_fr005_screen_csv_streams_rows_with_header(data_dir) -> None:
     result = runner.invoke(
-        app, ["screen", "piotroski_f >= 7 AND country IN ('FR','DE')", "--format", "csv", "--sort", "-piotroski_f"]
+        app,
+        [
+            "screen",
+            "piotroski_f >= 7 AND country IN ('FR','DE')",
+            "--format",
+            "csv",
+            "--sort",
+            "-piotroski_f",
+        ],
     )
     assert result.exit_code == 0, result.output
     lines = [line for line in result.output.strip().splitlines() if line]
@@ -161,8 +174,12 @@ def test_fr005_compute_is_incremental_and_skips_when_unchanged(tmp_path, monkeyp
     from crible.ingest.raw import write_raw_statement
 
     write_raw_statement(
-        tmp_path, symbol="AIR.PA", provider="yfinance", statement_type="income",
-        freq="annual", frame=pd.DataFrame({"period": ["2024"], "TotalRevenue": [100.0]}),
+        tmp_path,
+        symbol="AIR.PA",
+        provider="yfinance",
+        statement_type="income",
+        freq="annual",
+        frame=pd.DataFrame({"period": ["2024"], "TotalRevenue": [100.0]}),
         fetched_at=1000.0,
     )
 

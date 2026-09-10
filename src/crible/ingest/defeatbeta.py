@@ -48,8 +48,7 @@ _EVENT_SELECTS = {
     "dividends": "symbol, CAST(report_date AS DATE) AS date, CAST(amount AS DOUBLE) AS amount",
     "splits": "symbol, CAST(report_date AS DATE) AS date, split_factor",
     "shares": (
-        "symbol, CAST(report_date AS DATE) AS date,"
-        " CAST(shares_outstanding AS BIGINT) AS shares_outstanding"
+        "symbol, CAST(report_date AS DATE) AS date, CAST(shares_outstanding AS BIGINT) AS shares_outstanding"
     ),
 }
 
@@ -141,9 +140,7 @@ def import_defeatbeta(data_dir: Path | str, tables: dict[str, str] | None = None
     if len(series):
         write_series(data_dir, "defeatbeta", series.assign(source="defeatbeta"))
     _import_events(data_dir, tables, known)
-    log.info(
-        "import-prices: %d symbols from defeatbeta (%d outside the universe)", len(fresh), skipped
-    )
+    log.info("import-prices: %d symbols from defeatbeta (%d outside the universe)", len(fresh), skipped)
     return ImportReport(source="defeatbeta", imported=len(fresh), skipped_unknown=skipped)
 
 
@@ -220,26 +217,29 @@ def import_defeatbeta_fundamentals(
         if statement_type is None:
             continue
         wide = (
-            part.pivot_table(index="report_date", columns="item_name",
-                             values="item_value", aggfunc="last")
+            part.pivot_table(index="report_date", columns="item_name", values="item_value", aggfunc="last")
             .rename(columns=ITEM_TO_YF)
             .sort_index()
         )
         frame = wide.reset_index().rename(columns={"report_date": "period"})
         frame.columns.name = None
         write_raw_statement(
-            data_dir, symbol=str(symbol), provider="defeatbeta",
-            statement_type=statement_type, freq=str(period_type),
-            frame=frame, fetched_at=now, skip_identical=True,
+            data_dir,
+            symbol=str(symbol),
+            provider="defeatbeta",
+            statement_type=statement_type,
+            freq=str(period_type),
+            frame=frame,
+            fetched_at=now,
+            skip_identical=True,
         )
         written.add(str(symbol))
     log.info(
         "import-fundamentals: statements for %d of %d gap symbols from defeatbeta",
-        len(written), len(gap),
+        len(written),
+        len(gap),
     )
-    return ImportReport(
-        source="defeatbeta", imported=len(written), skipped_unknown=len(gap) - len(written)
-    )
+    return ImportReport(source="defeatbeta", imported=len(written), skipped_unknown=len(gap) - len(written))
 
 
 def _import_events(data_dir: Path | str, tables: dict[str, str], known: set[str]) -> None:
@@ -264,5 +264,9 @@ def _import_events(data_dir: Path | str, tables: dict[str, str], known: set[str]
         tmp = directory / f".tmp-defeatbeta-{name}.parquet"
         frame.to_parquet(tmp, index=False)
         tmp.rename(final)
-        log.info("import-prices: %d defeatbeta %s events for %d symbols",
-                 len(frame), name, frame["symbol"].nunique())
+        log.info(
+            "import-prices: %d defeatbeta %s events for %d symbols",
+            len(frame),
+            name,
+            frame["symbol"].nunique(),
+        )

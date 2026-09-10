@@ -25,8 +25,11 @@ def test_bucket_state_round_trips_across_a_process_boundary(tmp_path) -> None:
     save_bucket(a, path, wall_now=1_000_000.0)
 
     b = load_bucket(
-        path, capacity=10, window_seconds=3600,
-        now=lambda: 3.0, wall_now=1_000_600.0,  # +10 min wall, fresh monotonic
+        path,
+        capacity=10,
+        window_seconds=3600,
+        now=lambda: 3.0,
+        wall_now=1_000_600.0,  # +10 min wall, fresh monotonic
     )
     assert b.used_in_window() == 5
     assert b.try_acquire(5)
@@ -82,8 +85,10 @@ def test_run_refresh_persists_then_restores_the_window(tmp_path, monkeypatch) ->
     monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("CRIBLE_BOOTSTRAP_SAMPLE", "AIR.PA,SAP.DE")
     kwargs = dict(
-        deadline_seconds=60, fetch_universe=fixture_frame,
-        price_provider=FakePriceProvider(), edgar_client=FakeEdgarDirectory(),
+        deadline_seconds=60,
+        fetch_universe=fixture_frame,
+        price_provider=FakePriceProvider(),
+        edgar_client=FakeEdgarDirectory(),
     )
 
     first = run_refresh(provider=FakeYfProvider(), **kwargs)

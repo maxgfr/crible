@@ -13,8 +13,18 @@ from crible.dsl.parser import DslError, parse
 from crible.store import screen, screen_count
 
 WHITELIST = {
-    "symbol", "name", "country", "region", "sector", "exchange",
-    "roe", "piotroski_f", "altman_z", "beneish_m", "pe", "revenue",
+    "symbol",
+    "name",
+    "country",
+    "region",
+    "sector",
+    "exchange",
+    "roe",
+    "piotroski_f",
+    "altman_z",
+    "beneish_m",
+    "pe",
+    "revenue",
 }
 
 
@@ -58,14 +68,22 @@ def test_fr004_blank_query_means_no_filter() -> None:
 def test_fr004_filters_sorts_and_paginates_exactly() -> None:
     con = make_con()
     result = screen(
-        con, "roe > 15 AND piotroski_f >= 7 AND country IN ('FR', 'DE')",
-        whitelist=WHITELIST, sort="-roe", limit=10, offset=0,
+        con,
+        "roe > 15 AND piotroski_f >= 7 AND country IN ('FR', 'DE')",
+        whitelist=WHITELIST,
+        sort="-roe",
+        limit=10,
+        offset=0,
     )
     assert result["symbol"].tolist() == ["SAP.DE", "AIR.PA"]
 
     paged = screen(
-        con, "roe > 15 AND piotroski_f >= 7 AND country IN ('FR', 'DE')",
-        whitelist=WHITELIST, sort="-roe", limit=1, offset=1,
+        con,
+        "roe > 15 AND piotroski_f >= 7 AND country IN ('FR', 'DE')",
+        whitelist=WHITELIST,
+        sort="-roe",
+        limit=1,
+        offset=1,
     )
     assert paged["symbol"].tolist() == ["AIR.PA"]
 
@@ -73,16 +91,18 @@ def test_fr004_filters_sorts_and_paginates_exactly() -> None:
 def test_fr004_or_not_and_parentheses() -> None:
     con = make_con()
     result = screen(
-        con, "(country = 'JP' OR country = 'US') AND NOT pe > 30",
-        whitelist=WHITELIST, sort="symbol", limit=10, offset=0,
+        con,
+        "(country = 'JP' OR country = 'US') AND NOT pe > 30",
+        whitelist=WHITELIST,
+        sort="symbol",
+        limit=10,
+        offset=0,
     )
     assert result["symbol"].tolist() == ["7203.T"]
 
 
 def test_fr004_compiles_to_whitelisted_parametrized_sql() -> None:
-    sql, params = compile_query(
-        parse("roe > 15 AND country IN ('FR','DE')"), whitelist=WHITELIST
-    )
+    sql, params = compile_query(parse("roe > 15 AND country IN ('FR','DE')"), whitelist=WHITELIST)
     assert '"roe" > ?' in sql
     assert '"country" IN (?, ?)' in sql
     assert params == [15.0, "FR", "DE"]

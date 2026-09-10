@@ -11,7 +11,10 @@ CLOSED_YEAR_MAX_AGE = 365 * 24 * 3600  # closed fiscal years never change
 
 
 def run_cvm(
-    years: int = 5, limit: int = 0, http=None, time_budget_seconds: float | None = None,
+    years: int = 5,
+    limit: int = 0,
+    http=None,
+    time_budget_seconds: float | None = None,
 ) -> dict:
     """Audited Brazil: mirror the CVM DFP yearly ZIPs, accumulate the last
     ``years`` fiscal years into ONE frame-set per company (the raw layer
@@ -31,10 +34,7 @@ def run_cvm(
     started = time.monotonic()
 
     def out_of_time() -> bool:
-        return (
-            time_budget_seconds is not None
-            and time.monotonic() - started >= time_budget_seconds
-        )
+        return time_budget_seconds is not None and time.monotonic() - started >= time_budget_seconds
 
     con = _connect()
     try:
@@ -56,8 +56,12 @@ def run_cvm(
     for fca_year in (this_year, this_year - 1):  # January: last year's register
         try:
             fca_path = fetch_if_stale(
-                data, "cvm", f"fca_{fca_year}.zip", FCA_URL.format(year=fca_year),
-                http=http, max_age_seconds=CVM_MAX_AGE,
+                data,
+                "cvm",
+                f"fca_{fca_year}.zip",
+                FCA_URL.format(year=fca_year),
+                http=http,
+                max_age_seconds=CVM_MAX_AGE,
             ).path
             break
         except Exception as exc:  # noqa: BLE001 — outage: record, resume next run
@@ -84,7 +88,11 @@ def run_cvm(
             break
         try:
             result = fetch_if_stale(
-                data, "cvm", f"dfp_{year}.zip", DFP_URL.format(year=year), http=http,
+                data,
+                "cvm",
+                f"dfp_{year}.zip",
+                DFP_URL.format(year=year),
+                http=http,
                 max_age_seconds=CVM_MAX_AGE if year >= this_year - 1 else CLOSED_YEAR_MAX_AGE,
             )
         except Exception as exc:  # noqa: BLE001 — a missing year is not fatal
@@ -106,8 +114,12 @@ def run_cvm(
         if not frames:
             continue
         write_audited_frames(
-            data, symbol=symbol, provider_id="cvm", frames=frames,
-            fetched_at=fetched_at, skip_identical=True,
+            data,
+            symbol=symbol,
+            provider_id="cvm",
+            frames=frames,
+            fetched_at=fetched_at,
+            skip_identical=True,
         )
         outcome["enriched"] += 1
     log.info("cvm: enriched %d BR listings over %s", outcome["enriched"], fetched_years)

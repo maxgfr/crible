@@ -20,26 +20,36 @@ BARS = pd.DataFrame({"Date": ["2026-07-10"], "Close": [42.0]})
 
 def _fundamentals(data_dir, symbol: str, provider: str = "esef") -> None:
     write_raw_statement(
-        data_dir, symbol=symbol, provider=provider, statement_type="income",
-        freq="annual", frame=INCOME, fetched_at=1000.0,
+        data_dir,
+        symbol=symbol,
+        provider=provider,
+        statement_type="income",
+        freq="annual",
+        frame=INCOME,
+        fetched_at=1000.0,
     )
 
 
 def _raw_prices(data_dir, symbol: str) -> None:
     write_raw_statement(
-        data_dir, symbol=symbol, provider="yfinance", statement_type="prices",
-        freq="daily", frame=BARS, fetched_at=1000.0,
+        data_dir,
+        symbol=symbol,
+        provider="yfinance",
+        statement_type="prices",
+        freq="daily",
+        frame=BARS,
+        fetched_at=1000.0,
     )
 
 
 def test_price_gap_lists_audited_symbols_no_price_source_covers(tmp_path) -> None:
-    _fundamentals(tmp_path, "OVH.PA")            # audited, never priced → the gap
+    _fundamentals(tmp_path, "OVH.PA")  # audited, never priced → the gap
     _fundamentals(tmp_path, "AIR.PA", provider="yfinance")
-    _raw_prices(tmp_path, "AIR.PA")              # crawl already bars it → covered
+    _raw_prices(tmp_path, "AIR.PA")  # crawl already bars it → covered
     _fundamentals(tmp_path, "COV.PA")
     pd.DataFrame({"symbol": ["COV.PA"], "close": [10.0], "price_asof": ["2026-07-15"]}).to_parquet(
         tmp_path / "prices-latest.parquet"
-    )                                            # dump distillate covers it
+    )  # dump distillate covers it
 
     assert price_gap_symbols(tmp_path) == ["OVH.PA"]
 
@@ -48,9 +58,9 @@ def test_price_gap_orders_by_universe_crawl_priority_and_caps(tmp_path) -> None:
     for symbol in ("ZZZ.US", "OVH.PA", "MMM.T"):
         _fundamentals(tmp_path, symbol)
     # same ordering contract as the crawl queue: priority ASC, then symbol
-    pd.DataFrame(
-        {"symbol": ["ZZZ.US", "OVH.PA", "MMM.T"], "crawl_priority": [9, 2, 17]}
-    ).to_parquet(tmp_path / "universe.parquet")
+    pd.DataFrame({"symbol": ["ZZZ.US", "OVH.PA", "MMM.T"], "crawl_priority": [9, 2, 17]}).to_parquet(
+        tmp_path / "universe.parquet"
+    )
 
     assert price_gap_symbols(tmp_path) == ["OVH.PA", "ZZZ.US", "MMM.T"]
     assert price_gap_symbols(tmp_path, limit=2) == ["OVH.PA", "ZZZ.US"]

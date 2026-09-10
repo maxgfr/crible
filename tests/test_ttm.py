@@ -21,9 +21,7 @@ def quarterly_frames(periods: list[str], *, revenue=None, ni=None, ocf=None, cap
     ocf = ocf if ocf is not None else [12.0 + i for i in range(n)]
     capex = capex if capex is not None else [-2.0] * n
     return {
-        ("income", "quarterly"): income_frame(
-            {"TotalRevenue": revenue, "NetIncome": ni}, periods
-        ),
+        ("income", "quarterly"): income_frame({"TotalRevenue": revenue, "NetIncome": ni}, periods),
         ("cashflow", "quarterly"): income_frame(
             {"OperatingCashFlow": ocf, "CapitalExpenditure": capex}, periods
         ),
@@ -57,9 +55,7 @@ def test_ttm_rejects_gapped_or_overlong_spans() -> None:
 def test_ttm_missing_core_quarter_disqualifies_fcf_gap_nulls_fcf_only() -> None:
     # one NaN OCF quarter inside the window → that row drops from the core →
     # the span check fails → {} (correctness beats coverage)
-    frames = quarterly_frames(
-        QUARTER_ENDS[1:], ocf=[13.0, float("nan"), 15.0, 16.0]
-    )
+    frames = quarterly_frames(QUARTER_ENDS[1:], ocf=[13.0, float("nan"), 15.0, 16.0])
     assert ttm_from_quarterly(frames) == {}
     # core intact but one capex missing → only the FCF sum is NaN
     frames = quarterly_frames(QUARTER_ENDS[1:], capex=[-2.0, float("nan"), -2.0, -2.0])
@@ -82,24 +78,19 @@ def test_ttm_ratios_hand_computed_and_guarded() -> None:
 def test_ttm_prefers_audited_quarters_and_never_mixes_sources() -> None:
     """v2: EDGAR discrete quarters outrank the scraped ones; a window is
     all-audited or all-scraped, never blended."""
-    annual = {
-        (s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()
-    }
+    annual = {(s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()}
     scraped = {**annual, **quarterly_frames(QUARTER_ENDS)}
-    audited = quarterly_frames(
-        QUARTER_ENDS, revenue=[200.0] * 5, ni=[20.0] * 5, ocf=[25.0] * 5
-    )
+    audited = quarterly_frames(QUARTER_ENDS, revenue=[200.0] * 5, ni=[20.0] * 5, ocf=[25.0] * 5)
     snapshot = build_symbol_snapshot("P.PA", scraped, computed_at=1.0, audited_frames=audited)
     assert snapshot.iloc[-1]["ttm_revenue"] == pytest.approx(4 * 200.0)  # audited wins
 
 
 def test_ttm_falls_back_to_scraped_when_audited_quarters_incomplete() -> None:
-    annual = {
-        (s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()
-    }
+    annual = {(s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()}
     scraped = {**annual, **quarterly_frames(QUARTER_ENDS)}
     audited = quarterly_frames(
-        QUARTER_ENDS[1:], ocf=[25.0, float("nan"), 25.0, 25.0]  # a core gap → {}
+        QUARTER_ENDS[1:],
+        ocf=[25.0, float("nan"), 25.0, 25.0],  # a core gap → {}
     )
     snapshot = build_symbol_snapshot("P.PA", scraped, computed_at=1.0, audited_frames=audited)
     assert snapshot.iloc[-1]["ttm_revenue"] == pytest.approx(500.0)  # scraped sum
@@ -107,24 +98,16 @@ def test_ttm_falls_back_to_scraped_when_audited_quarters_incomplete() -> None:
 
 def test_ttm_lands_for_an_audited_only_symbol() -> None:
     """The v2 point: no yfinance crawl needed — EDGAR quarters feed the TTM."""
-    audited = {
-        (s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()
-    }
+    audited = {(s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()}
     audited.update(quarterly_frames(QUARTER_ENDS))
-    snapshot = build_symbol_snapshot(
-        "A.US", {}, provider="edgar", computed_at=1.0, audited_frames=audited
-    )
+    snapshot = build_symbol_snapshot("A.US", {}, provider="edgar", computed_at=1.0, audited_frames=audited)
     assert snapshot.iloc[-1]["ttm_revenue"] == pytest.approx(500.0)
 
 
 def test_ttm_lands_on_the_latest_snapshot_row_only() -> None:
-    frames = {
-        (s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()
-    }
+    frames = {(s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()}
     frames.update(quarterly_frames(QUARTER_ENDS))
-    snapshot = build_symbol_snapshot(
-        "T.PA", frames, computed_at=1.0, price_quote=(10.0, "2025-12-31")
-    )
+    snapshot = build_symbol_snapshot("T.PA", frames, computed_at=1.0, price_quote=(10.0, "2025-12-31"))
     latest = snapshot.iloc[-1]
     assert latest["ttm_revenue"] == pytest.approx(500.0)
     assert snapshot.iloc[0:-1]["ttm_revenue"].isna().all()

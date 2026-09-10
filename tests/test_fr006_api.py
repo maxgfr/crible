@@ -43,7 +43,12 @@ def client(tmp_path, monkeypatch):
 def test_fr006_post_screen_returns_rows_total_and_timing(client) -> None:
     response = client.post(
         "/api/screen",
-        json={"query": "piotroski_f >= 7 AND country IN ('FR','DE')", "sort": "-piotroski_f", "page": 1, "page_size": 10},
+        json={
+            "query": "piotroski_f >= 7 AND country IN ('FR','DE')",
+            "sort": "-piotroski_f",
+            "page": 1,
+            "page_size": 10,
+        },
     )
     assert response.status_code == 200
     body = response.json()
@@ -103,8 +108,15 @@ def test_fr006_fields_endpoint_lists_snapshot_columns_with_types(client) -> None
     assert by_name["altman_z"] == "number"
     # the field list IS the live schema — same names the DSL whitelist accepts
     assert set(by_name) == {
-        "symbol", "period", "piotroski_f", "altman_z", "beneish_m",
-        "return_on_equity", "country", "name", "computed_at",
+        "symbol",
+        "period",
+        "piotroski_f",
+        "altman_z",
+        "beneish_m",
+        "return_on_equity",
+        "country",
+        "name",
+        "computed_at",
     }
 
 
@@ -145,6 +157,7 @@ def test_fr006_csv_export_restricts_to_visible_columns(client) -> None:
     assert response.status_code == 200
     header = response.text.strip().splitlines()[0]
     assert header == "symbol,piotroski_f"  # unknown columns silently dropped
-    assert client.get(
-        "/api/screen.csv", params={"query": "piotroski_f >= 5", "columns": "nope"}
-    ).status_code == 422
+    assert (
+        client.get("/api/screen.csv", params={"query": "piotroski_f >= 5", "columns": "nope"}).status_code
+        == 422
+    )

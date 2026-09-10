@@ -12,13 +12,90 @@ from crible.universe import UniverseSourceError, bootstrap_universe, refresh_uni
 
 FIXTURE_ROWS = [
     # symbol, name, country, sector, industry, exchange, currency, market_cap, isin, delisted
-    ("ABN.AS", "ABN AMRO", "Netherlands", "Financials", "Banks", "AMS", "EUR", "Mid Cap", "NL0011540547", False),
-    ("AIR.PA", "Airbus", "France", "Industrials", "Aerospace & Defense", "PAR", "EUR", "Large Cap", "NL0000235190", False),
-    ("SAP.DE", "SAP", "Germany", "Information Technology", "Software", "GER", "EUR", "Large Cap", "DE0007164600", False),
-    ("NESN.SW", "Nestlé", "Switzerland", "Consumer Staples", "Food Products", "EBS", "CHF", "Large Cap", "CH0038863350", False),
-    ("BARC.L", "Barclays", "United Kingdom", "Financials", "Banks", "LSE", "GBP", "Large Cap", "GB0031348658", False),
-    ("AAPL", "Apple", "United States", "Information Technology", "Hardware", "NMS", "USD", "Large Cap", "US0378331005", False),
-    ("7203.T", "Toyota", "Japan", "Consumer Discretionary", "Automobiles", "JPX", "JPY", "Large Cap", "JP3633400001", False),
+    (
+        "ABN.AS",
+        "ABN AMRO",
+        "Netherlands",
+        "Financials",
+        "Banks",
+        "AMS",
+        "EUR",
+        "Mid Cap",
+        "NL0011540547",
+        False,
+    ),
+    (
+        "AIR.PA",
+        "Airbus",
+        "France",
+        "Industrials",
+        "Aerospace & Defense",
+        "PAR",
+        "EUR",
+        "Large Cap",
+        "NL0000235190",
+        False,
+    ),
+    (
+        "SAP.DE",
+        "SAP",
+        "Germany",
+        "Information Technology",
+        "Software",
+        "GER",
+        "EUR",
+        "Large Cap",
+        "DE0007164600",
+        False,
+    ),
+    (
+        "NESN.SW",
+        "Nestlé",
+        "Switzerland",
+        "Consumer Staples",
+        "Food Products",
+        "EBS",
+        "CHF",
+        "Large Cap",
+        "CH0038863350",
+        False,
+    ),
+    (
+        "BARC.L",
+        "Barclays",
+        "United Kingdom",
+        "Financials",
+        "Banks",
+        "LSE",
+        "GBP",
+        "Large Cap",
+        "GB0031348658",
+        False,
+    ),
+    (
+        "AAPL",
+        "Apple",
+        "United States",
+        "Information Technology",
+        "Hardware",
+        "NMS",
+        "USD",
+        "Large Cap",
+        "US0378331005",
+        False,
+    ),
+    (
+        "7203.T",
+        "Toyota",
+        "Japan",
+        "Consumer Discretionary",
+        "Automobiles",
+        "JPX",
+        "JPY",
+        "Large Cap",
+        "JP3633400001",
+        False,
+    ),
     ("DEAD.PA", "Delisted SA", "France", "Industrials", "Machinery", "PAR", "EUR", "Small Cap", None, True),
     (None, "No Symbol Corp", "France", "Industrials", "Machinery", "PAR", "EUR", "Small Cap", None, False),
 ]
@@ -28,8 +105,16 @@ def fixture_frame() -> pd.DataFrame:
     return pd.DataFrame(
         FIXTURE_ROWS,
         columns=[
-            "symbol", "name", "country", "sector", "industry",
-            "exchange", "currency", "market_cap", "isin", "delisted",
+            "symbol",
+            "name",
+            "country",
+            "sector",
+            "industry",
+            "exchange",
+            "currency",
+            "market_cap",
+            "isin",
+            "delisted",
         ],
     )
 
@@ -86,10 +171,7 @@ def test_fr001_bootstrap_is_idempotent_upsert(con) -> None:
     bootstrap_universe(con, frame)
 
     assert con.execute("SELECT count(*) FROM companies").fetchone()[0] == first
-    assert (
-        con.execute("SELECT name FROM companies WHERE symbol = 'AAPL'").fetchone()[0]
-        == "Apple Inc."
-    )
+    assert con.execute("SELECT name FROM companies WHERE symbol = 'AAPL'").fetchone()[0] == "Apple Inc."
 
 
 def test_fr001_unreachable_source_leaves_existing_universe_untouched(con) -> None:
@@ -110,6 +192,9 @@ def test_fr001_bootstrap_rejects_frame_missing_required_columns(con) -> None:
     bad = pd.DataFrame({"symbol": ["X"], "name": ["X Corp"]})
     with pytest.raises(UniverseSourceError):
         bootstrap_universe(con, bad)
-    assert con.execute(
-        "SELECT count(*) FROM information_schema.tables WHERE table_name = 'companies'"
-    ).fetchone()[0] == 0
+    assert (
+        con.execute(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'companies'"
+        ).fetchone()[0]
+        == 0
+    )

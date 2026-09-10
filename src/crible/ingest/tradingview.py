@@ -36,8 +36,16 @@ MAX_ROWS_PER_COUNTRY = 80_000
 REQUEST_JITTER_S = (1.0, 3.0)
 
 SCAN_COLUMNS = [
-    "name", "description", "close", "currency", "market_cap_basic",
-    "volume", "exchange", "type", "subtype", "isin",
+    "name",
+    "description",
+    "close",
+    "currency",
+    "market_cap_basic",
+    "volume",
+    "exchange",
+    "type",
+    "subtype",
+    "isin",
 ]
 
 CAPS_DIR = "caps"
@@ -47,27 +55,90 @@ CENSUS_FILE = "tradingview.parquet"
 # 'southafrica' is 'rsa'). Curated top-10k-first; extending is additive and
 # zero-risk — a bad slug is a counted per-country failure, never fatal.
 TV_COUNTRIES = (
-    "america", "canada", "mexico", "brazil", "chile", "argentina",
-    "uk", "germany", "france", "italy", "spain", "netherlands", "belgium",
-    "portugal", "switzerland", "austria", "sweden", "norway", "denmark",
-    "finland", "poland", "greece", "turkey", "israel", "rsa", "ksa", "uae",
-    "japan", "korea", "taiwan", "hongkong", "china", "india", "singapore",
-    "malaysia", "indonesia", "thailand", "philippines", "australia",
+    "america",
+    "canada",
+    "mexico",
+    "brazil",
+    "chile",
+    "argentina",
+    "uk",
+    "germany",
+    "france",
+    "italy",
+    "spain",
+    "netherlands",
+    "belgium",
+    "portugal",
+    "switzerland",
+    "austria",
+    "sweden",
+    "norway",
+    "denmark",
+    "finland",
+    "poland",
+    "greece",
+    "turkey",
+    "israel",
+    "rsa",
+    "ksa",
+    "uae",
+    "japan",
+    "korea",
+    "taiwan",
+    "hongkong",
+    "china",
+    "india",
+    "singapore",
+    "malaysia",
+    "indonesia",
+    "thailand",
+    "philippines",
+    "australia",
     "newzealand",
 )
 
 # slug → ISO-2 (the universe's country column) — used by the ISIN fallback
 TV_COUNTRY_ISO = {
-    "america": "US", "canada": "CA", "mexico": "MX", "brazil": "BR",
-    "chile": "CL", "argentina": "AR", "uk": "GB", "germany": "DE",
-    "france": "FR", "italy": "IT", "spain": "ES", "netherlands": "NL",
-    "belgium": "BE", "portugal": "PT", "switzerland": "CH", "austria": "AT",
-    "sweden": "SE", "norway": "NO", "denmark": "DK", "finland": "FI",
-    "poland": "PL", "greece": "GR", "turkey": "TR", "israel": "IL",
-    "rsa": "ZA", "ksa": "SA", "uae": "AE", "japan": "JP", "korea": "KR",
-    "taiwan": "TW", "hongkong": "HK", "china": "CN", "india": "IN",
-    "singapore": "SG", "malaysia": "MY", "indonesia": "ID", "thailand": "TH",
-    "philippines": "PH", "australia": "AU", "newzealand": "NZ",
+    "america": "US",
+    "canada": "CA",
+    "mexico": "MX",
+    "brazil": "BR",
+    "chile": "CL",
+    "argentina": "AR",
+    "uk": "GB",
+    "germany": "DE",
+    "france": "FR",
+    "italy": "IT",
+    "spain": "ES",
+    "netherlands": "NL",
+    "belgium": "BE",
+    "portugal": "PT",
+    "switzerland": "CH",
+    "austria": "AT",
+    "sweden": "SE",
+    "norway": "NO",
+    "denmark": "DK",
+    "finland": "FI",
+    "poland": "PL",
+    "greece": "GR",
+    "turkey": "TR",
+    "israel": "IL",
+    "rsa": "ZA",
+    "ksa": "SA",
+    "uae": "AE",
+    "japan": "JP",
+    "korea": "KR",
+    "taiwan": "TW",
+    "hongkong": "HK",
+    "china": "CN",
+    "india": "IN",
+    "singapore": "SG",
+    "malaysia": "MY",
+    "indonesia": "ID",
+    "thailand": "TH",
+    "philippines": "PH",
+    "australia": "AU",
+    "newzealand": "NZ",
 }
 
 # (country slug, TV exchange code) → candidate Yahoo suffixes, from the
@@ -78,38 +149,62 @@ TV_COUNTRY_ISO = {
 # NEWCONNECT, NGM…) — unmapped (country, exchange) pairs are counted and
 # logged so the table grows from real data.
 TV_EXCHANGE_SUFFIXES: dict[tuple[str, str], tuple[str, ...]] = {
-    ("america", "NYSE"): ("",), ("america", "NASDAQ"): ("",),
-    ("america", "AMEX"): ("",), ("america", "OTC"): ("",),
-    ("canada", "TSX"): (".TO",), ("canada", "TSXV"): (".V",),
-    ("canada", "CSE"): (".CN",), ("canada", "NEO"): (".NE",),
+    ("america", "NYSE"): ("",),
+    ("america", "NASDAQ"): ("",),
+    ("america", "AMEX"): ("",),
+    ("america", "OTC"): ("",),
+    ("canada", "TSX"): (".TO",),
+    ("canada", "TSXV"): (".V",),
+    ("canada", "CSE"): (".CN",),
+    ("canada", "NEO"): (".NE",),
     ("mexico", "BMV"): (".MX",),
     ("brazil", "BMFBOVESPA"): (".SA",),
-    ("chile", "BCS"): (".SN",), ("argentina", "BCBA"): (".BA",),
+    ("chile", "BCS"): (".SN",),
+    ("argentina", "BCBA"): (".BA",),
     ("uk", "LSE"): (".L",),
-    ("germany", "XETR"): (".DE",), ("germany", "FWB"): (".F",),
-    ("germany", "DUS"): (".DU",), ("germany", "MUN"): (".MU",),
-    ("germany", "HAM"): (".HM",), ("germany", "HAN"): (".HA",),
-    ("germany", "BER"): (".BE",), ("germany", "SWB"): (".SG",),
-    ("france", "EURONEXT"): (".PA",), ("netherlands", "EURONEXT"): (".AS",),
-    ("belgium", "EURONEXT"): (".BR",), ("portugal", "EURONEXT"): (".LS",),
-    ("italy", "MIL"): (".MI",), ("spain", "BME"): (".MC",),
-    ("switzerland", "SIX"): (".SW",), ("austria", "VIE"): (".VI",),
-    ("sweden", "OMXSTO"): (".ST",), ("norway", "OSL"): (".OL",),
-    ("denmark", "OMXCOP"): (".CO",), ("finland", "OMXHEX"): (".HE",),
-    ("poland", "GPW"): (".WA",), ("greece", "ATHEX"): (".AT",),
-    ("turkey", "BIST"): (".IS",), ("israel", "TASE"): (".TA",),
-    ("rsa", "JSE"): (".JO",), ("ksa", "TADAWUL"): (".SR",),
+    ("germany", "XETR"): (".DE",),
+    ("germany", "FWB"): (".F",),
+    ("germany", "DUS"): (".DU",),
+    ("germany", "MUN"): (".MU",),
+    ("germany", "HAM"): (".HM",),
+    ("germany", "HAN"): (".HA",),
+    ("germany", "BER"): (".BE",),
+    ("germany", "SWB"): (".SG",),
+    ("france", "EURONEXT"): (".PA",),
+    ("netherlands", "EURONEXT"): (".AS",),
+    ("belgium", "EURONEXT"): (".BR",),
+    ("portugal", "EURONEXT"): (".LS",),
+    ("italy", "MIL"): (".MI",),
+    ("spain", "BME"): (".MC",),
+    ("switzerland", "SIX"): (".SW",),
+    ("austria", "VIE"): (".VI",),
+    ("sweden", "OMXSTO"): (".ST",),
+    ("norway", "OSL"): (".OL",),
+    ("denmark", "OMXCOP"): (".CO",),
+    ("finland", "OMXHEX"): (".HE",),
+    ("poland", "GPW"): (".WA",),
+    ("greece", "ATHEX"): (".AT",),
+    ("turkey", "BIST"): (".IS",),
+    ("israel", "TASE"): (".TA",),
+    ("rsa", "JSE"): (".JO",),
+    ("ksa", "TADAWUL"): (".SR",),
     ("uae", "ADX"): (".AD",),
     ("japan", "TSE"): (".T",),
     ("korea", "KRX"): (".KS", ".KQ"),
-    ("taiwan", "TWSE"): (".TW",), ("taiwan", "TPEX"): (".TWO",),
+    ("taiwan", "TWSE"): (".TW",),
+    ("taiwan", "TPEX"): (".TWO",),
     ("hongkong", "HKEX"): (".HK",),
-    ("china", "SSE"): (".SS",), ("china", "SZSE"): (".SZ",),
-    ("india", "NSE"): (".NS",), ("india", "BSE"): (".BO",),
-    ("singapore", "SGX"): (".SI",), ("malaysia", "MYX"): (".KL",),
-    ("indonesia", "IDX"): (".JK",), ("thailand", "SET"): (".BK",),
+    ("china", "SSE"): (".SS",),
+    ("china", "SZSE"): (".SZ",),
+    ("india", "NSE"): (".NS",),
+    ("india", "BSE"): (".BO",),
+    ("singapore", "SGX"): (".SI",),
+    ("malaysia", "MYX"): (".KL",),
+    ("indonesia", "IDX"): (".JK",),
+    ("thailand", "SET"): (".BK",),
     ("philippines", "PSE"): (".PS",),
-    ("australia", "ASX"): (".AX",), ("newzealand", "NZX"): (".NZ",),
+    ("australia", "ASX"): (".AX",),
+    ("newzealand", "NZX"): (".NZ",),
 }
 
 # markets whose universe tickers are zero-padded numeric codes (the Stooq
@@ -277,13 +372,21 @@ def import_tradingview(
     if len(unmapped):
         log.info("tradingview unmatched listings by venue:\n%s", unmapped.to_string())
 
-    census = table[[
-        "symbol", "tv_symbol", "description", "isin", "market_cap_basic", "currency",
-        "close", "volume", "country", "tv_exchange", "match_method",
-    ]].rename(
-        columns={"market_cap_basic": "market_cap", "tv_exchange": "exchange",
-                 "description": "name"}
-    )
+    census = table[
+        [
+            "symbol",
+            "tv_symbol",
+            "description",
+            "isin",
+            "market_cap_basic",
+            "currency",
+            "close",
+            "volume",
+            "country",
+            "tv_exchange",
+            "match_method",
+        ]
+    ].rename(columns={"market_cap_basic": "market_cap", "tv_exchange": "exchange", "description": "name"})
     census = census.assign(asof=asof, source="tradingview", imported_at=now)
     _write_census(data_dir, census.reset_index(drop=True))
 
@@ -291,9 +394,8 @@ def import_tradingview(
     quotes = quotes[pd.to_numeric(quotes["close"], errors="coerce") > 0]
     # several venues can map onto one universe symbol (BMV+BIVA → .MX):
     # keep the largest-cap row, deterministically
-    quotes = (
-        quotes.sort_values(["market_cap_basic", "tv_symbol"], na_position="first")
-        .drop_duplicates("symbol", keep="last")
+    quotes = quotes.sort_values(["market_cap_basic", "tv_symbol"], na_position="first").drop_duplicates(
+        "symbol", keep="last"
     )
     fresh = pd.DataFrame(
         {
@@ -316,9 +418,11 @@ def import_tradingview(
         countries_failed=tuple(failed),
     )
     log.info(
-        "import-prices: %d tradingview quotes (%d listings censused, %d unmatched,"
-        " %d/%d countries)",
-        report.imported, len(census), report.skipped_unknown,
-        report.countries_ok, len(countries),
+        "import-prices: %d tradingview quotes (%d listings censused, %d unmatched, %d/%d countries)",
+        report.imported,
+        len(census),
+        report.skipped_unknown,
+        report.countries_ok,
+        len(countries),
     )
     return report

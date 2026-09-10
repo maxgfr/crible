@@ -37,8 +37,10 @@ _EMPTY = {col: float("nan") for col in FEATURE_COLUMNS}
 
 def _clean(dates: pd.Series, closes: pd.Series) -> pd.DataFrame:
     frame = pd.DataFrame(
-        {"date": pd.to_datetime(dates.reset_index(drop=True)),
-         "close": pd.to_numeric(closes.reset_index(drop=True), errors="coerce")}
+        {
+            "date": pd.to_datetime(dates.reset_index(drop=True)),
+            "close": pd.to_numeric(closes.reset_index(drop=True), errors="coerce"),
+        }
     ).dropna()
     return frame[frame["close"] > 0].sort_values("date")
 

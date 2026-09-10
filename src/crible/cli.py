@@ -41,9 +41,7 @@ def _configure(
     import logging
     import os
 
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     if data_dir is not None:
         os.environ["CRIBLE_DATA_DIR"] = str(data_dir)
 
@@ -81,7 +79,20 @@ def screen(
     if fmt == "csv":
         rows.to_csv(sys.stdout, index=False)
     else:
-        columns = [c for c in ("symbol", "name", "country", "sector", "piotroski_f", "altman_z", "beneish_m", "return_on_equity") if c in rows.columns]
+        columns = [
+            c
+            for c in (
+                "symbol",
+                "name",
+                "country",
+                "sector",
+                "piotroski_f",
+                "altman_z",
+                "beneish_m",
+                "return_on_equity",
+            )
+            if c in rows.columns
+        ]
         typer.echo(rows[columns].to_string(index=False) if columns else rows.to_string(index=False))
         typer.echo(f"({len(rows)} of {total} matching rows)")
 
@@ -172,7 +183,8 @@ def ingest(
     loop: bool = typer.Option(False, "--loop", help="Run the continuous crawl loop"),
     limit: int = typer.Option(50, "--limit", help="Symbols per cycle for --once"),
     symbols: str = typer.Option(
-        "", "--symbols",
+        "",
+        "--symbols",
         help="Comma-separated symbols to crawl NOW with --once (e.g. OVH.PA,MC.PA)"
         " — targeted, bypasses the queue's priority order",
     ),
@@ -217,12 +229,8 @@ def bootstrap(
         report = bootstrap_data(config.data_dir(), repo=repo, force=force)
     except BootstrapError as exc:
         _fail(str(exc))
-    typer.echo(
-        f"bootstrapped {report.files} files from the {report.source} into {config.data_dir()}"
-    )
-    typer.echo(
-        'next: crible screen "piotroski_f >= 7" — or docker compose up to keep the data fresh'
-    )
+    typer.echo(f"bootstrapped {report.files} files from the {report.source} into {config.data_dir()}")
+    typer.echo('next: crible screen "piotroski_f >= 7" — or docker compose up to keep the data fresh')
 
 
 @app.command("import-prices")
@@ -291,9 +299,7 @@ def import_fundamentals(
     source: str = typer.Argument(
         ..., help="'defeatbeta' — Yahoo-derived statements for symbols NO other source serves"
     ),
-    limit: int = typer.Option(
-        0, "--limit", help="Cap the number of gap symbols imported this run (0 = all)"
-    ),
+    limit: int = typer.Option(0, "--limit", help="Cap the number of gap symbols imported this run (0 = all)"),
 ) -> None:
     """Import LAST-RESORT fundamentals: only universe symbols without audited
     raw (EDGAR/ESEF/…) and without crawled yfinance statements are filled;
@@ -339,15 +345,12 @@ def check_coverage(
     typer.echo(json.dumps(block, indent=2))
     failures = []
     if block.get("fundamentals_covered_pct", 0.0) < min_fundamentals:
-        failures.append(
-            f"fundamentals {block.get('fundamentals_covered_pct')}% < {min_fundamentals:g}%"
-        )
+        failures.append(f"fundamentals {block.get('fundamentals_covered_pct')}% < {min_fundamentals:g}%")
     if block.get("priced_pct", 0.0) < min_priced:
         failures.append(f"priced {block.get('priced_pct')}% < {min_priced:g}%")
     if failures:
         for failure in failures:
-            typer.secho(f"top-10k coverage below threshold: {failure}", err=True,
-                        fg=typer.colors.RED)
+            typer.secho(f"top-10k coverage below threshold: {failure}", err=True, fg=typer.colors.RED)
         raise typer.Exit(code=1)
     typer.echo("top-10k coverage above thresholds")
 
@@ -426,50 +429,60 @@ def stooq_download_cmd(
 def refresh(
     deadline: float = typer.Option(9000.0, "--deadline", help="Crawl-loop budget in seconds"),
     max_minutes: float = typer.Option(
-        0.0, "--max-minutes",
+        0.0,
+        "--max-minutes",
         help="WHOLE-RUN wall-clock guard: enrichment stages stop early so"
         " compute+publish always run (0 = unbounded, the self-hosted default)",
     ),
     esef_limit: int = typer.Option(25, "--esef-limit", help="Max ESEF enrichments this run"),
     esef_max_age_days: float = typer.Option(
-        -1.0, "--esef-max-age-days",
+        -1.0,
+        "--esef-max-age-days",
         help="Refetch ESEF filings older than N days (default 90; 0 = backfill"
         " mode, re-parse everything with the current concept map)",
     ),
     esef_history: int = typer.Option(
-        3, "--esef-history",
+        3,
+        "--esef-history",
         help="Merge the N most recent annual ESEF filings per filer — each"
         " older filing adds ~1 audited year (1 = newest only, the pre-0.12"
         " behavior; depth-gated, paid once per filer)",
     ),
     edgar_limit: int = typer.Option(25, "--edgar-limit", help="Max EDGAR enrichments this run"),
     edgar_bulk: bool = typer.Option(
-        False, "--edgar-bulk",
+        False,
+        "--edgar-bulk",
         help="Download companyfacts.zip (~1.4 GB) and ingest ALL resolved US issuers (ADR-0005)",
     ),
     fetch_gleif: bool = typer.Option(
-        True, "--fetch-gleif/--no-fetch-gleif",
+        True,
+        "--fetch-gleif/--no-fetch-gleif",
         help="Self-heal the GLEIF ISIN→LEI mirror so audited EU (ESEF) is enabled",
     ),
     fetch_fx: bool = typer.Option(
-        True, "--fetch-fx/--no-fetch-fx",
+        True,
+        "--fetch-fx/--no-fetch-fx",
         help="Mirror the ECB daily rates so the snapshot gets *_eur columns",
     ),
     fsds_quarters: int = typer.Option(
-        0, "--fsds-quarters",
+        0,
+        "--fsds-quarters",
         help="Backfill deep US history from the N most recent SEC FSDS quarters (0=off)",
     ),
     ch_accounts_url: str = typer.Option(
-        "", "--ch-accounts-url",
+        "",
+        "--ch-accounts-url",
         help="Companies House Accounts Data Product ZIP URL (empty=off;"
         " also needs the operator's data/uk-company-numbers.csv)",
     ),
     cvm_limit: int = typer.Option(
-        0, "--cvm-limit",
+        0,
+        "--cvm-limit",
         help="Audited Brazil: max CVM listings enriched this run (0=off; keyless, ODbL)",
     ),
     twse_limit: int = typer.Option(
-        0, "--twse-limit",
+        0,
+        "--twse-limit",
         help="Audited Taiwan: max TWSE listings enriched this run (0=off; keyless, OGDL)",
     ),
 ) -> None:
@@ -477,14 +490,19 @@ def refresh(
     from crible.ingest.service import run_refresh
 
     result = run_refresh(
-        deadline_seconds=deadline, esef_limit=esef_limit, edgar_limit=edgar_limit,
+        deadline_seconds=deadline,
+        esef_limit=esef_limit,
+        edgar_limit=edgar_limit,
         esef_refresh_seconds=esef_max_age_days * 86400 if esef_max_age_days >= 0 else None,
         esef_history=esef_history,
-        edgar_bulk=edgar_bulk, fsds_quarters=fsds_quarters,
-        fetch_gleif=fetch_gleif, fetch_fx=fetch_fx,
+        edgar_bulk=edgar_bulk,
+        fsds_quarters=fsds_quarters,
+        fetch_gleif=fetch_gleif,
+        fetch_fx=fetch_fx,
         max_seconds=max_minutes * 60 if max_minutes > 0 else None,
         companies_house_url=ch_accounts_url,
-        cvm_limit=cvm_limit, twse_limit=twse_limit,
+        cvm_limit=cvm_limit,
+        twse_limit=twse_limit,
     )
     typer.echo(json.dumps(result, indent=2, default=str))
 
@@ -504,7 +522,9 @@ def mcp_cmd() -> None:
 @app.command("export-site")
 def export_site_cmd(
     out: Path = typer.Option(..., "--out", help="Directory to write the static site artifacts to"),
-    min_symbols: int = typer.Option(50, "--min-symbols", help="Refuse to publish below this snapshot coverage"),
+    min_symbols: int = typer.Option(
+        50, "--min-symbols", help="Refuse to publish below this snapshot coverage"
+    ),
 ) -> None:
     """Export the static artifacts the hosted screener runs on."""
     from crible import config

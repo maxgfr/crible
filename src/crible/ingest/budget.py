@@ -63,10 +63,14 @@ def save_bucket(bucket: TokenBucket, path, wall_now: float | None = None) -> Non
     bucket._evict()
     wall = time.time() if wall_now is None else wall_now
     offset = wall - bucket._now()
-    Path(path).write_text(json.dumps({
-        "window_seconds": bucket.window,
-        "stamps": [round(s + offset, 3) for s in bucket._stamps],
-    }))
+    Path(path).write_text(
+        json.dumps(
+            {
+                "window_seconds": bucket.window,
+                "stamps": [round(s + offset, 3) for s in bucket._stamps],
+            }
+        )
+    )
 
 
 def load_bucket(
