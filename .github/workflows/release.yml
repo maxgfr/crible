@@ -5,8 +5,9 @@
 # (amd64 for the classic VPS path, arm64 for Hetzner CAX / Apple Silicon /
 # Pi NAS) — it must live here because a tag pushed with GITHUB_TOKEN never
 # triggers other workflows (GitHub recursion protection).
-# Every green push to main also publishes `main` + `sha-<short>` (job
-# docker-main), release or not; `latest` + version tags stay release-only.
+# Every green push to main also publishes `main` + `sha-<short>` + `latest`
+# (job docker-main), so the image is always current. When that push cuts a
+# release, the docker job owns `latest` (the bumped commit) instead.
 # Only GITHUB_TOKEN is used: the zero-key contract extends to CI.
 # Out of scope: the rolling `data-latest` release (data channel, ADR-0006) —
 # it is not a semver tag, semantic-release never touches it.
@@ -92,7 +93,9 @@ jobs:
             org.opencontainers.image.licenses=MIT
 
   docker-main:
+    needs: version
     if: >-
+      !cancelled() &&
       github.event_name == 'workflow_run' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push'
@@ -120,6 +123,7 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:main
             ghcr.io/${{ github.repository }}:sha-${{ steps.sha.outputs.short }}
+            ${{ needs.version.outputs.released != 'true' && format('ghcr.io/{0}:latest', github.repository) || '' }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.description=Self-hosted fundamental stock screener
