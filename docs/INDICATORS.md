@@ -682,9 +682,11 @@ serait pire qu'un taux manquant).
   year is missing (so the first period has no score), and `piotroski_f` is `NULL` unless all
   nine are decidable. Accruals test `operating_cashflow > net_income` on the same base.
 - **Market cap uses the period-end share count** (`shares_outstanding_end`: `OrdinarySharesNumber`
-  / EDGAR `CommonStockSharesOutstanding`, the weighted average as a per-period fallback), and so
+  / EDGAR `CommonStockSharesOutstanding`, the weighted average as a per-period fallback — also
+  when the two are more than 2× apart, i.e. in different share units, as Yahoo's BRK-B), and so
   do EV, P/B, Graham's BVPS, NCAV/market cap and the shareholder-yield buyback term. EPS stays on
-  the weighted average.
+  the weighted average. London, Johannesburg and Tel Aviv listings in GBP/ZAR/ILS are priced in
+  pence/cents/agorot by every price source and converted accordingly.
 - **Price in the statements' currency.** When a source records the reporting currency (ESEF
   `_currency`; the crawl's Yahoo `financialCurrency` — ArcelorMittal files in USD and quotes in
   EUR, BREN.JK files in USD and quotes in IDR) the price is converted before any multiple, with

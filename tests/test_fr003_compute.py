@@ -1400,3 +1400,23 @@ def test_altman_z_double_prime_uses_book_equity_and_no_sales() -> None:
     )
     # no price needed: the classic Z is NaN without a market value, Z'' is not
     assert pd.isna(out.loc["2025", "altman_z"])
+
+
+def test_a_period_end_count_in_another_unit_falls_back_to_the_average() -> None:
+    """BRK-B: Yahoo's period-end count is in class-A equivalents (1.44 M vs
+    2.2 B average) — the market cap read $0.7 B instead of ~$1 T."""
+    from crible.compute.canonical import price_shares
+
+    canonical = pd.DataFrame(
+        {"shares_outstanding": [2.2e9, 100.0, 100.0], "shares_outstanding_end": [1.44e6, 95.0, float("nan")]}
+    )
+    assert price_shares(canonical).tolist() == [2.2e9, 95.0, 100.0]
+
+
+def test_a_london_listing_in_gbp_is_priced_in_pence() -> None:
+    from crible.providers.fx import quote_currency
+
+    assert quote_currency("VOD.L", "GBP") == "GBp"
+    assert quote_currency("SHEL.L", "USD") == "USD"  # a USD line on the LSE stays USD
+    assert quote_currency("NPN.JO", "ZAR") == "ZAc"
+    assert quote_currency("AIR.PA", "EUR") == "EUR"

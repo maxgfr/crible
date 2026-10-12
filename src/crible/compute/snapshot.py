@@ -30,7 +30,7 @@ from crible.compute.ratios import RATIO_DENYLIST, compute_ratios, price_dependen
 from crible.compute.scores import all_scores
 from crible.ingest.raw import RawInventory, iter_raw_files
 from crible.providers.audited import merge_audited
-from crible.providers.fx import load_rates, price_factor
+from crible.providers.fx import load_rates, price_factor, quote_currency
 
 SNAPSHOT_NAME = "snapshot.parquet"
 
@@ -308,7 +308,8 @@ def _frames_provider(frames: dict[tuple[str, str], pd.DataFrame], default: str) 
 
 
 def _listing_currencies(data_dir: Path | str) -> dict[str, str]:
-    """symbol → the currency the listing is quoted in (universe.parquet)."""
+    """symbol → the currency the listing's PRICE is in (universe.parquet,
+    minor units resolved — fx.quote_currency)."""
     path = Path(data_dir) / "universe.parquet"
     if not path.exists():
         return {}
@@ -317,7 +318,12 @@ def _listing_currencies(data_dir: Path | str) -> dict[str, str]:
     if "currency" not in pq.ParquetFile(path).schema_arrow.names:
         return {}
     universe = pd.read_parquet(path, columns=["symbol", "currency"]).dropna()
-    return dict(zip(universe["symbol"].astype(str), universe["currency"].astype(str), strict=True))
+    return {
+        symbol: quote_currency(symbol, currency)
+        for symbol, currency in zip(
+            universe["symbol"].astype(str), universe["currency"].astype(str), strict=True
+        )
+    }
 
 
 def _reporting_currency(audited: dict[tuple[str, str], pd.DataFrame]) -> str | None:

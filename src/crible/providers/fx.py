@@ -81,6 +81,22 @@ MINOR_UNITS = {
 }
 
 
+# exchanges whose equities Yahoo/Stooq/TradingView quote in the minor unit
+# while FinanceDatabase lists the major currency: London (pence), Johannesburg
+# (cents), Tel Aviv (agorot)
+MINOR_UNIT_EXCHANGES = {".L": ("GBP", "GBp"), ".JO": ("ZAR", "ZAc"), ".TA": ("ILS", "ILA")}
+
+
+def quote_currency(symbol: str, listing_currency: str | None) -> str | None:
+    """The currency the listing's PRICE is in: the listed currency, or its
+    minor unit on the exchanges that quote in it (a .L listing in GBP trades
+    in pence — VOD.L's market cap read 100× too high)."""
+    for suffix, (major, minor) in MINOR_UNIT_EXCHANGES.items():
+        if symbol.endswith(suffix) and listing_currency == major:
+            return minor
+    return listing_currency
+
+
 def price_factor(quote: str | None, reporting: str | None, rates: dict[str, float] | None) -> float | None:
     """Multiplier taking a price quoted in ``quote`` into the ``reporting``
     currency the statements are in (pence → pounds, EUR → USD via the ECB

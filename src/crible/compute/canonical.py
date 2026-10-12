@@ -111,13 +111,23 @@ def average(series: pd.Series) -> pd.Series:
     return (series + prior_period(series)) / 2
 
 
+# a period-end count further than this factor from the weighted average is a
+# different share unit, not a buyback (Yahoo's BRK-B period-end count is in
+# class-A equivalents, ~1,500× smaller than its B-share average)
+END_SHARES_MAX_FACTOR = 2.0
+
+
 def price_shares(canonical: pd.DataFrame) -> pd.Series:
     """The share count a price multiplies: period-end shares, falling back to
-    the weighted average when the provider has no period-end count."""
+    the weighted average when the provider has no period-end count — or one
+    in another unit than the average (more than 2× apart)."""
     average_shares = canonical["shares_outstanding"]
     if "shares_outstanding_end" not in canonical.columns:
         return average_shares
-    return canonical["shares_outstanding_end"].fillna(average_shares)
+    end = canonical["shares_outstanding_end"]
+    ratio = end / average_shares
+    plausible = ratio.isna() | ratio.between(1 / END_SHARES_MAX_FACTOR, END_SHARES_MAX_FACTOR)
+    return end.where(plausible).fillna(average_shares)
 
 
 def build_canonical(frames: dict[tuple[str, str], pd.DataFrame], freq: str = "annual") -> pd.DataFrame:
