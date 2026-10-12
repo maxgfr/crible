@@ -19,7 +19,8 @@
 # Stooq is CAPTCHA-gated — `crible stooq-download` clears the proof-of-work +
 # image captcha headlessly (SHA-256 hashcash + ddddocr OCR), so it runs here in
 # CI. It stays best-effort (continue-on-error): prices are an enrichment, never
-# a gate. Set the stooq_dataset input to empty to skip it.
+# a gate. A manual dispatch with an empty stooq_dataset uses the same weekly
+# rotation as the schedule; set it to `skip` to leave Stooq out.
 
 name: import-prices
 
@@ -30,23 +31,19 @@ on:
   workflow_dispatch:
     inputs:
       stooq_dataset:
-        description: "Stooq per-country STOCK code (d_hk_txt, d_jp_txt, d_uk_txt…; empty = skip Stooq)"
-        default: d_hk_txt
+        description: "Stooq per-country STOCK code (d_us_txt, d_jp_txt, d_uk_txt, d_hk_txt…; empty = weekly rotation, skip = no Stooq)"
+        default: ""
         required: false
 
 permissions:
   contents: write
   issues: write # the failure beacon opens/bumps a labeled issue
 
-# Own group, deliberately NOT shared with refresh-data: GitHub cancels the
-# older PENDING run when two queue in one group — on 2026-07-15 a queued
-# import-prices dispatch (run 29393834241) silently evicted the pending
-# scheduled nightly (run 29390743173, cancelled 3 s later). Separate groups
-# mean the two can overlap; the publish is last-writer-wins per asset and
-# the post-publish consistency check in publish-data-release.sh catches a
-# mixed-generation release.
+# shared with every restore→publish cycle — see refresh-data.yml for the
+# group rationale and the pending-run eviction trade-off
 concurrency:
-  group: import-prices
+  group: data-release
+  cancel-in-progress: false
 
 jobs:
   import:
@@ -55,7 +52,7 @@ jobs:
     env:
       CRIBLE_DATA_DIR: data
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # --retry-all-errors so --retry also covers the HTTP 404 window a
       # concurrent `gh release upload --clobber` opens (see crawl-marathon.yml)
@@ -70,7 +67,7 @@ jobs:
       - name: Install the OpenGL runtime opencv needs
         run: sudo apt-get update && sudo apt-get install -y libgl1 libglib2.0-0
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
       - run: uv python install 3.12
       - run: uv sync --locked --extra captcha
 
@@ -88,27 +85,41 @@ jobs:
         continue-on-error: true # an enrichment, never a gate
         run: uv run crible import-fundamentals defeatbeta
 
-      # a scheduled run gets NO dispatch input — rotate a useful market by ISO
-      # week; a manual dispatch uses its input (empty input = skip Stooq)
+      # a scheduled run gets NO dispatch input and a manual one may leave it
+      # empty — both rotate a useful market by ISO week; `skip` skips Stooq.
+      # The input travels through env, never ${{ }}-interpolated into the
+      # script (no shell injection), and must look like a Stooq code.
       - name: Pick the Stooq market
         id: stooq
+        env:
+          STOOQ_INPUT: ${{ inputs.stooq_dataset }}
         run: |
-          if [ "${{ github.event_name }}" = "schedule" ]; then
+          input="${STOOQ_INPUT:-}"
+          if [ "$input" = "skip" ]; then
+            echo "stooq_dataset=skip — no Stooq this run"
+            echo "dataset=" >> "$GITHUB_OUTPUT"
+          elif [ -z "$input" ]; then
             # only bulk dumps Stooq actually serves (probed 2026-07-16) —
-            # d_fr/de/it_txt do NOT exist and would waste their rotation slot
+            # d_fr/de/it_txt do NOT exist and would waste their rotation slot;
+            # HK stays out (see header) but remains a manual choice
             markets=(d_us_txt d_uk_txt d_jp_txt d_pl_txt d_hu_txt)
             week=$(date -u +%V)
             echo "dataset=${markets[$((10#$week % ${#markets[@]}))]}" >> "$GITHUB_OUTPUT"
+          elif [[ "$input" =~ ^d_[a-z]+_txt$ ]]; then
+            echo "dataset=$input" >> "$GITHUB_OUTPUT"
           else
-            echo "dataset=${{ inputs.stooq_dataset }}" >> "$GITHUB_OUTPUT"
+            echo "::error::invalid stooq_dataset '$input' (expected d_<cc>_txt, empty or skip)"
+            exit 1
           fi
 
       - name: Fetch the Stooq worldwide dump (proof-of-work + OCR captcha)
         id: stooq_fetch
         if: ${{ steps.stooq.outputs.dataset != '' }}
         continue-on-error: true # prices are an enrichment, never a gate
+        env:
+          STOOQ_DATASET: ${{ steps.stooq.outputs.dataset }}
         run: |
-          uv run crible stooq-download "${{ steps.stooq.outputs.dataset }}" \
+          uv run crible stooq-download "$STOOQ_DATASET" \
             --out "${RUNNER_TEMP}/stooq.zip" --import
 
       # continue-on-error swallows the step's failure — surface it in the run
@@ -116,10 +127,14 @@ jobs:
       # again (d_fr_txt failed invisibly for weeks before 2026-07-16)
       - name: Surface a swallowed Stooq failure
         if: ${{ steps.stooq_fetch.outcome == 'failure' }}
+        env:
+          STOOQ_DATASET: ${{ steps.stooq.outputs.dataset }}
         run: |
-          echo "### ⚠️ Stooq fetch failed for \`${{ steps.stooq.outputs.dataset }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "The step is best-effort so the run stays green — check the step log:" >> "$GITHUB_STEP_SUMMARY"
-          echo "Stooq answers \`Data missing\` for datasets it does not publish (fr/de/it/mx)." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### ⚠️ Stooq fetch failed for \`$STOOQ_DATASET\`"
+            echo "The step is best-effort so the run stays green — check the step log:"
+            echo "Stooq answers \`Data missing\` for datasets it does not publish (fr/de/it/mx)."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Recompute the snapshot with the fresh quotes
         run: uv run crible compute

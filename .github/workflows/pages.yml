@@ -35,11 +35,13 @@ jobs:
     outputs:
       artifact_name: ${{ steps.upload.outcome == 'success' && 'github-pages' || 'github-pages-retry' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-      - run: npm --prefix ui install --no-audit --no-fund
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm --prefix ui ci --no-audit --no-fund
 
       - name: Build the SPA in static mode
         run: npm --prefix ui run build
@@ -59,7 +61,7 @@ jobs:
               "https://github.com/${{ github.repository }}/releases/download/data-latest/site-data.tar.gz"; then
             tar -xzf /tmp/site-data.tar.gz -C /tmp
             cp -R /tmp/site-data/. ui/dist/data/
-            echo "attached $(ls /tmp/site-data | wc -l) data artifacts"
+            echo "attached $(find /tmp/site-data -mindepth 1 -maxdepth 1 | wc -l) data artifacts"
             # generation stamp in the run summary: which dataset this deploy ships
             {
               echo "### Dataset generation"
@@ -72,18 +74,18 @@ jobs:
           fi
           touch ui/dist/.nojekyll
 
-      - uses: actions/configure-pages@v6
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
         with:
           enablement: true
       - id: upload
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         continue-on-error: true
         with:
           path: ui/dist
       # second attempt under a FRESH name: a failed finalize can leave the
       # default "github-pages" artifact half-created and unclaimable
       - if: steps.upload.outcome == 'failure'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: ui/dist
           name: github-pages-retry
@@ -96,6 +98,6 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
         with:
           artifact_name: ${{ needs.build.outputs.artifact_name }}

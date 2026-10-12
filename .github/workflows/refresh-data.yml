@@ -28,11 +28,19 @@ permissions:
   contents: write
   issues: write # the failure beacon opens/bumps a labeled issue
 
-# No cancel-in-progress: a running refresh is never killed. Nothing else may
-# share this group — a second member's queued run would evict a PENDING
-# nightly (GitHub keeps only one pending run per group; bit us 2026-07-15).
+# ONE group for every restore→publish cycle (refresh-data, import-prices,
+# crawl-marathon's crawl job): two overlapping cycles each restore the same
+# generation and the last publisher silently reverts the other's work (the
+# tarball is one asset, last writer wins). No cancel-in-progress: a running
+# publisher is never killed. Trade-off: GitHub keeps only ONE pending run per
+# group, so a newer queued member evicts an older PENDING one (bit us
+# 2026-07-15 with per-workflow groups sharing nothing). The marathon guard
+# yields to any queued/running member to keep that window tiny, and
+# publish-data-release.sh refuses to publish over a release that changed
+# since restore, so an eviction costs one run, never data.
 concurrency:
-  group: refresh-data
+  group: data-release
+  cancel-in-progress: false
 
 jobs:
   refresh:
@@ -45,7 +53,7 @@ jobs:
       # link, which silently killed the whole EDGAR layer (diagnosed 2026-07-14).
       CRIBLE_SEC_USER_AGENT: "crible maxgolfier@gmail.com"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # --retry-all-errors so --retry also covers the HTTP 404 window a
       # concurrent `gh release upload --clobber` opens (see crawl-marathon.yml).
@@ -63,7 +71,7 @@ jobs:
             echo "no data-latest release yet — first refresh starts from scratch"
           fi
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
       - run: uv python install 3.12
       - run: uv sync --locked
 

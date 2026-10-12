@@ -10,6 +10,9 @@ __pycache__/
 # node / ui
 node_modules/
 ui/dist/
+# tsc -b incremental state (build output, never source)
+*.tsbuildinfo
+ui/tsconfig.tsbuildinfo
 
 # data (parquet/duckdb live outside git; the demo-data branch is the one
 # exception, published as an orphan commit by refresh-data.yml).
