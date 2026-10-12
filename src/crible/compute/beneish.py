@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from crible.compute.canonical import prior_period
+
 COEFFICIENTS = {
     "dsri": 0.920,
     "gmi": 0.528,
@@ -34,7 +36,7 @@ def beneish_components(canonical: pd.DataFrame) -> pd.DataFrame:
     c = canonical
 
     def prev(series: pd.Series) -> pd.Series:
-        return series.shift(1)
+        return prior_period(series)
 
     receivable_to_sales = c["accounts_receivable"] / c["revenue"]
     dsri = receivable_to_sales / prev(receivable_to_sales)

@@ -31,7 +31,10 @@ FIELD_CANDIDATES: dict[str, list[str]] = {
         "ReconciledDepreciation",
         "DepreciationAmortizationDepletion",
     ],
+    # weighted-average count — the EPS denominator
     "shares_outstanding": ["BasicAverageShares", "OrdinarySharesNumber", "ShareIssued"],
+    # period-end count — what a price multiplies into a market cap
+    "shares_outstanding_end": ["OrdinarySharesNumber", "ShareIssued"],
     # balance sheet
     "total_assets": ["TotalAssets"],
     "current_assets": ["CurrentAssets"],
@@ -61,6 +64,60 @@ FIELD_CANDIDATES: dict[str, list[str]] = {
 }
 
 CANONICAL_FIELDS = list(FIELD_CANDIDATES)
+
+# outflows reported negative (yfinance convention): their growth is the
+# growth of the magnitude
+OUTFLOW_FIELDS = ("capital_expenditure", "dividends_paid")
+
+# a prior period is « last year » only when it ends 300–430 days earlier
+# (52/53-week calendars and a shifted fiscal year-end included); anything else
+# is a gap — FSDS 2018 next to a 2021 crawl — and compares nothing
+PRIOR_GAP_DAYS = (300, 430)
+
+
+def period_dates(index: pd.Index) -> pd.Series:
+    """Fiscal period end dates from the period labels: a bare year ("2024",
+    ESEF) is that year's December 31; unparseable labels are NaT."""
+    labels = pd.Series(pd.Index(index).astype(str))
+    labels = labels.where(~labels.str.fullmatch(r"\d{4}"), labels + "-12-31").str[:10]
+    return pd.to_datetime(labels, format="%Y-%m-%d", errors="coerce")
+
+
+def prior_period(obj: pd.Series | pd.DataFrame, periods: int = 1) -> pd.Series | pd.DataFrame:
+    """``obj.shift(periods)`` where the earlier period really is ``periods``
+    fiscal years back, NaN across a calendar gap. Labels that are not dates
+    at all (synthetic fixtures) keep the positional shift."""
+    shifted = obj.shift(periods)
+    dates = period_dates(obj.index)
+    if dates.isna().all():
+        return shifted
+    gap = (dates - dates.shift(periods)).dt.days
+    in_window = gap.between(PRIOR_GAP_DAYS[0] * periods, PRIOR_GAP_DAYS[1] * periods).to_numpy()
+    shifted = shifted.copy()
+    shifted.iloc[~in_window] = float("nan")
+    return shifted
+
+
+def yoy_growth(obj: pd.Series | pd.DataFrame) -> pd.Series | pd.DataFrame:
+    """Year-over-year growth, defined on a POSITIVE prior value only: a
+    negative or zero base sign-flips or blows up the ratio (-10 → +5 is not a
+    « -150 % » decline), so it is NaN, never a misleading number."""
+    prev = prior_period(obj)
+    return ((obj - prev) / prev).where(prev > 0)
+
+
+def average(series: pd.Series) -> pd.Series:
+    """Opening/closing average over the fiscal year (NaN across a gap)."""
+    return (series + prior_period(series)) / 2
+
+
+def price_shares(canonical: pd.DataFrame) -> pd.Series:
+    """The share count a price multiplies: period-end shares, falling back to
+    the weighted average when the provider has no period-end count."""
+    average_shares = canonical["shares_outstanding"]
+    if "shares_outstanding_end" not in canonical.columns:
+        return average_shares
+    return canonical["shares_outstanding_end"].fillna(average_shares)
 
 
 def build_canonical(frames: dict[tuple[str, str], pd.DataFrame], freq: str = "annual") -> pd.DataFrame:

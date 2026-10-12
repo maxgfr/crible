@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import logging
 
 import pandas as pd
 from financetoolkit.ratios import (
@@ -22,24 +23,52 @@ from financetoolkit.ratios import (
     valuation_model,
 )
 
+from crible.compute.canonical import average, price_shares
+
+log = logging.getLogger(__name__)
+
 RATIO_MODULES = [profitability_model, liquidity_model, solvency_model, efficiency_model, valuation_model]
 
 # Resolvable but never emitted: net_current_asset_value duplicates extras.ncav;
 # dividend_yield would be TOTAL dividends over the share price (bogus units —
 # weighted_dividend_yield is the real one); dividend_capex_coverage mixes the
 # negative canonical capex with positive dividends. The containment tool for
-# anything the `dividends` alias accidentally wires.
+# anything the `dividends` alias accidentally wires. The last three are
+# formulas that do not mean their name: interest/debt × shares is no per-share
+# figure, operating income over current liabilities is no debt-service
+# coverage, and (NI − dividends)/(E + D) is not a return on invested capital.
 RATIO_DENYLIST = frozenset(
     {
         "net_current_asset_value",
         "dividend_yield",
         "dividend_capex_coverage_ratio",
+        "interest_debt_per_share",
+        "debt_service_coverage_ratio",
+        "return_on_invested_capital",
     }
 )
 
+# A multiple over a non-positive denominator sign-flips: a loss gives a
+# negative P/E that passes `P/E < 12`, negative equity a « cheap » P/B and a
+# « quality » ROE. Those cells are undefined (NaN) — the guards extras.py and
+# ttm.py already apply. Each entry names the inputs that must be > 0.
+POSITIVE_DENOMINATORS: dict[str, tuple[str, ...]] = {
+    "price_to_earnings_ratio": ("earnings_per_share",),
+    "price_to_book_ratio": ("book_value_per_share",),
+    "return_on_equity": ("total_equity", "average_total_equity"),
+    "debt_to_equity_ratio": ("total_equity",),
+    "equity_multiplier": ("average_total_equity",),
+    "price_to_cash_flow_ratio": ("operating_cashflow",),
+    "price_to_free_cash_flow_ratio": ("free_cash_flow",),
+    "ev_to_operating_cashflow_ratio": ("operating_cashflow",),
+    "ev_to_ebit": ("earnings_before_interest_and_taxes",),
+    # financetoolkit's EBITDA here is operating income + D&A
+    "ev_to_ebitda_ratio": ("_operating_ebitda",),
+}
+
 
 def _avg(series: pd.Series) -> pd.Series:
-    return (series + series.shift(1)) / 2
+    return average(series)
 
 
 def build_inputs(canonical: pd.DataFrame, price: pd.Series | None = None) -> dict[str, pd.Series]:
@@ -86,19 +115,15 @@ def build_inputs(canonical: pd.DataFrame, price: pd.Series | None = None) -> dic
     alias(["retained_earnings"], c["retained_earnings"])
     alias(["goodwill"], c["goodwill"])
     alias(["minority_interest"], c["minority_interest"])
-    alias(["capital_expenditure", "capital_expenditures"], c["capital_expenditure"])
+    # capex functions expect a magnitude; the canonical outflow is negative
+    alias(["capital_expenditure", "capital_expenditures"], c["capital_expenditure"].abs())
     # weighted_dividend_yield expects a positive magnitude; abs() tolerates
     # either sign convention for the reported outflow
     alias(["dividends_paid"], c["dividends_paid"].abs())
-    alias(
-        [
-            "shares_outstanding",
-            "common_shares_outstanding",
-            "total_shares_outstanding",
-            "average_outstanding_shares",
-        ],
-        c["shares_outstanding"],
-    )
+    # per-share flows use the weighted average (like EPS); a share count
+    # that prices the whole company uses the period-end count
+    alias(["shares_outstanding", "average_outstanding_shares"], c["shares_outstanding"])
+    alias(["common_shares_outstanding", "total_shares_outstanding"], price_shares(c))
 
     inputs["average_total_assets"] = _avg(c["total_assets"])
     inputs["average_total_equity"] = _avg(c["total_equity"])
@@ -126,14 +151,16 @@ def build_inputs(canonical: pd.DataFrame, price: pd.Series | None = None) -> dic
     # total dividends under the param name the payout/ROIC functions expect;
     # abs() tolerates either sign convention for the reported outflow
     inputs["dividends"] = c["dividends_paid"].abs()
+    # guard-only (no ratio parameter is named like this): see POSITIVE_DENOMINATORS
+    inputs["_operating_ebitda"] = c["operating_income"] + c["depreciation_and_amortization"]
 
     if price is not None:
-        market_cap = price * c["shares_outstanding"]
+        market_cap = price * price_shares(c)
         eps = c["net_income"] / c["shares_outstanding"]
         alias(["stock_price", "share_price", "market_price_per_share", "price_per_share"], price)
         alias(["market_cap", "market_capitalization"], market_cap)
         inputs["earnings_per_share"] = eps
-        inputs["book_value_per_share"] = c["total_equity"] / c["shares_outstanding"]
+        inputs["book_value_per_share"] = c["total_equity"] / price_shares(c)
         inputs["net_debt"] = c["total_debt"] - c["cash_and_equivalents"]
         inputs["enterprise_value"] = market_cap + c["total_debt"] - c["cash_and_equivalents"]
 
@@ -152,15 +179,26 @@ def compute_ratios(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
                 continue
             params = inspect.signature(fn).parameters
             required = [p for p in params.values() if p.default is inspect.Parameter.empty]
-            if not all(p.name in inputs for p in required):
+            unresolved = [p.name for p in required if p.name not in inputs]
+            if unresolved:
+                log.debug("ratio %s skipped: no input for %s", name, ", ".join(unresolved))
                 continue
             try:
                 result = fn(**{p.name: inputs[p.name] for p in required})
-            except Exception:  # noqa: BLE001 — a single ratio must never kill compute
+            except Exception as exc:  # noqa: BLE001 — a single ratio must never kill compute
+                log.debug("ratio %s raised %s: %s", name, type(exc).__name__, exc)
                 continue
             if isinstance(result, pd.Series):
-                out[column] = result
+                out[column] = _guard(column, result, inputs)
     return pd.DataFrame(out, index=canonical.index)
+
+
+def _guard(column: str, result: pd.Series, inputs: dict[str, pd.Series]) -> pd.Series:
+    """NaN where a POSITIVE_DENOMINATORS input is not > 0 (or missing)."""
+    for name in POSITIVE_DENOMINATORS.get(column, ()):
+        if name in inputs:
+            result = result.where(inputs[name] > 0)
+    return result
 
 
 @functools.lru_cache(maxsize=1)

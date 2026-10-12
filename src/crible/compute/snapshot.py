@@ -11,14 +11,21 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
-from crible.compute.canonical import CANONICAL_FIELDS, build_canonical
+from crible.compute.canonical import (
+    CANONICAL_FIELDS,
+    OUTFLOW_FIELDS,
+    build_canonical,
+    price_shares,
+    yoy_growth,
+)
 from crible.compute.extras import compute_extras
 from crible.compute.momentum import FEATURE_COLUMNS as MOMENTUM_COLUMNS
 from crible.compute.momentum import bars_features
 from crible.compute.ranks import attach_ranks
-from crible.compute.ttm import TTM_COLUMNS, ttm_from_quarterly, ttm_ratios
+from crible.compute.ttm import TTM_COLUMNS, select_ttm, ttm_ratios
 from crible.compute.ratios import RATIO_DENYLIST, compute_ratios, price_dependent_ratio_columns
 from crible.compute.scores import all_scores
 from crible.ingest.raw import iter_raw_files
@@ -43,6 +50,12 @@ def latest_close(frames: dict[tuple[str, str], pd.DataFrame]) -> tuple[float, st
     return float(last[close_col]), as_of
 
 
+# a feature missing from the price's own source may be filled from the other
+# source only when that one is this close in time (a months-old crawl must not
+# supply return_6m next to a fresh dump close)
+FEATURE_FILL_DAYS = 7
+
+
 def build_symbol_snapshot(
     symbol: str,
     frames: dict[tuple[str, str], pd.DataFrame],
@@ -53,86 +66,158 @@ def build_symbol_snapshot(
     price_quote: tuple[float, str] | None = None,
     quote_features: dict | None = None,
 ) -> pd.DataFrame:
-    canonical = build_canonical(frames)
-    audited_fields: dict[str, list[str]] = {}
-    if audited_frames:
-        from crible.compute.reconcile import align_periods, reconcile
-
-        audited = build_canonical(audited_frames)
-        if canonical.empty:
-            canonical = audited
-            audited_fields = {
-                str(p): [c for c in audited.columns if pd.notna(audited.loc[p, c])] for p in audited.index
-            }
-        elif not audited.empty:
-            audited = align_periods(audited, canonical.index)
-            result = reconcile(canonical, audited, symbol=symbol)
-            canonical = result.merged
-            audited_fields = result.audited_fields
+    """One symbol's rows: merged canonical fields → price → per-period blocks
+    → latest-row overlays (momentum, TTM) → provenance. ±inf never leaves:
+    a filter would match it while every reader shows null."""
+    canonical, audited_fields = _merge_audited(build_canonical(frames), audited_frames, symbol)
     if canonical.empty:
         return pd.DataFrame()
-
     price_asof: str | None = None
+    features = bars_features(frames.get(("prices", "daily")))
     if price is None:
-        # freshest as-of wins between the crawled daily bars and the imported
-        # dump quote (price_quote from data/prices-latest.parquet) — a same-day
-        # TradingView close must not lose to yesterday's crawled bar
-        crawled = latest_close(frames)
-        close = crawled or price_quote
-        if crawled and price_quote and str(price_quote[1]) > str(crawled[1]):
-            close = price_quote
-        if close is not None:
-            value, price_asof = close
-            # the current price applies to the LATEST fiscal period only —
-            # older periods keep NaN rather than pretending historical prices
-            price = pd.Series(float("nan"), index=canonical.index)
-            price.iloc[-1] = value
+        price, price_asof, features = _resolve_price(frames, price_quote, quote_features, canonical.index)
+    elif quote_features is not None:
+        features = _fill_features(features, quote_features)
 
+    out = _period_blocks(canonical, price)
+    _overlay_latest(out, canonical, price, price_asof, features, frames, audited_frames)
+    out = _provenance(out, symbol, canonical, audited_fields, provider, price_asof, computed_at)
+    return out.replace([np.inf, -np.inf], np.nan)
+
+
+def _merge_audited(
+    canonical: pd.DataFrame, audited_frames: dict[tuple[str, str], pd.DataFrame] | None, symbol: str
+) -> tuple[pd.DataFrame, dict[str, list[str]]]:
+    """Audited values over scraped ones (reconcile); an audited-only listing
+    takes the audited frames as its base. Returns the per-period list of
+    fields that came from the audited layer."""
+    if not audited_frames:
+        return canonical, {}
+    from crible.compute.reconcile import align_periods, reconcile
+
+    audited = build_canonical(audited_frames)
+    if canonical.empty:
+        fields = {str(p): [c for c in audited.columns if pd.notna(audited.loc[p, c])] for p in audited.index}
+        return audited, fields
+    if audited.empty:
+        return canonical, {}
+    result = reconcile(canonical, align_periods(audited, canonical.index), symbol=symbol)
+    return result.merged, result.audited_fields
+
+
+def _fill_features(primary: dict, fallback: dict | None) -> dict:
+    """Per-feature fill of NaN momentum features from a second source."""
+    if not fallback:
+        return dict(primary)
+    return {
+        col: fallback.get(col, float("nan")) if pd.isna(primary.get(col, float("nan"))) else primary[col]
+        for col in MOMENTUM_COLUMNS
+    }
+
+
+def _resolve_price(
+    frames: dict[tuple[str, str], pd.DataFrame],
+    price_quote: tuple[float, str] | None,
+    quote_features: dict | None,
+    index: pd.Index,
+) -> tuple[pd.Series | None, str | None, dict]:
+    """(price series, as-of, momentum features) from the freshest source.
+
+    The crawled daily bars and the imported dump quote (prices-latest.parquet)
+    compete on as-of — a same-day TradingView close must not lose to
+    yesterday's crawled bar — and the momentum features come from the SAME
+    source as the price, so return_6m and the close share a date. The current
+    price applies to the LATEST fiscal period only: older periods keep NaN
+    rather than pretending historical prices."""
+    crawled = latest_close(frames)
+    bar_features = bars_features(frames.get(("prices", "daily")))
+    quote_features = quote_features or {}
+    use_quote = price_quote is not None and (crawled is None or str(price_quote[1]) > str(crawled[1]))
+    close = price_quote if use_quote else crawled
+    if close is None:
+        return None, None, _fill_features(bar_features, quote_features)
+    primary, secondary = (quote_features, bar_features) if use_quote else (bar_features, quote_features)
+    other = crawled if use_quote else price_quote
+    other_asof = other[1] if other is not None else None
+    if other_asof is not None and _days_between(str(close[1]), str(other_asof)) <= FEATURE_FILL_DAYS:
+        features = _fill_features(
+            {col: primary.get(col, float("nan")) for col in MOMENTUM_COLUMNS}, secondary
+        )
+    else:
+        features = {col: primary.get(col, float("nan")) for col in MOMENTUM_COLUMNS}
+    value, price_asof = close
+    price = pd.Series(float("nan"), index=index)
+    price.iloc[-1] = value
+    return price, price_asof, features
+
+
+def _days_between(a: str, b: str) -> float:
+    days = abs((pd.to_datetime(a[:10], errors="coerce") - pd.to_datetime(b[:10], errors="coerce")).days)
+    return float("inf") if pd.isna(days) else days
+
+
+def _period_blocks(canonical: pd.DataFrame, price: pd.Series | None) -> pd.DataFrame:
+    """Every per-period block in ONE concat: canonical fields, ratios,
+    year-over-year growths, scores, extras, plus the NaN filler the
+    latest-row overlays write into (inserting them one by one onto the
+    many-block frame was pure PerformanceWarning spam at 57k rows)."""
     ratios = compute_ratios(canonical, price)
     scores = all_scores(canonical, price)
     extras = compute_extras(canonical, price)
-    growth = canonical[CANONICAL_FIELDS].pct_change(fill_method=None)
+    # outflows (negative by convention) grow by their magnitude
+    magnitudes = canonical[CANONICAL_FIELDS].copy()
+    magnitudes[list(OUTFLOW_FIELDS)] = magnitudes[list(OUTFLOW_FIELDS)].abs()
+    growth = yoy_growth(magnitudes)
     growth.columns = [f"{col}_growth" for col in growth.columns]
     # price-based ratios exist for the latest period only, so their YoY
     # growth can never resolve — don't emit those always-NaN columns
     price_cols = price_dependent_ratio_columns()
-    ratio_growth = ratios.drop(columns=[c for c in ratios.columns if c in price_cols]).pct_change(
-        fill_method=None
-    )
+    ratio_growth = yoy_growth(ratios.drop(columns=[c for c in ratios.columns if c in price_cols]))
     ratio_growth.columns = [f"{col}_growth" for col in ratio_growth.columns]
-
-    # momentum + TTM columns ride the single concat as a NaN filler and the
-    # .copy() consolidates the blocks — inserting them one by one onto the
-    # many-block frame was pure PerformanceWarning spam at 57k rows
     filler = pd.DataFrame(float("nan"), index=canonical.index, columns=[*MOMENTUM_COLUMNS, *TTM_COLUMNS])
-    out = pd.concat([canonical, ratios, growth, ratio_growth, scores, extras, filler], axis=1).copy()
-    # price-derived momentum features (return_6m feeds momentum_rank; plus
-    # 12-1, 52-week-high proximity, 1y volatility), latest period only —
-    # cross-sectional like the price itself; NaN when history is too short.
-    # Crawled bars win; the imported-dump distillate fills per feature.
-    if len(out):
-        features = bars_features(frames.get(("prices", "daily")))
-        for col in MOMENTUM_COLUMNS:
-            value = features.get(col, float("nan"))
-            if pd.isna(value) and quote_features is not None:
-                value = quote_features.get(col, float("nan"))
-            out.iloc[-1, out.columns.get_loc(col)] = value
-    # TTM — the last four quarters summed onto the latest row (columns, not
-    # rows). Audited discrete quarters (EDGAR 10-Q, v2) outrank scraped, and
-    # a window is never source-mixed: all-audited or all-scraped, else NaN.
-    if len(out):
-        ttm = ttm_from_quarterly(audited_frames) if audited_frames else {}
-        if not ttm:
-            ttm = ttm_from_quarterly(frames)
-        latest_price = price.iloc[-1] if price is not None else float("nan")
-        latest_shares = canonical["shares_outstanding"].iloc[-1]
-        market_cap_latest = (
-            float(latest_price) * float(latest_shares)
-            if pd.notna(latest_price) and pd.notna(latest_shares)
-            else float("nan")
-        )
-        for col, value in {**ttm, **ttm_ratios(ttm, market_cap_latest)}.items():
-            out.iloc[-1, out.columns.get_loc(col)] = value
+    return pd.concat([canonical, ratios, growth, ratio_growth, scores, extras, filler], axis=1).copy()
+
+
+def _overlay_latest(
+    out: pd.DataFrame,
+    canonical: pd.DataFrame,
+    price: pd.Series | None,
+    price_asof: str | None,
+    features: dict,
+    frames: dict[tuple[str, str], pd.DataFrame],
+    audited_frames: dict[tuple[str, str], pd.DataFrame] | None,
+) -> None:
+    """Latest-row-only columns, written in place: the price-derived momentum
+    features (return_6m feeds momentum_rank; plus 12-1, 52-week-high
+    proximity, 1y volatility — cross-sectional like the price itself) and the
+    TTM sums + ratios (columns, not rows). The TTM source is the freshest
+    clean four-quarter window (ttm.select_ttm)."""
+    if not len(out):
+        return
+    last = len(out) - 1
+    for col in MOMENTUM_COLUMNS:
+        out.iloc[last, out.columns.get_loc(col)] = features.get(col, float("nan"))
+    ttm = select_ttm(audited_frames, frames, price_asof)
+    latest_price = price.iloc[-1] if price is not None else float("nan")
+    latest_shares = price_shares(canonical).iloc[-1]
+    market_cap_latest = (
+        float(latest_price) * float(latest_shares)
+        if pd.notna(latest_price) and pd.notna(latest_shares)
+        else float("nan")
+    )
+    for col, value in {**ttm, **ttm_ratios(ttm, market_cap_latest)}.items():
+        out.iloc[last, out.columns.get_loc(col)] = value
+
+
+def _provenance(
+    out: pd.DataFrame,
+    symbol: str,
+    canonical: pd.DataFrame,
+    audited_fields: dict[str, list[str]],
+    provider: str,
+    price_asof: str | None,
+    computed_at: float | None,
+) -> pd.DataFrame:
     out.insert(0, "symbol", symbol)
     out.insert(1, "period", out.index.astype(str))
     out["provider"] = provider
@@ -317,7 +402,9 @@ BASE_SCHEMA_NAME = "base-schema.json"
 # 6: TTM v1 — quarterly flow sums + P/E·P/S·FCF-yield (TTM) on the latest row
 # 7: 3-year CAGR columns (revenue_cagr_3y, net_income_cagr_3y)
 # 8: short_term_debt canonical field + audited total_debt derivation
-ENGINE_SCHEMA_VERSION = 8
+# 9: audit fixes — shares_outstanding_end, guarded multiples, gap-aware YoY,
+#    in-house Piotroski, telescoped Dechow, fake ratios denied (ROIC & co)
+ENGINE_SCHEMA_VERSION = 9
 
 
 def _newest_raw_stamp(data_dir: Path | str, symbol: str) -> float:
@@ -335,33 +422,54 @@ def _newest_raw_stamp(data_dir: Path | str, symbol: str) -> float:
     return newest
 
 
-def build_snapshot_incremental(data_dir: Path | str) -> pd.DataFrame | None:
+def publish_incremental(data_dir: Path | str) -> pd.DataFrame | None:
     """Recompute only the symbols whose raw changed since the last build, reuse
-    the cached per-symbol rows for the rest, then re-finalize over everything.
-    Returns the new snapshot, or None when nothing changed (no republish).
+    the cached per-symbol rows for the rest, re-finalize over everything and
+    publish. Returns the published snapshot, or None when nothing changed (no
+    republish); an empty frame when there is no raw data yet.
 
     The per-symbol stage is O(dirty); the cross-sectional finalize is O(all) but
     cheap. A ``base.parquet`` caches the pre-finalize rows so unchanged symbols
-    are never rebuilt — the fix for full rebuilds at 20k+ issuers (F7)."""
+    are never rebuilt — the fix for full rebuilds at 20k+ issuers (F7).
+
+    Ordering is the safety: the base (and its watermark, the compute START
+    time) is written strictly AFTER the snapshot swap, so a finalize or publish
+    that dies leaves the previous base and the next run redoes the work —
+    never a base claiming a snapshot that was not published."""
     data_dir = Path(data_dir)
+    started = time.time()
+    built = _incremental_rows(data_dir)
+    if built is None:
+        return None
+    rows, refresh_base = built
+    snapshot = finalize_snapshot(rows, data_dir)
+    if snapshot.empty:
+        return snapshot
+    publish_snapshot(snapshot, data_dir)
+    if refresh_base:
+        _publish_base(rows, data_dir, watermark=started)
+    return snapshot
+
+
+def _incremental_rows(data_dir: Path) -> tuple[pd.DataFrame, bool] | None:
+    """(pre-finalize rows, whether the base cache must be rewritten), or None
+    when the published snapshot is already current."""
     base_path = data_dir / "snapshot" / BASE_NAME
     symbols = crawled_symbols(data_dir)
     # no cache, or a cache built by a different engine schema (the nightly
     # restores base.parquet from the last release) → full rebuild
     if not base_path.exists() or _cached_schema_version(data_dir) != ENGINE_SCHEMA_VERSION:
-        rows = build_symbol_rows(data_dir, symbols)
-        _publish_base(rows, data_dir)
-        return finalize_snapshot(rows, data_dir)
+        return build_symbol_rows(data_dir, symbols), True
 
-    base_mtime = base_path.stat().st_mtime
+    watermark = _base_watermark(data_dir)
     # a refreshed price distillate changes the price_quote / return_6m baked into
     # EVERY symbol's base row, so it makes them all dirty (F8) — otherwise the
     # base-persisted rows serve stale prices and value/momentum ranks.
     price_file = data_dir / "prices-latest.parquet"
-    if price_file.exists() and price_file.stat().st_mtime > base_mtime:
+    if price_file.exists() and price_file.stat().st_mtime > watermark:
         dirty = list(symbols)
     else:
-        dirty = [s for s in symbols if _newest_raw_stamp(data_dir, s) > base_mtime]
+        dirty = [s for s in symbols if _newest_raw_stamp(data_dir, s) > watermark]
     # the base cache may predate the schema (the nightly restores it from the
     # last release): scrub retired columns so kept rows can't resurrect them
     prev = _scrub_retired_columns(pd.read_parquet(base_path))
@@ -369,13 +477,29 @@ def build_snapshot_incremental(data_dir: Path | str) -> pd.DataFrame | None:
     # a symbol vanishing from the raw layer is also a change (drop its rows)
     dropped = known - set(symbols)
     if not dirty and not dropped:
-        return None
+        # per-symbol rows are current; the cross-sectional inputs (universe,
+        # FX) may not be — or the snapshot itself is gone
+        return (prev, False) if _snapshot_stale(data_dir) else None
 
     kept = prev[prev["symbol"].isin(set(symbols) - set(dirty))] if "symbol" in prev.columns else prev
     fresh = build_symbol_rows(data_dir, dirty) if dirty else pd.DataFrame()
     rows = pd.concat([kept, fresh], ignore_index=True) if not fresh.empty else kept.reset_index(drop=True)
-    _publish_base(rows, data_dir)
-    return finalize_snapshot(rows, data_dir)
+    return rows, True
+
+
+def _snapshot_stale(data_dir: Path) -> bool:
+    """The published snapshot is missing, or older than an input only the
+    finalize stage reads (universe.parquet, the ECB FX mirror)."""
+    snapshot = data_dir / "snapshot" / SNAPSHOT_NAME
+    if not snapshot.exists():
+        return True
+    published = snapshot.stat().st_mtime
+    from crible.providers.fx import _mirror_file
+
+    return any(
+        path.exists() and path.stat().st_mtime > published
+        for path in (data_dir / "universe.parquet", _mirror_file(data_dir))
+    )
 
 
 def _scrub_retired_columns(rows: pd.DataFrame) -> pd.DataFrame:
@@ -386,17 +510,31 @@ def _scrub_retired_columns(rows: pd.DataFrame) -> pd.DataFrame:
     return rows.drop(columns=[c for c in rows.columns if c in retired])
 
 
-def _cached_schema_version(data_dir: Path | str) -> int | None:
+def _base_meta(data_dir: Path | str) -> dict:
     import json
 
     path = Path(data_dir) / "snapshot" / BASE_SCHEMA_NAME
     try:
-        return json.loads(path.read_text()).get("engine_schema_version")
+        meta = json.loads(path.read_text())
     except (OSError, ValueError):
-        return None
+        return {}
+    return meta if isinstance(meta, dict) else {}
 
 
-def _publish_base(rows: pd.DataFrame, data_dir: Path | str) -> None:
+def _cached_schema_version(data_dir: Path | str) -> int | None:
+    return _base_meta(data_dir).get("engine_schema_version")
+
+
+def _base_watermark(data_dir: Path | str) -> float:
+    """The start time of the compute that built the base; a base written
+    before watermarks existed falls back to its file mtime."""
+    watermark = _base_meta(data_dir).get("watermark")
+    if isinstance(watermark, (int, float)):
+        return float(watermark)
+    return (Path(data_dir) / "snapshot" / BASE_NAME).stat().st_mtime
+
+
+def _publish_base(rows: pd.DataFrame, data_dir: Path | str, watermark: float) -> None:
     import json
 
     directory = Path(data_dir) / "snapshot"
@@ -404,7 +542,9 @@ def _publish_base(rows: pd.DataFrame, data_dir: Path | str) -> None:
     tmp = directory / f".tmp-{BASE_NAME}"
     rows.to_parquet(tmp, index=False)
     tmp.rename(directory / BASE_NAME)
-    (directory / BASE_SCHEMA_NAME).write_text(json.dumps({"engine_schema_version": ENGINE_SCHEMA_VERSION}))
+    (directory / BASE_SCHEMA_NAME).write_text(
+        json.dumps({"engine_schema_version": ENGINE_SCHEMA_VERSION, "watermark": watermark})
+    )
 
 
 def publish_snapshot(snapshot: pd.DataFrame, data_dir: Path | str) -> Path:

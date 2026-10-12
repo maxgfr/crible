@@ -631,3 +631,25 @@ def test_fr016_debt_current_maps_to_the_sided_canonical_column() -> None:
     }
     frames = facts_to_frames(facts)
     assert frames[("balance", "annual")].loc[0, "CurrentDebt"] == 3e8
+
+
+def test_fr016_period_end_share_count_maps_to_the_market_cap_base() -> None:
+    """CommonStockSharesOutstanding (instant, unit shares) → OrdinarySharesNumber
+    → canonical shares_outstanding_end; the weighted average stays EPS-only."""
+    from crible.compute.canonical import build_canonical
+
+    facts = {
+        "facts": {
+            "us-gaap": {
+                "CommonStockSharesOutstanding": {
+                    "units": {"shares": [_fact(None, "2024-09-28", 15_116_786_000.0)]}
+                },
+                "WeightedAverageNumberOfSharesOutstandingBasic": {
+                    "units": {"shares": [_fact("2023-10-01", "2024-09-28", 15_343_783_000.0)]}
+                },
+            }
+        }
+    }
+    canonical = build_canonical(facts_to_frames(facts))
+    assert canonical.loc["2024-09-28", "shares_outstanding_end"] == 15_116_786_000.0
+    assert canonical.loc["2024-09-28", "shares_outstanding"] == 15_343_783_000.0

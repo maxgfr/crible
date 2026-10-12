@@ -87,6 +87,9 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
     "Liabilities": ("TotalLiabilitiesNetMinorityInterest", "balance"),
     "LiabilitiesCurrent": ("CurrentLiabilities", "balance"),
     "StockholdersEquity": ("StockholdersEquity", "balance"),
+    # period-end share count (instant) → canonical shares_outstanding_end,
+    # what market cap / P/B multiply; the weighted average stays the EPS base
+    "CommonStockSharesOutstanding": ("OrdinarySharesNumber", "balance"),
     "RetainedEarningsAccumulatedDeficit": ("RetainedEarnings", "balance"),
     "InventoryNet": ("Inventory", "balance"),
     "AccountsReceivableNetCurrent": ("AccountsReceivable", "balance"),
@@ -152,7 +155,7 @@ NEGATED_CONCEPTS = {
 # canonical (yfinance-vocabulary) column → statement type, for frame assembly
 STATEMENT_OF = {column: stmt for column, stmt in CONCEPT_MAP.values()}
 
-SHARE_COLUMNS = {"BasicAverageShares"}
+SHARE_COLUMNS = {"BasicAverageShares", "OrdinarySharesNumber"}
 
 
 def _full_year(start: str, end: str) -> bool:

@@ -13,17 +13,17 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-
-def _avg(series: pd.Series) -> pd.Series:
-    return (series + series.shift(1)) / 2
+from crible.compute.canonical import average, price_shares, prior_period, yoy_growth
 
 
 def _cagr_3y(series: pd.Series) -> pd.Series:
     """3-year compound annual growth rate, defined only when both endpoints
     are positive — fractional powers of negatives are undefined, and a
-    sign-flipped growth rate would be worse than a missing one."""
-    growth = (series / series.shift(3)) ** (1 / 3) - 1
-    return growth.where((series > 0) & (series.shift(3) > 0))
+    sign-flipped growth rate would be worse than a missing one. The base must
+    really be three fiscal years back (prior_period), not three rows back."""
+    base = prior_period(series, periods=3)
+    growth = (series / base) ** (1 / 3) - 1
+    return growth.where((series > 0) & (base > 0))
 
 
 def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> pd.DataFrame:
@@ -39,12 +39,12 @@ def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
     # (a non-payer has undefined coverage, not infinite)
     out["dividend_coverage"] = c["net_income"] / c["dividends_paid"].abs().replace(0, float("nan"))
     # Rule of 40 (Feld): YoY revenue growth + FCF margin. Computes its own
-    # revenue growth from the same pct_change the snapshot's *_growth block
+    # revenue growth with the same yoy_growth the snapshot's *_growth block
     # runs later — the two always agree.
-    out["rule_of_40"] = c["revenue"].pct_change(fill_method=None) + out["fcf_margin"]
+    out["rule_of_40"] = yoy_growth(c["revenue"]) + out["fcf_margin"]
     # Sloan (1996) accruals: (NI − OCF) / AVERAGE total assets — deliberately
     # averaged per the paper, unlike beneish_tata which deflates by ending TA
-    out["sloan_accruals"] = (c["net_income"] - c["operating_cashflow"]) / _avg(c["total_assets"])
+    out["sloan_accruals"] = (c["net_income"] - c["operating_cashflow"]) / average(c["total_assets"])
     # 3-year trajectory as first-class, filterable columns (needs 4 periods —
     # EDGAR's 8-year depth qualifies); peg_ratio divides by EXACTLY this CAGR
     out["revenue_cagr_3y"] = _cagr_3y(c["revenue"])
@@ -62,10 +62,12 @@ def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
 
     # price-dependent block — latest fiscal period only, like Altman x4
     if price is not None:
-        shares = c["shares_outstanding"]
+        # EPS on the weighted average; everything a price multiplies on the
+        # period-end count (canonical.price_shares)
+        shares = price_shares(c)
         market_cap = price * shares
         enterprise_value = market_cap + c["total_debt"] - c["cash_and_equivalents"]
-        eps = c["net_income"] / shares
+        eps = c["net_income"] / c["shares_outstanding"]
         bvps = c["total_equity"] / shares
         # Graham number √(22.5·EPS·BVPS): only defined for positive EPS AND BVPS
         graham_base = 22.5 * eps * bvps
@@ -90,7 +92,7 @@ def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
         # truly zero there, so the computable buyback signal survives.
         dividends = c["dividends_paid"].abs()
         dividends = dividends.mask(dividends.isna() & c["operating_cashflow"].notna(), 0.0)
-        buyback_value = (shares.shift(1) - shares) * price
+        buyback_value = (prior_period(shares) - shares) * price
         out["shareholder_yield"] = (dividends + buyback_value) / market_cap
     else:
         for col in (

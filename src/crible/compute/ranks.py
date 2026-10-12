@@ -10,7 +10,8 @@ source, no API key. The blend is deliberately small and published:
 - composite = mean of the AVAILABLE pillar ranks
 
 Peer group is region×sector when it holds at least ``MIN_PEERS`` latest rows,
-otherwise the whole snapshot (recorded per row in ``rank_peer_group``). A
+otherwise the whole snapshot — every latest row, not just the leftovers
+(recorded per row in ``rank_peer_group``). A
 pillar with ANY missing input stays NULL — never imputed (FR-015 AC-2) — and
 the omission is recorded in ``rank_missing_pillars``. Only the latest fiscal
 period per symbol is ranked: percentiles are cross-sectional, older periods
@@ -85,10 +86,12 @@ def _rank_group(group: pd.DataFrame) -> pd.DataFrame:
         out[f"{pillar}_rank"] = _blend(group, inputs)
     out["composite_rank"] = out[[f"{p}_rank" for p in PILLARS]].mean(axis=1)
     out["magic_formula_rank"] = _blend(group, MAGIC_INPUTS)
-    missing = out[[f"{p}_rank" for p in PILLARS]].isna()
-    out["rank_missing_pillars"] = [
-        ",".join(p for p in PILLARS if missing.loc[i, f"{p}_rank"]) or None for i in out.index
-    ]
+    # vectorised "quality,momentum"-style labels (a per-row .loc loop cost
+    # seconds at 160k rows)
+    labels = pd.Series("", index=out.index)
+    for pillar in PILLARS:
+        labels = labels + out[f"{pillar}_rank"].isna().map({True: f"{pillar},", False: ""})
+    out["rank_missing_pillars"] = labels.str.rstrip(",").replace("", None)
     return out
 
 
@@ -133,9 +136,16 @@ def attach_ranks(snapshot: pd.DataFrame) -> pd.DataFrame:
     snapshot = pd.concat([snapshot, new_cols], axis=1).copy()
 
     latest = snapshot.loc[latest_period_index(snapshot)]
-    for key, members in latest.groupby(peer_group_key(latest), sort=False):
-        ranks = _rank_group(members)
-        for col in ranks.columns:
-            snapshot.loc[members.index, col] = ranks[col]
-        snapshot.loc[members.index, "rank_peer_group"] = key
+    keys = peer_group_key(latest)
+    # the fallback is the WHOLE snapshot: a leftover ranked only against the
+    # other leftovers would score 100 when it stands alone
+    global_ranks = _rank_group(latest) if (keys == "global").any() else None
+    ranks = pd.concat(
+        [
+            global_ranks.loc[members.index] if key == "global" else _rank_group(members)
+            for key, members in latest.groupby(keys, sort=False)
+        ]
+    )
+    snapshot.loc[ranks.index, list(ranks.columns)] = ranks
+    snapshot.loc[keys.index, "rank_peer_group"] = keys
     return snapshot

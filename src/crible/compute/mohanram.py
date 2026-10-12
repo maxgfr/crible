@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from crible.compute.canonical import average, prior_period, yoy_growth
+
 MOHANRAM_INPUTS = [
     "mohanram_roa",
     "mohanram_cfo_roa",
@@ -39,15 +41,11 @@ MOHANRAM_SIGNALS = [
 ]
 
 
-def _avg(series: pd.Series) -> pd.Series:
-    return (series + series.shift(1)) / 2
-
-
 def mohanram_inputs(canonical: pd.DataFrame) -> pd.DataFrame:
     """The per-symbol inputs the cross-sectional stage compares to peers."""
     c = canonical
     out = pd.DataFrame(index=canonical.index)
-    avg_ta = _avg(c["total_assets"])
+    avg_ta = average(c["total_assets"])
     out["mohanram_roa"] = c["net_income"] / avg_ta
     out["mohanram_cfo_roa"] = c["operating_cashflow"] / avg_ta
     # G3 is per-symbol, not peer-relative: earnings backed by cash (CFO > NI)
@@ -56,11 +54,11 @@ def mohanram_inputs(canonical: pd.DataFrame) -> pd.DataFrame:
     # variability signals need at least 3 observations — expanding over the
     # available history (EDGAR's 8 fiscal years qualifies broadly)
     out["mohanram_roa_var"] = out["mohanram_roa"].expanding(min_periods=3).var()
-    growth = c["revenue"].pct_change(fill_method=None)
+    growth = yoy_growth(c["revenue"])
     out["mohanram_growth_var"] = growth.expanding(min_periods=3).var()
     # capex intensity deflated by BEGINNING assets (the paper's deflator);
     # canonical capex is a negative outflow — flip the sign
-    out["mohanram_capex_intensity"] = -c["capital_expenditure"] / c["total_assets"].shift(1)
+    out["mohanram_capex_intensity"] = -c["capital_expenditure"] / prior_period(c["total_assets"])
     return out
 
 
@@ -103,8 +101,11 @@ def attach_mohanram(snapshot: pd.DataFrame) -> pd.DataFrame:
     snapshot = pd.concat([snapshot, new_cols], axis=1).copy()
 
     latest = snapshot.loc[latest_period_index(snapshot)]
-    for _key, members in latest.groupby(peer_group_key(latest), sort=False):
-        signals = mohanram_signals(members)
+    keys = peer_group_key(latest)
+    # leftovers compare against the median of EVERY latest row (ranks.py rule)
+    global_signals = mohanram_signals(latest) if (keys == "global").any() else None
+    for key, members in latest.groupby(keys, sort=False):
+        signals = global_signals.loc[members.index] if key == "global" else mohanram_signals(members)
         for col in signals.columns:
             snapshot.loc[members.index, col] = signals[col]
     return snapshot

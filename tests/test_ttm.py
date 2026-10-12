@@ -118,3 +118,24 @@ def test_ttm_lands_on_the_latest_snapshot_row_only() -> None:
         computed_at=1.0,
     )
     assert annual_only["ttm_revenue"].isna().all()
+
+
+def test_ttm_takes_the_source_with_the_newest_quarter() -> None:
+    """EDGAR's last 10-Q window ending in 2023 must not beat yfinance's 2025
+    quarters (the stale audited TTM paired with today's price)."""
+    annual = {(s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()}
+    scraped = {**annual, **quarterly_frames(QUARTER_ENDS)}
+    old_quarters = ["2022-12-31", "2023-03-31", "2023-06-30", "2023-09-30"]
+    audited = quarterly_frames(old_quarters, revenue=[200.0] * 4, ni=[20.0] * 4, ocf=[25.0] * 4)
+    snapshot = build_symbol_snapshot("P.PA", scraped, computed_at=1.0, audited_frames=audited)
+    assert snapshot.iloc[-1]["ttm_revenue"] == pytest.approx(500.0)  # the 2025 window
+
+
+def test_ttm_window_far_older_than_the_price_is_rejected() -> None:
+    frames = {(s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()}
+    frames.update(quarterly_frames(QUARTER_ENDS))  # last quarter 2025-12-31
+    fresh = build_symbol_snapshot("T.PA", frames, computed_at=1.0, price_quote=(10.0, "2026-06-30"))
+    assert fresh.iloc[-1]["ttm_revenue"] == pytest.approx(500.0)  # 181 days: kept
+    stale = build_symbol_snapshot("T.PA", frames, computed_at=1.0, price_quote=(10.0, "2026-09-30"))
+    assert pd.isna(stale.iloc[-1]["ttm_revenue"])  # 273 days before the price
+    assert pd.isna(stale.iloc[-1]["price_to_earnings_ttm"])

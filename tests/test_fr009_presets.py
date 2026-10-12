@@ -119,3 +119,85 @@ def test_fr009_running_a_preset_is_byte_for_byte_its_dsl() -> None:
         via_preset = screen(con, PRESETS[preset.id].dsl, whitelist=whitelist, limit=10, offset=0)
         direct = screen(con, preset.dsl, whitelist=whitelist, limit=10, offset=0)
         pd.testing.assert_frame_equal(via_preset, direct)
+
+
+def _computed_snapshot(tmp_path):
+    """A REAL computed snapshot (raw frames → per-symbol rows → finalize with
+    a universe), not a hand-built frame: presets run against what the engine
+    actually publishes."""
+    import pandas as pd
+
+    from crible.compute.snapshot import UNIVERSE_COLUMNS, build_symbol_snapshot, finalize_snapshot
+
+    from tests.test_fr003_compute import IMPROVING, income_frame
+    from tests.test_ttm import QUARTER_ENDS, quarterly_frames
+
+    periods = ["2021-12-31", "2022-12-31", "2023-12-31", "2024-12-31"]
+    rows = []
+    for i, symbol in enumerate(["AAA", "BBB", "CCC", "DDD", "EEE", "FFF"]):
+        values = {
+            stmt: {k: [v[0] * (1 + i / 10)] + [x * (1 + i / 10) for x in v] for k, v in cols.items()}
+            for stmt, cols in IMPROVING.items()
+        }
+        frames = {(s, "annual"): income_frame(cols, periods) for s, cols in values.items()}
+        frames.update(quarterly_frames(QUARTER_ENDS[:4]))
+        frames[("prices", "daily")] = pd.DataFrame(
+            {
+                "date": pd.date_range("2024-01-01", periods=400, freq="D"),
+                "close": [10.0 + d / 50 for d in range(400)],
+            }
+        )
+        rows.append(build_symbol_snapshot(symbol, frames, computed_at=1.0))
+    pd.DataFrame(
+        {
+            "symbol": ["AAA", "BBB", "CCC", "DDD", "EEE", "FFF"],
+            **{col: None for col in UNIVERSE_COLUMNS},
+            "region": "europe",
+            "sector": "Tech",
+            "top10k": True,
+        }
+    ).to_parquet(tmp_path / "universe.parquet")
+    return finalize_snapshot(pd.concat(rows, ignore_index=True), tmp_path)
+
+
+def _dsl_fields(node) -> set[str]:
+    from crible.dsl.parser import BoolOp, Comparison, InList, Not
+
+    if isinstance(node, (Comparison, InList)):
+        return {node.field}
+    if isinstance(node, Not):
+        return _dsl_fields(node.operand)
+    if isinstance(node, BoolOp):
+        return set().union(*(_dsl_fields(op) for op in node.operands))
+    return set()
+
+
+def test_fr009_every_preset_field_exists_in_a_computed_snapshot(tmp_path) -> None:
+    """A financetoolkit rename that drops a ratio must fail HERE, not as an
+    « unknown field » for the user running the preset."""
+    from crible.dsl.parser import parse
+
+    columns = set(_computed_snapshot(tmp_path).columns)
+    for preset in PRESETS.values():
+        missing = _dsl_fields(parse(preset.dsl)) - columns
+        assert not missing, f"{preset.id}: fields absent from a computed snapshot: {missing}"
+        absent = set(preset.columns) - columns
+        assert not absent, f"{preset.id}: curated columns absent from a computed snapshot: {absent}"
+
+
+def test_fr009_loss_maker_with_negative_equity_is_neither_value_nor_quality() -> None:
+    import duckdb
+
+    from crible.compute.snapshot import build_symbol_snapshot
+    from crible.store import screen, whitelist_from_relation
+
+    from tests.test_fr003_compute import _loss_maker_frames
+
+    snapshot = build_symbol_snapshot(
+        "LOSS", _loss_maker_frames(), computed_at=1.0, price_quote=(6.0, "2026-01-02")
+    )
+    con = duckdb.connect()
+    con.register("snapshot_latest", snapshot.tail(1))
+    whitelist = whitelist_from_relation(con, "snapshot_latest")
+    for preset_id in ("classic-value", "quality"):
+        assert screen(con, PRESETS[preset_id].dsl, whitelist=whitelist, limit=10, offset=0).empty, preset_id

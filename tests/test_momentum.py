@@ -107,3 +107,28 @@ def test_parity_across_the_three_historical_paths(tmp_path) -> None:
     row = load_prices_latest(tmp_path).set_index("symbol").loc["AAPL"]
     assert row["high_52w_proximity"] == pytest.approx(1.0)
     assert not pd.isna(row["return_12_1"]) and not pd.isna(row["volatility_1y"])
+
+
+def test_snapshot_momentum_comes_from_the_same_source_as_the_price() -> None:
+    """A months-old crawl must not supply return_6m while a fresh dump
+    supplies the close — features follow the price's as-of."""
+    from crible.compute.snapshot import build_symbol_snapshot
+
+    from tests.test_fr003_compute import IMPROVING, income_frame
+
+    frames = {(s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()}
+    frames[("prices", "daily")] = daily_bars(n=300, start="2025-01-01")  # ends 2025-10-27
+    dump = {"return_6m": -0.25, "return_12_1": 0.1, "high_52w_proximity": 0.8, "volatility_1y": 0.3}
+    snapshot = build_symbol_snapshot(
+        "M.PA", frames, computed_at=1.0, price_quote=(42.0, "2026-07-17"), quote_features=dump
+    )
+    latest = snapshot.iloc[-1]
+    assert latest["price_asof"] == "2026-07-17"
+    assert latest["return_6m"] == pytest.approx(-0.25)
+
+    # the crawl is the fresher source → its bars supply the features
+    older_dump = build_symbol_snapshot(
+        "M.PA", frames, computed_at=1.0, price_quote=(42.0, "2025-01-15"), quote_features=dump
+    ).iloc[-1]
+    assert older_dump["price_asof"] == "2025-10-27"
+    assert older_dump["return_6m"] > 0  # rising bars, not the dump's -0.25

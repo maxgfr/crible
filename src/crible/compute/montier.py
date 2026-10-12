@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from crible.compute.canonical import prior_period
+
 FLAG_COLUMNS = [
     "montier_ni_cfo_diverging",
     "montier_dso_rising",
@@ -33,7 +35,7 @@ def montier_components(canonical: pd.DataFrame) -> pd.DataFrame:
     c = canonical
 
     def prev(series: pd.Series) -> pd.Series:
-        return series.shift(1)
+        return prior_period(series)
 
     def rising(metric: pd.Series) -> pd.Series:
         """1 where the metric rose vs the prior period, NaN where undecidable."""

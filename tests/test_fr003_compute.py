@@ -459,7 +459,7 @@ def test_fr003_dechow_components_move_the_hand_computed_way() -> None:
     # cash sales drop by the receivables jump: (1000−50)/1000 − 1
     assert out["dechow_ch_cs"] == pytest.approx(950.0 / 1000.0 - 1.0)
     # a missing balance input nulls F for that period — never imputed
-    canonical.loc["2025", "marketable_securities"] = float("nan")
+    canonical.loc["2025", "total_liabilities"] = float("nan")
     assert pd.isna(dechow_components(canonical).loc["2025", "dechow_f"])
 
 
@@ -535,7 +535,7 @@ def test_fr003_peg_undefined_for_shrinking_or_negative_earnings() -> None:
     assert pd.isna(out["net_income_cagr_3y"])
 
 
-def test_fr003_reflection_wires_cycle_payout_and_roic() -> None:
+def test_fr003_reflection_wires_cycle_payout_and_denies_the_fake_roic() -> None:
     from crible.compute.ratios import compute_ratios
 
     canonical = _quickwin_canonical()
@@ -549,7 +549,8 @@ def test_fr003_reflection_wires_cycle_payout_and_roic() -> None:
     assert row["cash_conversion_cycle"] == pytest.approx(dio + dso - dpo)
     assert row["operating_cycle"] == pytest.approx(dio + dso)
     assert row["dividend_payout_ratio"] == pytest.approx(52.0 / 133.1)
-    assert row["return_on_invested_capital"] == pytest.approx((133.1 - 52.0) / (500.0 + 200.0))
+    # (NI − dividends)/(E + D) is not a ROIC — denied rather than mislabelled
+    assert "return_on_invested_capital" not in ratios.columns
     # the dividends alias must NOT wire the bogus total-dividends yield
     assert "dividend_yield" not in ratios.columns
     assert "dividend_capex_coverage_ratio" not in ratios.columns
@@ -701,7 +702,7 @@ def test_incremental_compute_recomputes_only_dirty_symbols(tmp_path, monkeypatch
             fetched_at=1000.0,
         )
 
-    first = snap.build_snapshot_incremental(tmp_path)  # no base → full build
+    first = snap.publish_incremental(tmp_path)  # no base → full build
     assert set(first["symbol"]) == {"AAA", "BBB"}
     assert (tmp_path / "snapshot" / "base.parquet").exists()
 
@@ -727,7 +728,7 @@ def test_incremental_compute_recomputes_only_dirty_symbols(tmp_path, monkeypatch
         frame=pd.DataFrame({"period": ["2024"], "TotalRevenue": [250.0]}),
         fetched_at=time.time(),
     )
-    second = snap.build_snapshot_incremental(tmp_path)
+    second = snap.publish_incremental(tmp_path)
 
     assert calls == [["BBB"]]  # only the dirty symbol was recomputed
     assert set(second["symbol"]) == {"AAA", "BBB"}  # AAA reused from the base cache
@@ -736,7 +737,7 @@ def test_incremental_compute_recomputes_only_dirty_symbols(tmp_path, monkeypatch
 
     # a subsequent build with nothing changed → None (no republish)
     calls.clear()
-    assert snap.build_snapshot_incremental(tmp_path) is None
+    assert snap.publish_incremental(tmp_path) is None
     assert calls == []
 
 
@@ -758,7 +759,7 @@ def test_incremental_full_rebuild_on_engine_schema_bump(tmp_path, monkeypatch) -
             frame=frame,
             fetched_at=1000.0,
         )
-    snap.build_snapshot_incremental(tmp_path)  # base + schema stamp
+    snap.publish_incremental(tmp_path)  # base + schema stamp
     assert (tmp_path / "snapshot" / "base-schema.json").exists()
 
     calls: list[list[str]] = []
@@ -766,18 +767,18 @@ def test_incremental_full_rebuild_on_engine_schema_bump(tmp_path, monkeypatch) -
     monkeypatch.setattr(snap, "build_symbol_rows", lambda d, s: (calls.append(list(s)), original(d, s))[1])
 
     # same engine version, nothing changed → no per-symbol work at all
-    assert snap.build_snapshot_incremental(tmp_path) is None
+    assert snap.publish_incremental(tmp_path) is None
     assert calls == []
 
     # a deploy bumps the engine schema → every symbol rebuilds once
     monkeypatch.setattr(snap, "ENGINE_SCHEMA_VERSION", snap.ENGINE_SCHEMA_VERSION + 1)
-    result = snap.build_snapshot_incremental(tmp_path)
+    result = snap.publish_incremental(tmp_path)
     assert sorted(calls[-1]) == ["AAA", "BBB"]
     assert set(result["symbol"]) == {"AAA", "BBB"}
 
     # the rebuilt base carries the new stamp → incremental again
     calls.clear()
-    assert snap.build_snapshot_incremental(tmp_path) is None
+    assert snap.publish_incremental(tmp_path) is None
     assert calls == []
 
 
@@ -800,7 +801,7 @@ def test_incremental_compute_rebuilds_all_when_the_price_distillate_refreshes(tm
             frame=frame,
             fetched_at=1000.0,
         )
-    snap.build_snapshot_incremental(tmp_path)  # base built
+    snap.publish_incremental(tmp_path)  # base built
 
     calls: list[list[str]] = []
     original = snap.build_symbol_rows
@@ -812,7 +813,7 @@ def test_incremental_compute_rebuilds_all_when_the_price_distillate_refreshes(tm
         {"symbol": ["AAA"], "close": [10.0], "price_asof": ["2024-12-31"], "return_6m": [0.1]}
     ).to_parquet(tmp_path / "prices-latest.parquet", index=False)
 
-    snap.build_snapshot_incremental(tmp_path)
+    snap.publish_incremental(tmp_path)
     assert calls and sorted(calls[0]) == ["AAA", "BBB"]  # ALL symbols rebuilt, not none
 
 
@@ -899,3 +900,395 @@ def test_fr003_symbol_snapshot_builds_without_fragmenting() -> None:
         warnings.simplefilter("error", pd.errors.PerformanceWarning)
         snapshot = build_symbol_snapshot("P.PA", frames, computed_at=1.0, price_quote=(42.0, "2026-07-17"))
     assert len(snapshot) == 3
+
+
+# ------------------------------------------- audit fixes (engine schema 9)
+
+
+def _loss_maker_frames() -> dict[tuple[str, str], pd.DataFrame]:
+    """A loss-making company with NEGATIVE equity: every multiple over
+    earnings or book flips sign and would read as « cheap » / « quality »."""
+    periods = ["2024-12-31", "2025-12-31"]
+    return {
+        ("income", "annual"): income_frame(
+            {
+                "TotalRevenue": [900.0, 1000.0],
+                "NetIncome": [-20.0, -30.0],
+                "BasicAverageShares": [10.0, 10.0],
+            },
+            periods,
+        ),
+        ("balance", "annual"): income_frame(
+            {
+                "TotalAssets": [500.0, 500.0],
+                "StockholdersEquity": [-60.0, -70.0],
+                "TotalDebt": [30.0, 30.0],
+                "CurrentAssets": [200.0, 200.0],
+                "CurrentLiabilities": [100.0, 100.0],
+            },
+            periods,
+        ),
+        ("cashflow", "annual"): income_frame({"OperatingCashFlow": [-5.0, -10.0]}, periods),
+    }
+
+
+def test_fr003_nonpositive_denominators_null_the_multiples() -> None:
+    snapshot = build_symbol_snapshot(
+        "LOSS", _loss_maker_frames(), computed_at=1.0, price_quote=(6.0, "2026-01-02")
+    )
+    row = snapshot.iloc[-1]
+    for col in (
+        "price_to_earnings_ratio",
+        "price_to_book_ratio",
+        "return_on_equity",
+        "debt_to_equity_ratio",
+        "price_to_cash_flow_ratio",
+        "equity_multiplier",
+    ):
+        assert pd.isna(row[col]), col
+    # the yield keeps its sign: a loss is a negative earnings yield, which
+    # ranks the company LAST on value instead of dropping it from the pillar
+    assert row["earnings_yield"] < 0
+
+
+def test_fr003_snapshot_never_stores_infinities() -> None:
+    import numpy as np
+
+    frames = _loss_maker_frames()
+    frames[("income", "annual")]["TotalRevenue"] = [0.0, 0.0]  # margins → x/0
+    snapshot = build_symbol_snapshot("ZERO", frames, computed_at=1.0, price_quote=(6.0, "2026-01-02"))
+    numeric = snapshot.select_dtypes("number")
+    assert not np.isinf(numeric.to_numpy()).any()
+
+
+def test_fr003_compute_ratios_column_set_is_pinned() -> None:
+    """Reflection wiring is a moving target (a financetoolkit rename makes a
+    column vanish in silence): the exact emitted set is frozen here."""
+    from crible.compute.canonical import CANONICAL_FIELDS
+    from crible.compute.ratios import compute_ratios
+
+    periods = pd.Index(["2023", "2024", "2025"])
+    canonical = pd.DataFrame(
+        {field: [i + 2.0, i + 3.0, i + 4.0] for i, field in enumerate(CANONICAL_FIELDS)}, index=periods
+    )
+    ratios = compute_ratios(canonical, pd.Series([1.0, 2.0, 5.0], index=periods))
+    assert sorted(ratios.columns) == [
+        "EBIT_to_revenue",
+        "EBT_to_EBIT",
+        "accounts_payables_turnover_ratio",
+        "asset_turnover_ratio",
+        "capex_coverage_ratio",
+        "capex_per_share",
+        "cash_conversion_cycle",
+        "cash_conversion_efficiency",
+        "cash_flow_coverage_ratio",
+        "cash_ratio",
+        "current_ratio",
+        "days_of_accounts_payable_outstanding",
+        "days_of_inventory_outstanding",
+        "days_of_sales_outstanding",
+        "debt_to_assets_ratio",
+        "debt_to_equity_ratio",
+        "dividend_payout_ratio",
+        "earnings_yield",
+        "effective_tax_rate",
+        "equity_multiplier",
+        "ev_to_ebit",
+        "ev_to_ebitda_ratio",
+        "ev_to_operating_cashflow_ratio",
+        "ev_to_sales_ratio",
+        "fixed_asset_turnover",
+        "free_cash_flow_operating_cash_flow_ratio",
+        "free_cash_flow_yield",
+        "gross_margin",
+        "income_before_tax_profit_margin",
+        "income_quality_ratio",
+        "interest_burden_ratio",
+        "interest_coverage_ratio",
+        "inventory_turnover_ratio",
+        "market_cap",
+        "net_debt_to_ebitda_ratio",
+        "net_income_per_ebt",
+        "net_profit_margin",
+        "operating_cash_flow_ratio",
+        "operating_cash_flow_sales_ratio",
+        "operating_cycle",
+        "operating_margin",
+        "operating_ratio",
+        "price_to_book_ratio",
+        "price_to_cash_flow_ratio",
+        "price_to_earnings_ratio",
+        "price_to_free_cash_flow_ratio",
+        "quick_ratio",
+        "receivables_turnover",
+        "return_on_assets",
+        "return_on_capital_employed",
+        "return_on_equity",
+        "revenue_per_share",
+        "sga_to_revenue_ratio",
+        "short_term_coverage_ratio",
+        "tangible_asset_value",
+        "tax_burden_ratio",
+        "weighted_dividend_yield",
+    ]
+
+
+def test_fr003_capex_ratios_read_capex_as_a_magnitude() -> None:
+    from crible.compute.ratios import compute_ratios
+
+    canonical = _quickwin_canonical()
+    canonical["capital_expenditure"] = [-30.0, -30.0, -30.0, -30.0]  # outflow convention
+    price = pd.Series([float("nan")] * 3 + [10.0], index=canonical.index)
+    row = compute_ratios(canonical, price).loc["2025"]
+    assert row["capex_coverage_ratio"] == pytest.approx(150.0 / 30.0)
+    assert row["capex_per_share"] == pytest.approx(30.0 / 100.0)
+
+
+def test_fr003_a_raising_ratio_function_is_logged(monkeypatch, caplog) -> None:
+    import logging
+
+    from financetoolkit.ratios import profitability_model
+
+    from crible.compute import ratios as ratios_module
+
+    def boom(revenue, cost_of_goods_sold):  # noqa: ARG001
+        raise ZeroDivisionError("boom")
+
+    monkeypatch.setattr(profitability_model, "get_gross_margin", boom)
+    with caplog.at_level(logging.DEBUG, logger="crible.compute.ratios"):
+        out = ratios_module.compute_ratios(_quickwin_canonical())
+    assert "gross_margin" not in out.columns
+    assert any("get_gross_margin" in r.getMessage() for r in caplog.records)
+
+
+def test_fr003_piotroski_is_null_when_its_inputs_are_missing() -> None:
+    """Missing data is not a pass: a company with only revenue must not
+    score (the old fillna(0) handed it the no-dilution point)."""
+    out = piotroski(canonical_from({"income": {"TotalRevenue": [100.0, 120.0]}}, ["2024", "2025"]))
+    assert out["piotroski_f"].isna().all()
+    assert pd.isna(out.loc["2025", "piotroski_no_dilution"])
+
+
+def test_fr003_piotroski_first_period_is_null_not_capped() -> None:
+    out = piotroski(canonical_from(IMPROVING, ["2023", "2024", "2025"]))
+    assert pd.isna(out.loc["2023", "piotroski_f"])  # no prior year → undecidable
+    assert out.loc["2025", "piotroski_f"] == 9
+
+
+def test_fr003_piotroski_accruals_compares_cash_flow_with_earnings() -> None:
+    """CFO 10.5 > NI 10 passes even when total assets double (the old test
+    divided the two sides by different asset bases)."""
+    values = {
+        "income": {"TotalRevenue": [100.0, 100.0], "NetIncome": [10.0, 10.0]},
+        "balance": {"TotalAssets": [100.0, 200.0]},
+        "cashflow": {"OperatingCashFlow": [10.5, 10.5]},
+    }
+    out = piotroski(canonical_from(values, ["2024", "2025"]))
+    assert out.loc["2025", "piotroski_accruals"] == True  # noqa: E712 — nullable boolean
+
+
+def test_fr003_growth_is_null_on_a_nonpositive_base() -> None:
+    values = {
+        "income": {"TotalRevenue": [100.0, 110.0], "NetIncome": [-10.0, 5.0]},
+        "cashflow": {"CapitalExpenditure": [-100.0, -120.0]},
+    }
+    frames = {(s, "annual"): income_frame(rows, ["2024", "2025"]) for s, rows in values.items()}
+    row = build_symbol_snapshot("G", frames, computed_at=1.0).iloc[-1]
+    assert pd.isna(row["net_income_growth"])  # -10 → +5 is not a « -150 % » decline
+    assert row["revenue_growth"] == pytest.approx(0.1)
+    # outflow-signed fields grow by magnitude (capex 100 → 120 is +20 %)
+    assert row["capital_expenditure_growth"] == pytest.approx(0.2)
+
+
+def test_fr003_year_over_year_is_null_across_a_calendar_gap() -> None:
+    """FSDS backfill ends in 2018 and the crawl starts in 2021: comparing the
+    two is not « year over year »."""
+    periods = ["2018-12-31", "2021-12-31"]
+    frames = {
+        (s, "annual"): income_frame({k: v[1:] for k, v in rows.items()}, periods)
+        for s, rows in IMPROVING.items()
+    }
+    snapshot = build_symbol_snapshot("GAP", frames, computed_at=1.0).set_index("period")
+    row = snapshot.loc["2021-12-31"]
+    assert pd.isna(row["revenue_growth"])
+    assert pd.isna(row["piotroski_f"])
+    assert pd.isna(row["beneish_sgi"])
+    assert pd.isna(row["montier_asset_growth_high"])
+    assert pd.isna(row["rule_of_40"])
+
+
+def test_prior_period_helper_respects_the_one_year_window() -> None:
+    from crible.compute.canonical import prior_period
+
+    series = pd.Series([1.0, 2.0, 3.0, 4.0], index=["2020", "2021-12-31", "2022-12-31", "2026-06-30"])
+    prior = prior_period(series)
+    # "2020" is the fiscal year ending 2020-12-31 → 2021-12-31 is one year on
+    assert prior.tolist()[1] == 1.0
+    assert prior.tolist()[2] == 2.0
+    assert pd.isna(prior.iloc[0]) and pd.isna(prior.iloc[3])
+    # same fiscal year under two labels is not a prior year either
+    same = prior_period(pd.Series([1.0, 2.0], index=["2024", "2024-12-31"]))
+    assert pd.isna(same.iloc[1])
+
+
+def test_fr003_dechow_rsst_matches_the_telescoped_identity() -> None:
+    """WC + NCO + FIN telescopes to TA − TL − cash: the simplified form must
+    give the same numbers on a complete vector."""
+    from crible.compute.dechow import dechow_components
+
+    canonical = _dechow_canonical()
+    canonical.loc["2024", "total_assets"] = 1100.0
+    canonical.loc["2025", "total_assets"] = 1250.0
+    canonical.loc["2025", "total_liabilities"] = 560.0
+    canonical.loc["2025", "cash_and_equivalents"] = 140.0
+    c = canonical
+    short_term_debt = c["total_debt"] - c["long_term_debt"]
+    wc = (c["current_assets"] - c["cash_and_equivalents"]) - (c["current_liabilities"] - short_term_debt)
+    nco = (c["total_assets"] - c["current_assets"] - c["marketable_securities"]) - (
+        c["total_liabilities"] - c["current_liabilities"] - c["long_term_debt"]
+    )
+    fin = c["marketable_securities"] - c["total_debt"]
+    avg_ta = (c["total_assets"] + c["total_assets"].shift(1)) / 2
+    legacy = (wc.diff() + nco.diff() + fin.diff()) / avg_ta
+    pd.testing.assert_series_equal(dechow_components(canonical)["dechow_rsst"], legacy, check_names=False)
+
+
+def test_fr003_dechow_scores_without_marketable_securities_or_debt_split() -> None:
+    from crible.compute.dechow import dechow_components
+
+    canonical = _dechow_canonical()
+    canonical[["marketable_securities", "long_term_debt", "total_debt"]] = float("nan")
+    assert pd.notna(dechow_components(canonical).iloc[-1]["dechow_f"])
+
+
+def test_fr003_market_cap_uses_period_end_shares() -> None:
+    """Weighted-average shares lag a big buyback: market cap, P/B and EV are
+    priced on the period-end count, EPS stays on the average."""
+    periods = ["2024-12-31", "2025-12-31"]
+    frames = {
+        ("income", "annual"): income_frame(
+            {
+                "TotalRevenue": [1000.0, 1000.0],
+                "NetIncome": [100.0, 100.0],
+                "BasicAverageShares": [100.0, 100.0],
+            },
+            periods,
+        ),
+        ("balance", "annual"): income_frame(
+            {
+                "OrdinarySharesNumber": [100.0, 80.0],
+                "StockholdersEquity": [400.0, 400.0],
+                "TotalAssets": [900.0, 900.0],
+            },
+            periods,
+        ),
+    }
+    row = build_symbol_snapshot("BUY", frames, computed_at=1.0, price_quote=(10.0, "2026-01-02")).iloc[-1]
+    assert row["shares_outstanding_end"] == 80.0
+    assert row["market_cap"] == pytest.approx(800.0)
+    assert row["price_to_book_ratio"] == pytest.approx(10.0 / (400.0 / 80.0))
+    assert row["price_to_earnings_ratio"] == pytest.approx(10.0 / (100.0 / 100.0))
+
+
+def _two_symbol_raw(tmp_path) -> None:
+    from crible.ingest.raw import write_raw_statement
+
+    for sym in ("AAA", "BBB"):
+        write_raw_statement(
+            tmp_path,
+            symbol=sym,
+            provider="yfinance",
+            statement_type="income",
+            freq="annual",
+            frame=pd.DataFrame({"period": ["2024"], "TotalRevenue": [100.0]}),
+            fetched_at=1000.0,
+        )
+
+
+def test_incremental_republishes_after_a_failed_finalize(tmp_path, monkeypatch) -> None:
+    """The base cache is written only AFTER the snapshot publish: a finalize
+    that dies must not leave a base that makes the next run report « nothing
+    changed » forever."""
+    import crible.compute.snapshot as snap
+
+    _two_symbol_raw(tmp_path)
+
+    def boom(rows, data_dir):
+        raise RuntimeError("finalize died")
+
+    monkeypatch.setattr(snap, "finalize_snapshot", boom)
+    with pytest.raises(RuntimeError):
+        snap.publish_incremental(tmp_path)
+    assert not (tmp_path / "snapshot" / "base.parquet").exists()
+
+    monkeypatch.undo()
+    published = snap.publish_incremental(tmp_path)
+    assert published is not None and set(published["symbol"]) == {"AAA", "BBB"}
+    assert (tmp_path / "snapshot" / "snapshot.parquet").exists()
+
+
+def test_incremental_republishes_a_deleted_snapshot(tmp_path) -> None:
+    import crible.compute.snapshot as snap
+
+    _two_symbol_raw(tmp_path)
+    snap.publish_incremental(tmp_path)
+    assert snap.publish_incremental(tmp_path) is None  # nothing changed
+    (tmp_path / "snapshot" / "snapshot.parquet").unlink()
+    again = snap.publish_incremental(tmp_path)
+    assert again is not None and (tmp_path / "snapshot" / "snapshot.parquet").exists()
+
+
+def test_incremental_refinalizes_when_the_universe_changes(tmp_path, monkeypatch) -> None:
+    """A universe-only change (sector, cap census) moves no raw stamp but
+    must still republish — without rebuilding any per-symbol row."""
+    import os
+
+    import crible.compute.snapshot as snap
+
+    _two_symbol_raw(tmp_path)
+    snap.publish_incremental(tmp_path)
+    universe = pd.DataFrame({"symbol": ["AAA", "BBB"], "sector": ["Tech", "Energy"]})
+    universe.to_parquet(tmp_path / "universe.parquet")
+    future = (tmp_path / "snapshot" / "snapshot.parquet").stat().st_mtime + 10
+    os.utime(tmp_path / "universe.parquet", (future, future))
+
+    calls: list[list[str]] = []
+    original = snap.build_symbol_rows
+    monkeypatch.setattr(snap, "build_symbol_rows", lambda d, s: (calls.append(list(s)), original(d, s))[1])
+    refreshed = snap.publish_incremental(tmp_path)
+    assert calls == []  # finalize only
+    assert refreshed is not None
+    assert refreshed.set_index("symbol").loc["BBB", "sector"] == "Energy"
+
+
+def test_incremental_watermark_is_the_compute_start(tmp_path, monkeypatch) -> None:
+    """Raw written WHILE a compute runs is newer than its start: the next
+    run must see it dirty (the base file's mtime came after it)."""
+    import time
+
+    import crible.compute.snapshot as snap
+    from crible.ingest.raw import write_raw_statement
+
+    _two_symbol_raw(tmp_path)
+    original = snap.build_symbol_rows
+
+    def slow_rows(data_dir, symbols):
+        rows = original(data_dir, symbols)
+        write_raw_statement(
+            tmp_path,
+            symbol="BBB",
+            provider="yfinance",
+            statement_type="income",
+            freq="annual",
+            frame=pd.DataFrame({"period": ["2024"], "TotalRevenue": [300.0]}),
+            fetched_at=time.time(),
+        )
+        time.sleep(0.02)
+        return rows
+
+    monkeypatch.setattr(snap, "build_symbol_rows", slow_rows)
+    snap.publish_incremental(tmp_path)
+    monkeypatch.undo()
+    again = snap.publish_incremental(tmp_path)
+    assert again is not None
+    assert again.set_index("symbol").loc["BBB", "revenue"] == 300.0

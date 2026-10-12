@@ -115,3 +115,19 @@ def test_mohanram_only_latest_rows_carry_signals() -> None:
     previous = ranked[ranked["period"] == "2024"]
     assert latest["mohanram_g"].notna().any()
     assert previous["mohanram_g"].isna().all()
+
+
+def test_mohanram_global_fallback_uses_the_whole_snapshot_median() -> None:
+    """The Micro leftovers are judged against the median of ALL latest rows,
+    not only against each other (a lone member would always score 0)."""
+    frame = _latest_frame()
+    lone = frame[frame["symbol"] != "M1.PA"].reset_index(drop=True)
+    ranked = attach_mohanram(lone).set_index("symbol")
+    m0 = ranked.loc["M0.PA"]
+    # all-rows medians: roa 0.07 · cfo 0.09 · roa_var 0.025 · growth 0.025 · capex 0.07
+    assert m0["mohanram_g1_roa"] == 1.0  # 0.30 > 0.07
+    assert m0["mohanram_g2_cfo_roa"] == 1.0
+    assert m0["mohanram_g4_roa_stability"] == 1.0  # 0.01 < 0.025
+    assert m0["mohanram_g5_growth_stability"] == 1.0
+    assert m0["mohanram_g6_capex_intensity"] == 1.0
+    assert m0["mohanram_g"] == 6.0

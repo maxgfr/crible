@@ -95,37 +95,54 @@ def reconcile(scraped: pd.DataFrame, audited: pd.DataFrame, symbol: str = "?") -
         # the current price on an old period for exactly the deep-history symbols
         # F6 targets (regression caught by the confirmation eval).
         merged = merged.reindex(list(merged.index) + extra_periods).sort_index()
-    audited_fields: dict[str, list[str]] = {}
+    # Vectorised over the aligned frames (the cell-by-cell .loc walk cost
+    # ~15 ms per symbol, ≈5 min over 20k). Output is identical to it —
+    # tests/test_reconcile.py keeps the walk as the reference.
+    present = audited.notna()
+    # a column only the audited layer has joins the frame in the order the
+    # walk first wrote it: by first audited period, then audited column order
+    new_columns = [c for c in audited.columns if c not in merged.columns and present[c].any()]
+    if new_columns:
+        first_row = {c: int(present[c].to_numpy().argmax()) for c in new_columns}
+        new_columns.sort(key=lambda c: (first_row[c], audited.columns.get_loc(c)))
+        merged = merged.reindex(columns=[*merged.columns, *new_columns])
+    columns = [c for c in audited.columns if c in merged.columns]
+    values = audited[columns].astype(float)
+    mask = present[columns]
+    current = merged.loc[values.index, columns].astype(float)
+    relative = (current - values).abs() / values.abs().where(values != 0)
+    flagged = mask & current.notna() & (relative > DISCREPANCY_THRESHOLD)
+
     discrepancies: list[dict] = []
+    for period, column in flagged.stack().loc[lambda cells: cells].index:
+        scraped_value = float(current.at[period, column])
+        audited_value = float(values.at[period, column])
+        ratio = float(relative.at[period, column])
+        discrepancies.append(
+            {
+                "symbol": symbol,
+                "field": column,
+                "period": str(period),
+                "scraped": scraped_value,
+                "audited": audited_value,
+                "relative": round(ratio, 4),
+            }
+        )
+        log.warning(
+            "reconcile %s %s@%s: scraped %.4g vs audited %.4g (%.1f%%) — audited wins",
+            symbol,
+            column,
+            period,
+            scraped_value,
+            audited_value,
+            ratio * 100,
+        )
 
-    for period in audited.index:
-        for column in audited.columns:
-            audited_value = audited.loc[period, column]
-            if pd.isna(audited_value):
-                continue
-            scraped_value = merged.loc[period, column] if column in merged.columns else float("nan")
-            if pd.notna(scraped_value) and audited_value != 0:
-                relative = abs(scraped_value - audited_value) / abs(audited_value)
-                if relative > DISCREPANCY_THRESHOLD:
-                    entry = {
-                        "symbol": symbol,
-                        "field": column,
-                        "period": str(period),
-                        "scraped": float(scraped_value),
-                        "audited": float(audited_value),
-                        "relative": round(relative, 4),
-                    }
-                    discrepancies.append(entry)
-                    log.warning(
-                        "reconcile %s %s@%s: scraped %.4g vs audited %.4g (%.1f%%) — audited wins",
-                        symbol,
-                        column,
-                        period,
-                        scraped_value,
-                        audited_value,
-                        relative * 100,
-                    )
-            merged.loc[period, column] = audited_value
-            audited_fields.setdefault(str(period), []).append(column)
-
+    merged.loc[values.index, columns] = current.where(~mask, values)
+    names = pd.Index(columns)
+    audited_fields = {
+        str(period): names[row].tolist()
+        for period, row in zip(values.index, mask.to_numpy(), strict=True)
+        if row.any()
+    }
     return Reconciliation(merged=merged, audited_fields=audited_fields, discrepancies=discrepancies)

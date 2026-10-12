@@ -12,6 +12,7 @@ import warnings
 
 import duckdb
 import pandas as pd
+import pytest
 from pandas.errors import PerformanceWarning
 
 from crible.compute.ranks import MIN_PEERS, attach_ranks, price_return
@@ -216,3 +217,31 @@ def test_magic_formula_preset_ships() -> None:
 
     assert PRESETS["magic-formula"].dsl == "magic_formula_rank >= 80"
     assert PRESETS["graham-net-net"].dsl == "ncav_to_market_cap >= 1.5"
+
+
+def test_fr015_global_fallback_ranks_against_the_whole_snapshot() -> None:
+    """A lone sector-less company is ranked against EVERY latest row, not only
+    against the other leftovers — the worst company in the set must not get a
+    top composite just because its fallback group holds one member."""
+    frame = latest_frame()
+    worst = pd.DataFrame(
+        {
+            "symbol": ["W.PA"],
+            "period": ["2025-12-31"],
+            "region": ["europe"],
+            "sector": [None],
+            "piotroski_f": [1],
+            "altman_z": [0.1],
+            "earnings_yield": [-0.5],
+            "price_to_book_ratio": [30.0],
+            "return_6m": [-0.6],
+        }
+    )
+    ranked = attach_ranks(pd.concat([frame, worst], ignore_index=True)).set_index("symbol")
+    row = ranked.loc["W.PA"]
+    assert row["rank_peer_group"] == "global"
+    # last of 7 on every input → bottom percentile, not 100
+    assert row["composite_rank"] == pytest.approx(100 / 7)
+    assert row["momentum_rank"] == pytest.approx(100 / 7)
+    # the region×sector peers keep their own within-group percentiles
+    assert ranked.loc["C5.PA", "composite_rank"] == pytest.approx(100.0)

@@ -1,8 +1,9 @@
 """FR-003 — the three headline scores.
 
-Piotroski F-Score and Altman Z-Score are computed through financetoolkit's
-transparently-published pure functions; Beneish M-Score is crible's in-house
-implementation (absent from financetoolkit). Missing inputs propagate as NaN —
+Altman Z-Score is computed through financetoolkit's transparently-published
+pure functions; Piotroski F-Score and Beneish M-Score are crible's in-house
+implementations (Piotroski's financetoolkit criteria turn NaN into a fail and
+compare accruals across two asset bases). Missing inputs propagate as NaN —
 never imputed.
 """
 
@@ -10,9 +11,10 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from financetoolkit.models import altman_model, piotroski_model
+from financetoolkit.models import altman_model
 
 from crible.compute.beneish import beneish_components
+from crible.compute.canonical import average, price_shares, prior_period
 from crible.compute.montier import montier_components
 
 PIOTROSKI_CRITERIA = [
@@ -28,64 +30,60 @@ PIOTROSKI_CRITERIA = [
 ]
 
 
-def _avg(series: pd.Series) -> pd.Series:
-    return (series + series.shift(1)) / 2
-
-
-def _wide(series: pd.Series) -> pd.DataFrame:
-    """financetoolkit's criteria diff along axis='columns' — periods as columns."""
-    return series.to_frame("v").T
+def _criterion(passed: pd.Series, *inputs: pd.Series) -> pd.Series:
+    """A ✓/✗ criterion that is NULL (undecidable) unless every input exists —
+    a missing input is never scored as a fail, nor as a pass."""
+    decidable = pd.concat(inputs, axis=1).notna().all(axis=1)
+    return passed.astype("boolean").where(decidable)
 
 
 def piotroski(canonical: pd.DataFrame) -> pd.DataFrame:
+    """The nine published criteria (Piotroski 2000), in-house on gap-aware
+    prior periods: each is NULL when an input or the prior year is missing,
+    and piotroski_f is NULL unless all nine are decidable (never imputed)."""
     c = canonical
-    avg_assets = _avg(c["total_assets"])
-    issued = c["common_stock_issuance"].fillna(0)
+    avg_assets = average(c["total_assets"])
+    roa = c["net_income"] / avg_assets
+    leverage = c["total_debt"] / c["total_assets"]
+    current_ratio = c["current_assets"] / c["current_liabilities"]
+    gross_margin = (c["revenue"] - c["cost_of_goods_sold"]) / c["revenue"]
+    turnover = c["revenue"] / avg_assets
+    # a parsed cash-flow statement without an issuance line is a genuine
+    # non-issuer (the shareholder_yield reading); no statement at all stays NULL
+    issued = c["common_stock_issuance"].mask(
+        c["common_stock_issuance"].isna() & c["operating_cashflow"].notna(), 0.0
+    )
+
+    def improving(metric: pd.Series, *, lower: bool = False) -> pd.Series:
+        prev = prior_period(metric)
+        return _criterion(metric < prev if lower else metric > prev, metric, prev)
 
     criteria = {
-        "piotroski_roa_positive": piotroski_model.get_return_on_assets_criteria(
-            _wide(c["net_income"]), _wide(avg_assets)
+        "piotroski_roa_positive": _criterion(roa > 0, roa),
+        "piotroski_ocf_positive": _criterion(c["operating_cashflow"] > 0, c["operating_cashflow"]),
+        # ΔROA > 0 per the published definition (financetoolkit compares growth
+        # acceleration instead — FinanceToolkit issue #91 [E39])
+        "piotroski_roa_improving": improving(roa),
+        # cash earnings exceed accrual earnings: CFO > NI on the SAME base
+        # (financetoolkit divided the two sides by different asset totals)
+        "piotroski_accruals": _criterion(
+            c["operating_cashflow"] > c["net_income"], c["operating_cashflow"], c["net_income"]
         ),
-        "piotroski_ocf_positive": piotroski_model.get_operating_cashflow_criteria(
-            _wide(c["operating_cashflow"])
-        ),
-        # In-house per the published definition (ΔROA > 0, i.e. ROA_t > ROA_{t-1}):
-        # financetoolkit's criterion compares growth acceleration instead —
-        # the exact deviation reported in FinanceToolkit issue #91 [E39].
-        "piotroski_roa_improving": _wide(
-            (c["net_income"] / avg_assets) > (c["net_income"] / avg_assets).shift(1)
-        ),
-        "piotroski_accruals": piotroski_model.get_accruals_criteria(
-            _wide(c["net_income"]),
-            _wide(avg_assets),
-            _wide(c["operating_cashflow"]),
-            _wide(c["total_assets"]),
-        ),
-        "piotroski_leverage_decreasing": piotroski_model.get_change_in_leverage_criteria(
-            _wide(c["total_debt"]), _wide(c["total_assets"])
-        ),
-        "piotroski_current_ratio_improving": piotroski_model.get_change_in_current_ratio_criteria(
-            _wide(c["current_assets"]), _wide(c["current_liabilities"])
-        ),
-        "piotroski_no_dilution": piotroski_model.get_number_of_shares_criteria(_wide(issued)),
-        "piotroski_gross_margin_improving": piotroski_model.get_gross_margin_criteria(
-            _wide(c["revenue"]), _wide(c["cost_of_goods_sold"])
-        ),
-        "piotroski_asset_turnover_improving": piotroski_model.get_asset_turnover_ratio_criteria(
-            _wide(c["revenue"]), _wide(avg_assets)
-        ),
+        "piotroski_leverage_decreasing": improving(leverage, lower=True),
+        "piotroski_current_ratio_improving": improving(current_ratio),
+        "piotroski_no_dilution": _criterion(issued == 0, issued),
+        "piotroski_gross_margin_improving": improving(gross_margin),
+        "piotroski_asset_turnover_improving": improving(turnover),
     }
-    flat = {name: value.iloc[0] for name, value in criteria.items()}
-    out = pd.DataFrame(flat, index=canonical.index)
-    score = piotroski_model.get_piotroski_score(*(criteria[name] for name in PIOTROSKI_CRITERIA))
-    out["piotroski_f"] = score.iloc[0]
+    out = pd.DataFrame(criteria, index=canonical.index)
+    out["piotroski_f"] = out[PIOTROSKI_CRITERIA].astype(float).sum(axis=1, skipna=False)
     return out
 
 
 def altman(canonical: pd.DataFrame, price: pd.Series | None = None) -> pd.DataFrame:
     c = canonical
     market_value_of_equity = (
-        price * c["shares_outstanding"] if price is not None else pd.Series(float("nan"), index=c.index)
+        price * price_shares(c) if price is not None else pd.Series(float("nan"), index=c.index)
     )
     x1 = altman_model.get_working_capital_to_total_assets_ratio(c["working_capital"], c["total_assets"])
     x2 = altman_model.get_retained_earnings_to_total_assets_ratio(c["retained_earnings"], c["total_assets"])
@@ -149,8 +147,9 @@ def ohlson(canonical: pd.DataFrame) -> pd.DataFrame:
     ni = c["net_income"]
     size = np.log(ta.where(ta > 0))
     oeneg = (tl > ta).astype(float)
-    intwo = ((ni < 0) & (ni.shift(1) < 0)).astype(float)
-    chin = (ni - ni.shift(1)) / (ni.abs() + ni.shift(1).abs())
+    prev_ni = prior_period(ni)
+    intwo = ((ni < 0) & (prev_ni < 0)).astype(float)
+    chin = (ni - prev_ni) / (ni.abs() + prev_ni.abs())
     o = (
         -1.32
         - 0.407 * size
