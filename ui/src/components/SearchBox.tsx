@@ -27,15 +27,22 @@ export function SearchBox({ onPick }: Props) {
       setActive(-1);
       return;
     }
+    // clearing the timer is not enough: a request already in flight for an
+    // older needle ("ap") may land after the newer one ("apple") — drop it
+    let current = true;
     timer.current = setTimeout(() => {
       search(needle)
         .then((found) => {
+          if (!current) return;
           setHits(found);
           setActive(-1);
         })
-        .catch(() => setHits([]));
+        .catch(() => {
+          if (current) setHits([]);
+        });
     }, DEBOUNCE_MS);
     return () => {
+      current = false;
       if (timer.current) clearTimeout(timer.current);
     };
   }, [value]);

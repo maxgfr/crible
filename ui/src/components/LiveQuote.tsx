@@ -1,7 +1,8 @@
 // Live-quote chip under the drawer title — renders ONLY when the published
 // close is stale (not today's) AND the best-effort fetch actually landed.
-// Clearly labeled unofficial, with the dataset as-of alongside so the two
-// vintages are never confused.
+// Clearly labeled unofficial and with its route (direct, or which public
+// proxy relayed it), the dataset as-of alongside so the two vintages are
+// never confused.
 
 import { useEffect, useState } from "react";
 import { fetchLiveQuote, isStale, type LiveQuote as Quote } from "../data/live-quote";

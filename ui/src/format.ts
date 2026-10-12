@@ -33,7 +33,7 @@ const NEGATIVE_IS_BAD = new Set([
   "ttm_net_income", "ttm_operating_cashflow", "ttm_free_cash_flow",
   "gross_margin", "operating_margin", "ebitda_margin", "net_profit_margin",
   "fcf_margin",
-  "return_on_equity", "return_on_assets", "return_on_invested_capital",
+  "return_on_equity", "return_on_assets",
   "earnings_yield", "free_cash_flow_yield", "ttm_fcf_yield",
   "shareholder_yield", "greenblatt_earnings_yield", "greenblatt_roc",
 ]);
@@ -88,10 +88,15 @@ export const VERDICT_COLUMNS = [
   "fcf_conversion", "dividend_coverage", "rule_of_40", "peg_ratio",
 ] as const;
 
-/** ≥1e9 → "…B", ≥1e6 → "…M", integers verbatim, else 3 decimals. */
+/** ≥1e9 → "…B", ≥1e6 → "…M", integers verbatim, else 3 decimals; NaN and
+ *  ±Infinity → "—". The unit is picked AFTER rounding, so 999,999,999.9
+ *  reads "1.00B", never "1000.0M". */
 export function formatNumber(value: number): string {
-  if (Math.abs(value) >= 1e9) return `${(value / 1e9).toFixed(2)}B`;
-  if (Math.abs(value) >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
+  if (!Number.isFinite(value)) return "—";
+  const millions = Number((value / 1e6).toFixed(1));
+  if (Math.abs(value) >= 1e9 || Math.abs(millions) >= 1000) return `${(value / 1e9).toFixed(2)}B`;
+  const plain = Number.isInteger(value) ? value : Number(value.toFixed(3));
+  if (Math.abs(plain) >= 1e6) return `${millions.toFixed(1)}M`;
   return Number.isInteger(value) ? String(value) : value.toFixed(3);
 }
 
@@ -101,7 +106,10 @@ export function formatPercent(value: number): string {
 }
 
 export function formatCell(column: string, value: unknown): FormattedCell {
-  if (value === null || value === undefined) return { text: "—", className: "", flag: "" };
+  // NaN/±Infinity read as missing — never a verdict on a non-number
+  if (value === null || value === undefined || (typeof value === "number" && !Number.isFinite(value))) {
+    return { text: "—", className: "", flag: "" };
+  }
   if (typeof value === "number") {
     const text = formatNumber(value);
     const kind = verdictKind(column, value);

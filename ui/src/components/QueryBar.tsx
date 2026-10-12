@@ -111,13 +111,15 @@ export function QueryBar({ value, onChange, onRun, running, error, inputRef, fie
                     accept(suggestions[active]);
                   } else {
                     setSuggestions([]);
-                    onRun();
+                    if (!running) onRun();
                   }
                   return;
                 }
                 return;
               }
-              if (event.key === "Enter") onRun();
+              // Enter obeys the same rule as the disabled button: one screen
+              // in flight at a time
+              if (event.key === "Enter" && !running) onRun();
               if (event.key === "ArrowUp") {
                 const history = loadQueryHistory();
                 if (!history.length || histPos.current >= history.length - 1) return;

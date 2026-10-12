@@ -1,21 +1,18 @@
 // The zero-result funnel: when a screen matches nothing, count the rows
 // surviving each top-level AND clause (alone, then cumulatively) so the user
-// sees WHICH clause empties the funnel instead of guessing. Counts ride the
-// normal screen() path (page size 1, total only) — static and API clients
-// alike; nothing here is a second query engine.
+// sees WHICH clause empties the funnel instead of guessing. Counts come from
+// the data client's funnel(): ONE aggregate query in static mode (a count_if
+// per clause), total-only screens against the API — nothing here is a
+// second query engine.
 
 import { useEffect, useState } from "react";
 
-import { screen } from "../data";
+import { funnel, type FunnelCount } from "../data";
 import { topLevelClauses } from "../dsl/explain";
 
 const CLAUSE_CAP = 20;
 
-interface ClauseCount {
-  clause: string;
-  alone: number;
-  cumulative: number;
-}
+type ClauseCount = FunnelCount;
 
 export function ZeroDiagnosis({ query }: { query: string }) {
   const [counts, setCounts] = useState<ClauseCount[] | null>(null);
@@ -28,20 +25,14 @@ export function ZeroDiagnosis({ query }: { query: string }) {
     }
     setCounts(null);
     let cancelled = false;
-    (async () => {
-      const out: ClauseCount[] = [];
-      for (let i = 0; i < clauses.length; i += 1) {
-        const alone = (await screen(clauses[i], null, 1, 1)).total;
-        const cumulative = (await screen(clauses.slice(0, i + 1).join(" AND "), null, 1, 1)).total;
-        if (cancelled) return;
-        out.push({ clause: clauses[i], alone, cumulative });
-        // the funnel is empty from here on — no need to keep querying
-        if (cumulative === 0) break;
-      }
-      if (!cancelled) setCounts(out);
-    })().catch(() => {
-      if (!cancelled) setCounts([]);
-    });
+    funnel(clauses).then(
+      (out) => {
+        if (!cancelled) setCounts(out);
+      },
+      () => {
+        if (!cancelled) setCounts([]);
+      },
+    );
     return () => {
       cancelled = true;
     };

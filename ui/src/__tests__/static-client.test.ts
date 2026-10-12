@@ -29,6 +29,9 @@ function scriptedRunner() {
       if (sql.startsWith("DESCRIBE")) {
         return WHITELIST.map((c) => ({ column_name: c, column_type: SCHEMA[c] }));
       }
+      // rows + total in ONE query (count(*) OVER ()), the page's every row
+      // carries the full match count
+      if (sql.includes("count(*) OVER ()")) return ROWS.map((r) => ({ ...r, __total: 2n }));
       if (sql.includes("count(*)")) return [{ total: 2n }];
       if (sql.includes("FROM snapshot_all")) {
         return params[0] === "AIR.PA" ? [{ symbol: "AIR.PA", period: "2025", piotroski_f: 8 }] : [];
@@ -89,7 +92,7 @@ describe("static client — screen", () => {
     expect(result.page).toBe(1);
     expect(typeof result.tookMs).toBe("number");
     expect(result.rows[0].piotroski_f).toBe(8); // BigInt → number
-    const select = calls.find((c) => c.sql.includes("SELECT * FROM snapshot_latest"));
+    const select = calls.find((c) => c.sql.includes("FROM snapshot_latest WHERE"));
     expect(select?.sql).toContain('"piotroski_f" >= ?');
     expect(select?.sql).toContain("LIMIT 500 OFFSET 0");
     expect(select?.params).toEqual([7]);
@@ -99,7 +102,7 @@ describe("static client — screen", () => {
     const { runner, calls } = scriptedRunner();
     const client = makeClient(runner);
     await client.screen("piotroski_f >= 7", null, 3, 100);
-    const select = calls.find((c) => c.sql.includes("SELECT * FROM snapshot_latest"));
+    const select = calls.find((c) => c.sql.includes("FROM snapshot_latest WHERE"));
     expect(select?.sql).toContain("LIMIT 100 OFFSET 200");
   });
 
@@ -108,7 +111,7 @@ describe("static client — screen", () => {
     const result = await makeClient(runner).screen("   ", null, 1, 500);
     expect(result.total).toBe(2);
     expect(result.rows).toHaveLength(2);
-    const select = calls.find((c) => c.sql.includes("SELECT * FROM snapshot_latest"));
+    const select = calls.find((c) => c.sql.includes("FROM snapshot_latest WHERE"));
     expect(select?.sql).toContain("WHERE TRUE");
     expect(select?.params).toEqual([]);
   });
@@ -124,6 +127,25 @@ describe("static client — screen", () => {
     expect(err.detail.error).toContain("unknown field 'piotroski'");
     expect(err.detail.position).toBe(0);
     expect(err.detail.hint).toBe("did you mean 'piotroski_f'?");
+  });
+
+  it("rejects a literal of the wrong type as a DslApiError, never a DuckDB error", async () => {
+    const { runner, calls } = scriptedRunner();
+    const client = makeClient(runner);
+    const err = await client.screen("sector = 5", null, 1, 500).then(
+      () => null,
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(DslApiError);
+    expect(err.detail.error).toBe("'sector' is a text field at position 0 — compare it to a quoted string, e.g. sector = 'value'");
+    expect(calls.some((c) => c.sql.includes("FROM snapshot_latest WHERE"))).toBe(false);
+  });
+
+  it("pages in a deterministic order: symbol breaks every tie", async () => {
+    const { runner, calls } = scriptedRunner();
+    await makeClient(runner).screen("piotroski_f >= 7", "-piotroski_f", 1, 500);
+    const select = calls.find((c) => c.sql.includes("FROM snapshot_latest WHERE"));
+    expect(select?.sql).toContain('ORDER BY "piotroski_f" DESC, "symbol" ASC');
   });
 });
 
@@ -173,7 +195,7 @@ describe("static client — CSV export", () => {
     });
     expect(text.split("\n")[0]).toBe("symbol,name");
     expect(text).toContain('"Airbus, SAS"'); // comma → quoted
-    const select = calls.find((c) => c.sql.includes("SELECT * FROM snapshot_latest"));
+    const select = calls.find((c) => c.sql.includes("FROM snapshot_latest WHERE"));
     expect(select?.sql).toContain("LIMIT 10000");
   });
 });
@@ -249,5 +271,128 @@ describe("static client — JSON surfaces", () => {
     expect(await client.presets()).toEqual([]);
     expect(await client.company("AIR.PA")).toBeNull();
     expect(await client.search("air")).toEqual([]);
+  });
+});
+
+describe("static client — one query per screen", () => {
+  it("reads rows and the total in a single query (count(*) OVER ())", async () => {
+    const { runner, calls } = scriptedRunner();
+    const client = makeClient(runner);
+    await client.fields(); // the one DESCRIBE is shared — not part of a screen
+    calls.length = 0;
+    const result = await client.screen("piotroski_f >= 7", null, 1, 500);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].sql).toContain("count(*) OVER ()");
+    expect(result.total).toBe(2);
+    expect(result.rows[0]).not.toHaveProperty("__total"); // never leaks to the grid
+  });
+
+  it("selects only the requested columns (+ symbol), never SELECT *", async () => {
+    const { runner, calls } = scriptedRunner();
+    const client = makeClient(runner);
+    await client.screen("piotroski_f >= 7", null, 1, 500, ["name", "piotroski_f", "bogus"]);
+    const select = calls.find((c) => c.sql.includes("FROM snapshot_latest WHERE"));
+    expect(select?.sql).not.toContain("SELECT *");
+    expect(select?.sql).toContain('SELECT "symbol", "name", "piotroski_f",');
+    expect(select?.sql).not.toContain("bogus"); // whitelist-filtered
+  });
+
+  it("counts every clause of the zero-result funnel in ONE aggregate query", async () => {
+    const calls: { sql: string; params: unknown[] }[] = [];
+    const runner: QueryRunner = {
+      async query(sql, params = []) {
+        calls.push({ sql, params });
+        if (sql.startsWith("DESCRIBE")) {
+          return WHITELIST.map((c) => ({ column_name: c, column_type: SCHEMA[c] }));
+        }
+        return [{ alone_0: 549n, cumulative_0: 549n, alone_1: 333n, cumulative_1: 105n, alone_2: 126n, cumulative_2: 0n }];
+      },
+    };
+    const client = makeClient(runner);
+    const counts = await client.funnel(["piotroski_f >= 7", "altman_z > 2.99", "country = 'FR'"]);
+    expect(counts).toEqual([
+      { clause: "piotroski_f >= 7", alone: 549, cumulative: 549 },
+      { clause: "altman_z > 2.99", alone: 333, cumulative: 105 },
+      { clause: "country = 'FR'", alone: 126, cumulative: 0 },
+    ]);
+    const aggregates = calls.filter((c) => !c.sql.startsWith("DESCRIBE"));
+    expect(aggregates).toHaveLength(1);
+    expect(aggregates[0].sql.match(/count_if\(/g)).toHaveLength(6);
+    // placeholders bind in textual order: clause params repeat per use
+    expect(aggregates[0].params).toEqual([7, 7, 2.99, 7, 2.99, "FR", 7, 2.99, "FR"]);
+  });
+});
+
+describe("static client — failures are not cached", () => {
+  it("a runner that failed to boot is retried on the next call", async () => {
+    const { runner } = scriptedRunner();
+    let attempts = 0;
+    const client = createStaticClient({
+      runner: async () => {
+        attempts += 1;
+        if (attempts === 1) throw new Error("wasm fetch failed");
+        return runner;
+      },
+      fetchImpl: stubFetch(FILES),
+      baseUrl: "/",
+    });
+    await expect(client.screen("piotroski_f >= 7", null, 1, 10)).rejects.toThrow(/wasm/);
+    expect((await client.screen("piotroski_f >= 7", null, 1, 10)).total).toBe(2);
+  });
+
+  it("a DESCRIBE that failed once is retried", async () => {
+    const { runner } = scriptedRunner();
+    let describes = 0;
+    const flaky: QueryRunner = {
+      async query(sql, params) {
+        if (sql.startsWith("DESCRIBE") && ++describes === 1) throw new Error("range request failed");
+        return runner.query(sql, params);
+      },
+    };
+    const client = makeClient(flaky);
+    await expect(client.fields()).rejects.toThrow(/range request/);
+    expect((await client.fields()).length).toBe(WHITELIST.length);
+  });
+
+  it("a network blip on manifest.json is not a permanent 'not published yet'", async () => {
+    const { runner } = scriptedRunner();
+    const files = stubFetch(FILES);
+    let first = true;
+    const fetchImpl = (async (url: string) => {
+      if (first) {
+        first = false;
+        throw new TypeError("network down");
+      }
+      return files(url);
+    }) as unknown as typeof fetch;
+    const client = createStaticClient({ runner: async () => runner, fetchImpl, baseUrl: "/" });
+    expect(await client.manifest()).toBeNull();
+    expect(await client.manifest()).not.toBeNull();
+  });
+});
+
+describe("static client — CSV export hardening", () => {
+  it("quotes \\r and neutralises formula-leading string cells", async () => {
+    const runner: QueryRunner = {
+      async query(sql) {
+        if (sql.startsWith("DESCRIBE")) {
+          return WHITELIST.map((c) => ({ column_name: c, column_type: SCHEMA[c] }));
+        }
+        return [
+          { symbol: "EVIL", name: '=HYPERLINK("http://x")', country: "a\rb", sector: "@SUM(A1)", piotroski_f: -3, __total: 3n },
+          { symbol: "+X", name: "-minus", country: "FR", sector: "Tech", piotroski_f: 5, __total: 3n },
+        ];
+      },
+    };
+    const result = await makeClient(runner).exportCsv("", null, ["symbol", "name", "country", "sector", "piotroski_f"]);
+    if (!("blob" in result)) throw new Error("expected blob");
+    const text = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(result.blob);
+    });
+    const [, evil, plus] = text.split("\n");
+    expect(evil).toBe(`EVIL,"'=HYPERLINK(""http://x"")","a\rb",'@SUM(A1),-3`); // numbers stay numbers
+    expect(plus).toBe("'+X,'-minus,FR,Tech,5");
   });
 });

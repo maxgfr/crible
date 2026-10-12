@@ -30,6 +30,12 @@ describe("parseHash", () => {
     });
   });
 
+  it("never throws on a malformed escape (#/company/%E0)", () => {
+    expect(parseHash("#/company/%E0")).toEqual({
+      view: "screener", company: "%E0", q: null, sort: null,
+    });
+  });
+
   it("restores the screen from the hash query string", () => {
     expect(parseHash("#/?q=piotroski_f%20%3E%3D%207&sort=-composite_rank")).toEqual({
       view: "screener", company: null, q: "piotroski_f >= 7", sort: "-composite_rank",
@@ -53,5 +59,20 @@ describe("hashFor", () => {
     roundtrip({ view: "screener", company: null, q: "piotroski_f >= 7 AND country IN ('FR','DE')", sort: "-roe" });
     roundtrip({ view: "screener", company: "AIR.PA", q: "altman_z > 2.99", sort: "altman_z" });
     roundtrip({ view: "screener", company: null, q: "", sort: null });
+  });
+
+  it("writes q/sort on engines without URLSearchParams.size (Safari < 17)", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(URLSearchParams.prototype, "size");
+    Object.defineProperty(URLSearchParams.prototype, "size", {
+      configurable: true,
+      get: () => undefined,
+    });
+    try {
+      expect(hashFor({ view: "screener", company: null, q: "x > 1", sort: "-x" })).toBe(
+        "#/?q=x+%3E+1&sort=-x",
+      );
+    } finally {
+      if (descriptor) Object.defineProperty(URLSearchParams.prototype, "size", descriptor);
+    }
   });
 });

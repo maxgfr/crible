@@ -5,6 +5,7 @@
 import { fireEvent, render, screen as rtl, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 
 const ROWS = [
   { symbol: "AIR.PA", name: "Airbus", country: "FR", sector: "Industrials", piotroski_f: 8 },
@@ -99,6 +100,27 @@ describe("shell & navigation", () => {
     await waitFor(() => expect(rtl.getByLabelText(/AIR\.PA details/)).toBeInTheDocument());
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => expect(rtl.queryByLabelText(/AIR\.PA details/)).not.toBeInTheDocument());
+  });
+});
+
+describe("root error boundary", () => {
+  it("a render crash shows a recoverable message instead of a blank page", () => {
+    const Boom = () => {
+      throw new Error("detail.periods is undefined");
+    };
+    // React + jsdom report the (expected) crash loudly — keep the run quiet
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const swallow = (event: ErrorEvent) => event.preventDefault();
+    window.addEventListener("error", swallow);
+    render(
+      <ErrorBoundary>
+        <Boom />
+      </ErrorBoundary>,
+    );
+    window.removeEventListener("error", swallow);
+    quiet.mockRestore();
+    expect(rtl.getByRole("alert")).toHaveTextContent(/detail\.periods is undefined/);
+    expect(rtl.getByRole("button", { name: /reload/i })).toBeInTheDocument();
   });
 });
 

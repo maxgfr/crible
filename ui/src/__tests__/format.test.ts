@@ -13,6 +13,20 @@ describe("formatNumber", () => {
     expect(formatNumber(7)).toBe("7");
     expect(formatNumber(0.1234)).toBe("0.123");
   });
+
+  it("shows — for NaN and ±Infinity (DuckDB-WASM can hand them back)", () => {
+    expect(formatNumber(Number.NaN)).toBe("—");
+    expect(formatNumber(Number.POSITIVE_INFINITY)).toBe("—");
+    expect(formatNumber(Number.NEGATIVE_INFINITY)).toBe("—");
+    expect(formatCell("beneish_m", Number.NaN)).toEqual({ text: "—", className: "", flag: "" });
+  });
+
+  it("picks the unit after rounding — never 1000.0M or 1000000.000", () => {
+    expect(formatNumber(999_999_999.9)).toBe("1.00B");
+    expect(formatNumber(-999_999_999.9)).toBe("-1.00B");
+    expect(formatNumber(999_999.9999)).toBe("1.0M");
+    expect(formatNumber(999_949_999)).toBe("999.9M");
+  });
 });
 
 describe("formatPercent", () => {

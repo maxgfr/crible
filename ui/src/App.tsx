@@ -5,9 +5,10 @@
 // and share restore the exact query and engine sort. Sorting and paging run
 // in the engine — never a client-side sort of one fetched page. Errors keep
 // the previous results visible; export downloads the FULL result set of the
-// current query (all pages) via /api/screen.csv.
+// current query (all pages) via /api/screen.csv. Only the LATEST screen
+// request may land: an older response arriving late is dropped whole.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DslApiError,
   STATIC_MODE,
@@ -58,6 +59,8 @@ export const IDENTITY_COLUMNS = ["symbol", "name", "country", "sector"];
 const DEFAULT_QUERY = "";
 export const DEFAULT_SORT = "-composite_rank";
 export const PAGE_SIZE = 500;
+// one shared empty page — a fresh [] per render would defeat the grid's memo
+const NO_ROWS: Record<string, unknown>[] = [];
 
 const VIEWS = [
   { view: "screener" as const, label: "Screener", hash: "#/" },
@@ -106,6 +109,13 @@ export default function App() {
   const [fieldInfos, setFieldInfos] = useState<FieldInfo[]>([]);
   const [exporting, setExporting] = useState(false);
   const queryInputRef = useRef<HTMLInputElement>(null);
+  // the id of the latest screen request — any other response is stale
+  const reqId = useRef(0);
+  // latest-value refs: callbacks read them without re-memoising per keystroke
+  const queryRef = useRef(query);
+  queryRef.current = query;
+  const visibleRef = useRef(visibleColumns);
+  visibleRef.current = visibleColumns;
 
   useEffect(() => watchSystemTheme(() => setSystemLight(prefersLight())), []);
 
@@ -116,11 +126,22 @@ export default function App() {
 
   // The single screening entry point: runs the query in the engine and makes
   // the URL remember the screen (replace — a run is not a history entry).
-  const runScreen = async (q: string, sortNext: string | null, pageNext: number) => {
+  // `extraColumns` are columns the caller is about to show (a preset's
+  // curated set): static mode only reads what is asked for.
+  const runScreen = useCallback(async (
+    q: string,
+    sortNext: string | null,
+    pageNext: number,
+    extraColumns: string[] = [],
+  ) => {
+    const id = ++reqId.current;
     setRunning(true);
     setError(null);
+    const wanted = [...new Set([...visibleRef.current, ...extraColumns, ...fieldsInQuery(q)])];
     try {
-      const response = await screen(q, sortNext, pageNext, PAGE_SIZE);
+      const response = await screen(q, sortNext, pageNext, PAGE_SIZE, wanted);
+      // a newer screen was started meanwhile — it owns result, sort, page, URL
+      if (id !== reqId.current) return;
       setResult(response);
       setRanQuery(q);
       setSort(sortNext);
@@ -139,20 +160,40 @@ export default function App() {
         navigate({ ...current, q, sort: sortNext }, { replace: true });
       }
     } catch (err) {
+      if (id !== reqId.current) return;
       if (err instanceof DslApiError) setError(err.detail);
-      else setError({ error: String(err), position: null, hint: "is the API reachable?" });
+      else {
+        // only a failed fetch (TypeError) means the API is unreachable — an
+        // HTTP error already carries the server's own detail
+        const hint = err instanceof TypeError ? "is the API reachable?" : null;
+        setError({ error: String(err), position: null, hint });
+      }
       // previous results intentionally stay visible
     } finally {
-      setRunning(false);
+      if (id === reqId.current) setRunning(false);
     }
-  };
+  }, [navigate]);
 
-  const run = (dsl?: string) => runScreen(dsl ?? query, sort, 1);
+  const run = (dsl?: string, extraColumns?: string[]) =>
+    runScreen(dsl ?? query, sort, 1, extraColumns);
 
-  const toggleSort = (column: string) => {
+  const toggleSort = useCallback((column: string) => {
+    // like Enter and the pager: a sort click never supersedes the screen in
+    // flight (it would re-sort the OLD query and drop the one just run)
+    if (running) return;
     const next = sort === `-${column}` ? column : sort === column ? null : `-${column}`;
-    runScreen(ranQuery ?? query, next, 1);
-  };
+    runScreen(ranQuery ?? queryRef.current, next, 1);
+  }, [running, sort, ranQuery, runScreen]);
+
+  const selectCompany = useCallback(
+    (symbol: string) => navigate({ view: "screener", company: symbol, q: ranQuery, sort }),
+    [navigate, ranQuery, sort],
+  );
+
+  const companyHref = useCallback(
+    (symbol: string) => hashFor({ view: "screener", company: symbol, q: ranQuery, sort }),
+    [ranQuery, sort],
+  );
 
   useEffect(() => {
     runScreen(route.q ?? DEFAULT_QUERY, route.sort ?? DEFAULT_SORT, 1);
@@ -170,16 +211,18 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // A hand-edited or history-navigated URL re-runs its screen (the guard on
-  // ranQuery breaks the loop: runScreen writes the same q back via replace).
+  // A hand-edited or history-navigated URL re-runs its screen — a new q OR
+  // only a new sort. The comparison with what last ran breaks the loop
+  // (runScreen writes the same q/sort back via replace); an edit made while
+  // a screen runs simply supersedes it (reqId).
   useEffect(() => {
-    if (route.view !== "screener" || route.q === null || running) return;
-    if (ranQuery !== null && route.q !== ranQuery) {
+    if (route.view !== "screener" || route.q === null || ranQuery === null) return;
+    if (route.q !== ranQuery || route.sort !== sort) {
       setQuery(route.q);
       runScreen(route.q, route.sort, 1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route.q]);
+  }, [route.q, route.sort]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -201,19 +244,40 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route]);
 
-  const availableColumns = useMemo(
-    () =>
-      result?.rows.length
-        ? Object.keys(result.rows[0]).filter((c) => !isHiddenField(c))
-        : DEFAULT_COLUMNS,
-    [result],
-  );
+  // what the picker can offer: the page's own keys plus the schema's field
+  // list — static mode projects only the visible columns, so the rows alone
+  // no longer describe the whole snapshot
+  const availableColumns = useMemo(() => {
+    if (!result?.rows.length) return DEFAULT_COLUMNS;
+    const names = new Set(Object.keys(result.rows[0]));
+    for (const field of fieldInfos) names.add(field.name);
+    return [...names].filter((c) => !isHiddenField(c));
+  }, [result, fieldInfos]);
   // symbol is the row's identity (and its keyboard path into the drawer) —
   // it stays visible no matter what the picker says
-  const columns = [
-    "symbol",
-    ...visibleColumns.filter((c) => c !== "symbol" && availableColumns.includes(c)),
-  ];
+  const columns = useMemo(
+    () => [
+      "symbol",
+      ...visibleColumns.filter((c) => c !== "symbol" && availableColumns.includes(c)),
+    ],
+    [visibleColumns, availableColumns],
+  );
+
+  // static mode: a column picked AFTER (or while) the screen ran was not read —
+  // re-read the same page with it once the engine is idle (the API always
+  // returns every column). One attempt per column set: a failing re-read must
+  // not retry forever.
+  const rereadFor = useRef("");
+  useEffect(() => {
+    if (!STATIC_MODE || running || ranQuery === null || !result?.rows.length) return;
+    const have = result.rows[0];
+    const missing = visibleColumns.filter((c) => !(c in have) && availableColumns.includes(c));
+    const key = missing.join(",");
+    if (missing.length && rereadFor.current !== key) {
+      rereadFor.current = key;
+      runScreen(ranQuery, sort, page);
+    }
+  }, [visibleColumns, running, result, ranQuery, sort, page, availableColumns, runScreen]);
 
   const firstRun =
     statusData?.snapshot === false && !(result && result.total > 0);
@@ -276,10 +340,11 @@ export default function App() {
                 setQuery(preset.dsl);
                 // curated columns replace the visible set (identity stays);
                 // presets without one fall back to the DSL-union in runScreen
-                if (preset.columns?.length) {
-                  setVisibleColumns([...new Set([...IDENTITY_COLUMNS, ...preset.columns])]);
-                }
-                run(preset.dsl);
+                const curated = preset.columns?.length
+                  ? [...new Set([...IDENTITY_COLUMNS, ...preset.columns])]
+                  : [];
+                if (curated.length) setVisibleColumns(curated);
+                run(preset.dsl, curated);
               }}
             />
             <ColumnPicker
@@ -320,7 +385,7 @@ export default function App() {
               </span>
             )}
             <button
-              disabled={!ranQuery || !result?.total || exporting}
+              disabled={ranQuery === null || !result?.total || exporting}
               onClick={async () => {
                 if (ranQuery === null || exporting) return;
                 setExporting(true);
@@ -360,18 +425,14 @@ export default function App() {
             </div>
           ) : (
             <ResultsGrid
-              rows={result?.rows ?? []}
+              rows={result?.rows ?? NO_ROWS}
               columns={columns}
               query={ranQuery ?? undefined}
               selected={route.company}
-              onSelect={(symbol) =>
-                navigate({ view: "screener", company: symbol, q: ranQuery, sort })
-              }
+              onSelect={selectCompany}
               sort={sort}
               onSort={toggleSort}
-              hrefFor={(symbol) =>
-                hashFor({ view: "screener", company: symbol, q: ranQuery, sort })
-              }
+              hrefFor={companyHref}
             />
           )}
         </>

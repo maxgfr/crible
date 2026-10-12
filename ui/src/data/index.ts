@@ -10,6 +10,7 @@ import type {
   DataClient,
   SiteManifest,
   FieldInfo,
+  FunnelCount,
   PriceBar,
   Preset,
   ProviderInfo,
@@ -37,8 +38,13 @@ export async function screen(
   sort: string | null,
   page: number,
   pageSize: number,
+  columns?: string[],
 ): Promise<ScreenResponse> {
-  return (await getClient()).screen(query, sort, page, pageSize);
+  return (await getClient()).screen(query, sort, page, pageSize, columns);
+}
+
+export async function funnel(clauses: string[]): Promise<FunnelCount[]> {
+  return (await getClient()).funnel(clauses);
 }
 
 export async function exportCsv(
@@ -93,6 +99,7 @@ export type {
   SiteManifest,
   DslErrorDetail,
   FieldInfo,
+  FunnelCount,
   IngestHeartbeat,
   PriceBar,
   PriceManifest,

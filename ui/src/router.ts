@@ -4,7 +4,7 @@
 // a permalink; #/company/:symbol carries it too, so refreshing or closing
 // the drawer restores the screen that found the company.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export type View = "screener" | "status";
 
@@ -13,6 +13,15 @@ export interface Route {
   company: string | null;
   q: string | null;
   sort: string | null;
+}
+
+// a malformed escape (#/company/%E0) must never crash the app: keep it raw
+function safeDecode(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
 }
 
 export function parseHash(hash: string): Route {
@@ -25,7 +34,7 @@ export function parseHash(hash: string): Route {
   if (path === "/status" || path === "/providers") return { view: "status", company: null, q, sort };
   const company = path.match(/^\/company\/(.+)$/);
   if (company) {
-    return { view: "screener", company: decodeURIComponent(company[1]), q, sort };
+    return { view: "screener", company: safeDecode(company[1]), q, sort };
   }
   return { view: "screener", company: null, q, sort };
 }
@@ -35,7 +44,9 @@ export function hashFor(route: Route): string {
   // q="" is meaningful (blank query = the full snapshot), so only null skips
   if (route.q !== null) params.set("q", route.q);
   if (route.sort) params.set("sort", route.sort);
-  const search = params.size ? `?${params.toString()}` : "";
+  // toString(), not .size — URLSearchParams.size is missing before Safari 17
+  const query = params.toString();
+  const search = query ? `?${query}` : "";
   if (route.company) return `#/company/${encodeURIComponent(route.company)}${search}`;
   if (route.view === "status") return "#/status";
   return `#/${search}`;
@@ -48,7 +59,8 @@ export function useHashRoute(): [Route, (route: Route, opts?: { replace?: boolea
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
-  const navigate = (next: Route, opts?: { replace?: boolean }) => {
+  // stable identity: callers memoise on it (the grid's link builder)
+  const navigate = useCallback((next: Route, opts?: { replace?: boolean }) => {
     const target = hashFor(next);
     if (opts?.replace) {
       // replaceState fires no hashchange event — sync the state ourselves
@@ -57,6 +69,6 @@ export function useHashRoute(): [Route, (route: Route, opts?: { replace?: boolea
     } else {
       window.location.hash = target;
     }
-  };
+  }, []);
   return [route, navigate];
 }

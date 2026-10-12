@@ -124,11 +124,36 @@ export class DslApiError extends Error {
   }
 }
 
+/** Rows surviving one top-level AND clause — alone, then cumulatively with
+ *  every clause before it (the zero-result funnel). */
+export interface FunnelCount {
+  clause: string;
+  alone: number;
+  cumulative: number;
+}
+
+/** The SQL seam of static mode: DuckDB-WASM in the browser, a scripted
+ *  stub in tests. Lives here (not in static-client) so duckdb.ts and
+ *  static-client.ts both depend on the contract, never on each other. */
+export interface QueryRunner {
+  query(sql: string, params?: unknown[]): Promise<Record<string, unknown>[]>;
+}
+
 /** api mode navigates to a server URL; static mode hands back a Blob. */
 export type CsvExport = { url: string } | { blob: Blob; filename: string };
 
 export interface DataClient {
-  screen(query: string, sort: string | null, page: number, pageSize: number): Promise<ScreenResponse>;
+  /** `columns` is a projection hint: static mode reads only those (plus
+   *  symbol) from Parquet; the API returns every column regardless */
+  screen(
+    query: string,
+    sort: string | null,
+    page: number,
+    pageSize: number,
+    columns?: string[],
+  ): Promise<ScreenResponse>;
+  /** survivors per top-level AND clause (see FunnelCount) */
+  funnel(clauses: string[]): Promise<FunnelCount[]>;
   exportCsv(query: string, sort: string | null, columns?: string[]): Promise<CsvExport>;
   presets(): Promise<Preset[]>;
   company(symbol: string): Promise<CompanyDetail | null>;

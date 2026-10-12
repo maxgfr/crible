@@ -1,71 +1,79 @@
 // DuckDB-WASM bootstrap for static mode — self-hosted bundles (Vite ?url
 // imports, no CDN: the site stays fully served from GitHub Pages) reading the
 // published Parquet artifacts over HTTP range requests. The snapshot_latest
-// view is copied verbatim from crible/runtime.py:mount_snapshot.
+// selection is copied verbatim from crible/runtime.py:_LATEST_SQL, but
+// materialised ONCE as a table at init: every screen, count and funnel then
+// reads memory instead of re-running the row_number() window over HTTP.
+//
+// Only the EH (wasm exceptions) bundle ships: every browser that can run the
+// screener supports it, and the MVP fallback doubled the Pages deploy.
 
 import * as duckdb from "@duckdb/duckdb-wasm";
-import wasmMvp from "@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url";
 import wasmEh from "@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url";
-import workerMvp from "@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url";
 import workerEh from "@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url";
-import type { QueryRunner } from "./static-client";
+import type { QueryRunner } from "./types";
 
-const BUNDLES: duckdb.DuckDBBundles = {
-  mvp: { mainModule: wasmMvp, mainWorker: workerMvp },
-  eh: { mainModule: wasmEh, mainWorker: workerEh },
-};
+// shard names come from manifest.json — quote them as SQL string literals
+function sqlString(text: string): string {
+  return `'${text.replaceAll("'", "''")}'`;
+}
 
 export async function createDuckDbRunner(
   base: string,
   priceShards: string[] = [],
 ): Promise<QueryRunner> {
-  const bundle = await duckdb.selectBundle(BUNDLES);
-  const worker = new Worker(bundle.mainWorker!);
-  const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
-  await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+  const worker = new Worker(workerEh);
+  try {
+    const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
+    await db.instantiate(wasmEh);
 
-  const url = (name: string) => new URL(`${base}data/${name}`, document.baseURI).href;
-  await db.registerFileURL(
-    "universe.parquet", url("universe.parquet"), duckdb.DuckDBDataProtocol.HTTP, false,
-  );
-  await db.registerFileURL(
-    "snapshot.parquet", url("snapshot.parquet"), duckdb.DuckDBDataProtocol.HTTP, false,
-  );
-  for (const shard of priceShards) {
-    await db.registerFileURL(shard, url(shard), duckdb.DuckDBDataProtocol.HTTP, false);
+    const url = (name: string) => new URL(`${base}data/${name}`, document.baseURI).href;
+    await db.registerFileURL(
+      "universe.parquet", url("universe.parquet"), duckdb.DuckDBDataProtocol.HTTP, false,
+    );
+    await db.registerFileURL(
+      "snapshot.parquet", url("snapshot.parquet"), duckdb.DuckDBDataProtocol.HTTP, false,
+    );
+    for (const shard of priceShards) {
+      await db.registerFileURL(shard, url(shard), duckdb.DuckDBDataProtocol.HTTP, false);
+    }
+
+    const conn = await db.connect();
+    await conn.query("CREATE VIEW universe AS SELECT * FROM read_parquet('universe.parquet')");
+    await conn.query("CREATE VIEW snapshot_all AS SELECT * FROM read_parquet('snapshot.parquet')");
+    await conn.query(`
+      CREATE TABLE snapshot_latest AS
+      SELECT * EXCLUDE (_rn) FROM (
+          SELECT s.*,
+                 row_number() OVER (PARTITION BY s.symbol ORDER BY s.period DESC) AS _rn
+          FROM snapshot_all s
+      ) WHERE _rn = 1
+    `);
+    // symbol-sorted, disjoint shards → DuckDB prunes non-matching ones on a
+    // footer read; only registered when the manifest lists a prices block
+    if (priceShards.length) {
+      const list = priceShards.map(sqlString).join(", ");
+      await conn.query(`CREATE VIEW prices AS SELECT * FROM read_parquet([${list}])`);
+    }
+
+    return {
+      async query(sql: string, params: unknown[] = []): Promise<Record<string, unknown>[]> {
+        if (params.length === 0) {
+          const table = await conn.query(sql);
+          return table.toArray().map((row) => row.toJSON() as Record<string, unknown>);
+        }
+        const statement = await conn.prepare(sql);
+        try {
+          const table = await statement.query(...params);
+          return table.toArray().map((row) => row.toJSON() as Record<string, unknown>);
+        } finally {
+          await statement.close();
+        }
+      },
+    };
+  } catch (err) {
+    // a failed boot is retried by the static client — never leak the worker
+    worker.terminate();
+    throw err;
   }
-
-  const conn = await db.connect();
-  await conn.query("CREATE VIEW universe AS SELECT * FROM read_parquet('universe.parquet')");
-  await conn.query("CREATE VIEW snapshot_all AS SELECT * FROM read_parquet('snapshot.parquet')");
-  await conn.query(`
-    CREATE VIEW snapshot_latest AS
-    SELECT * EXCLUDE (_rn) FROM (
-        SELECT s.*,
-               row_number() OVER (PARTITION BY s.symbol ORDER BY s.period DESC) AS _rn
-        FROM snapshot_all s
-    ) WHERE _rn = 1
-  `);
-  // symbol-sorted, disjoint shards → DuckDB prunes non-matching ones on a
-  // footer read; only registered when the manifest lists a prices block
-  if (priceShards.length) {
-    const list = priceShards.map((s) => `'${s}'`).join(", ");
-    await conn.query(`CREATE VIEW prices AS SELECT * FROM read_parquet([${list}])`);
-  }
-
-  return {
-    async query(sql: string, params: unknown[] = []): Promise<Record<string, unknown>[]> {
-      if (params.length === 0) {
-        const table = await conn.query(sql);
-        return table.toArray().map((row) => row.toJSON() as Record<string, unknown>);
-      }
-      const statement = await conn.prepare(sql);
-      try {
-        const table = await statement.query(...params);
-        return table.toArray().map((row) => row.toJSON() as Record<string, unknown>);
-      } finally {
-        await statement.close();
-      }
-    },
-  };
 }

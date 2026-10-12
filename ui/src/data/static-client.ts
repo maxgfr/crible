@@ -4,7 +4,7 @@
 // the published Parquet artifacts. JSON surfaces (presets/status/providers/
 // manifest) are plain files exported by `crible export-site`.
 
-import { compileQuery, compileSort } from "../dsl/compiler";
+import { compileQuery, compileSort, fieldKind } from "../dsl/compiler";
 import { DslError, parse } from "../dsl/parser";
 import {
   DslApiError,
@@ -13,17 +13,17 @@ import {
   type DataClient,
   type SiteManifest,
   type FieldInfo,
+  type FunnelCount,
   type PriceBar,
   type Preset,
   type ProviderInfo,
+  type QueryRunner,
   type ScreenResponse,
   type SearchHit,
   type StatusResponse,
 } from "./types";
 
-export interface QueryRunner {
-  query(sql: string, params?: unknown[]): Promise<Record<string, unknown>[]>;
-}
+export type { QueryRunner } from "./types";
 
 export interface StaticClientOptions {
   runner?: () => Promise<QueryRunner>;
@@ -44,26 +44,43 @@ function normalizeRow(row: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(row).map(([k, v]) => [k, normalizeValue(v)]));
 }
 
+// the window column carrying the full match count on every page row
+const TOTAL_COLUMN = "__total";
+
 function csvCell(value: unknown): string {
   if (value === null || value === undefined) return "";
-  const text = String(value);
-  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  let text = String(value);
+  // company names are third-party text: a leading = + - @ would run as a
+  // spreadsheet formula — neutralise it (numbers stay numbers)
+  if (typeof value === "string" && /^[=+\-@]/.test(text)) text = `'${text}`;
+  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+// a cached promise must never cache a FAILURE: reset on rejection so the
+// next call retries (a wasm/network blip is not fatal for the page's life)
+function retryable<T>(make: () => Promise<T>): () => Promise<T> {
+  let cached: Promise<T> | null = null;
+  return () => {
+    cached ??= make().catch((err: unknown) => {
+      cached = null;
+      throw err;
+    });
+    return cached;
+  };
 }
 
 export function createStaticClient(options: StaticClientOptions = {}): DataClient {
   const base = options.baseUrl ?? import.meta.env.BASE_URL;
   const fetchImpl = options.fetchImpl ?? fetch.bind(globalThis);
 
-  let runnerPromise: Promise<QueryRunner> | null = null;
-  let manifestPromise: Promise<SiteManifest | null> | null = null;
-  let describePromise: Promise<FieldInfo[]> | null = null;
-
-  const manifest = (): Promise<SiteManifest | null> => {
-    manifestPromise ??= fetchImpl(`${base}data/manifest.json`)
-      .then((r) => (r.ok ? (r.json() as Promise<SiteManifest>) : null))
-      .catch(() => null);
-    return manifestPromise;
-  };
+  // a 404 is a real "not published yet" (cached); a network error is not —
+  // it rejects inside, resolves null outside, and is retried next call
+  const loadManifest = retryable(() =>
+    fetchImpl(`${base}data/manifest.json`).then((r) =>
+      r.ok ? (r.json() as Promise<SiteManifest>) : null,
+    ),
+  );
+  const manifest = (): Promise<SiteManifest | null> => loadManifest().catch(() => null);
 
   // the DuckDB runner needs the price-shard list up front (views are created
   // at connect time) — resolve it from the manifest before booting DuckDB
@@ -74,28 +91,26 @@ export function createStaticClient(options: StaticClientOptions = {}): DataClien
       return import("./duckdb").then((m) => m.createDuckDbRunner(base, shards));
     });
 
-  const runner = (): Promise<QueryRunner> => {
-    runnerPromise ??= makeRunner();
-    return runnerPromise;
-  };
+  const runner = retryable(makeRunner);
 
   // one DESCRIBE feeds both the DSL whitelist and the query builder's field
   // list — the two can never drift from the published schema
-  const describe = (): Promise<FieldInfo[]> => {
-    describePromise ??= runner().then(async (r) => {
+  const schema = retryable(() =>
+    runner().then(async (r) => {
       const rows = await r.query("DESCRIBE snapshot_latest");
-      return rows.map((row) => ({
-        name: String(row.column_name),
-        type: String(row.column_type ?? "").toUpperCase().includes("VARCHAR")
-          ? ("string" as const)
-          : ("number" as const),
-      }));
-    });
-    return describePromise;
-  };
+      return rows.map((row) => ({ name: String(row.column_name), kind: fieldKind(String(row.column_type ?? "")) }));
+    }),
+  );
+  const describe = async () =>
+    (await schema()).map((f) => ({
+      name: f.name,
+      type: f.kind === "string" ? ("string" as const) : ("number" as const),
+    }));
 
-  const whitelist = async (): Promise<Set<string>> =>
-    new Set((await describe()).map((f) => f.name));
+  const whitelist = async (): Promise<Set<string>> => new Set((await schema()).map((f) => f.name));
+  // field → kind: the compiler rejects a literal of the wrong type (422 parity)
+  const fieldTypes = async (): Promise<Record<string, string>> =>
+    Object.fromEntries((await schema()).map((f) => [f.name, f.kind]));
 
   const published = async (): Promise<boolean> => (await manifest()) !== null;
 
@@ -108,59 +123,123 @@ export function createStaticClient(options: StaticClientOptions = {}): DataClien
     }
   };
 
+  // blank query = no filter (the grammar itself rejects empty input)
+  const compileWhere = (
+    query: string,
+    fields: Set<string>,
+    types: Record<string, string>,
+  ): [string, (number | string)[]] => (query.trim() ? compileQuery(parse(query), fields, types) : ["TRUE", []]);
+
+  // the exact 422 detail the FastAPI handler produces
+  const asApiError = (err: unknown): unknown =>
+    err instanceof DslError
+      ? new DslApiError({ error: err.message, position: err.position, hint: err.hint })
+      : err;
+
   const runScreen = async (
     query: string,
     sort: string | null,
     limit: number,
     offset: number,
+    columns?: string[],
   ): Promise<{ rows: Record<string, unknown>[]; total: number }> => {
     const fields = await whitelist();
+    const types = await fieldTypes();
     try {
-      // blank query = no filter (the grammar itself rejects empty input)
-      const [where, params] = query.trim()
-        ? compileQuery(parse(query), fields)
-        : (["TRUE", []] as [string, (number | string)[]]);
+      const [where, params] = compileWhere(query, fields, types);
       const order = compileSort(sort, fields);
+      // project only what the grid shows (+ symbol, the row identity) —
+      // whitelisted identifiers only, so quoting them is safe
+      const projection = columns
+        ? [...new Set(["symbol", ...columns])]
+            .filter((c) => fields.has(c))
+            .map((c) => `"${c}"`)
+            .join(", ")
+        : "*";
       const r = await runner();
+      // rows + the full match count in ONE pass: the window runs before LIMIT
       const rows = await r.query(
-        `SELECT * FROM snapshot_latest WHERE ${where}${order} LIMIT ${limit} OFFSET ${offset}`,
+        `SELECT ${projection}, count(*) OVER () AS "${TOTAL_COLUMN}"` +
+          ` FROM snapshot_latest WHERE ${where}${order} LIMIT ${limit} OFFSET ${offset}`,
         params,
       );
-      const counted = await r.query(
-        `SELECT count(*) AS total FROM snapshot_latest WHERE ${where}`,
-        params,
-      );
-      return { rows: rows.map(normalizeRow), total: Number(counted[0]?.total ?? 0) };
-    } catch (err) {
-      if (err instanceof DslError) {
-        // the exact 422 detail the FastAPI handler produces
-        throw new DslApiError({ error: err.message, position: err.position, hint: err.hint });
+      let total = Number(rows[0]?.[TOTAL_COLUMN] ?? 0);
+      if (rows.length === 0 && offset > 0) {
+        // past the last page: no row carries the count — ask for it alone
+        const counted = await r.query(
+          `SELECT count(*) AS total FROM snapshot_latest WHERE ${where}`,
+          params,
+        );
+        total = Number(counted[0]?.total ?? 0);
       }
-      throw err;
+      const clean = rows.map((row) => {
+        const { [TOTAL_COLUMN]: _total, ...rest } = row;
+        return normalizeRow(rest);
+      });
+      return { rows: clean, total };
+    } catch (err) {
+      throw asApiError(err);
+    }
+  };
+
+  // the zero-result funnel in ONE aggregate scan: a count_if per clause
+  // alone and per cumulative prefix — instead of 2 screens per clause
+  const runFunnel = async (clauses: string[]): Promise<FunnelCount[]> => {
+    const fields = await whitelist();
+    const types = await fieldTypes();
+    try {
+      const compiled = clauses.map((clause) => compileWhere(clause, fields, types));
+      const selects: string[] = [];
+      const params: (number | string)[] = [];
+      compiled.forEach(([where, clauseParams], i) => {
+        selects.push(`count_if(${where}) AS alone_${i}`);
+        params.push(...clauseParams);
+        const prefix = compiled.slice(0, i + 1);
+        selects.push(
+          `count_if(${prefix.map(([w]) => `(${w})`).join(" AND ")}) AS cumulative_${i}`,
+        );
+        for (const [, p] of prefix) params.push(...p);
+      });
+      const r = await runner();
+      const [row] = await r.query(`SELECT ${selects.join(", ")} FROM snapshot_latest`, params);
+      const out: FunnelCount[] = [];
+      for (let i = 0; i < clauses.length; i += 1) {
+        const cumulative = Number(row?.[`cumulative_${i}`] ?? 0);
+        out.push({ clause: clauses[i], alone: Number(row?.[`alone_${i}`] ?? 0), cumulative });
+        if (cumulative === 0) break; // same shape as the API path
+      }
+      return out;
+    } catch (err) {
+      throw asApiError(err);
     }
   };
 
   return {
     manifest,
 
-    async screen(query, sort, page, pageSize): Promise<ScreenResponse> {
+    async screen(query, sort, page, pageSize, columns): Promise<ScreenResponse> {
       if (!(await published())) {
         return { rows: [], total: 0, page, tookMs: 0, hint: NOT_PUBLISHED_HINT };
       }
       const started = performance.now();
       const limit = Math.min(pageSize, MAX_LIMIT);
-      const { rows, total } = await runScreen(query, sort, limit, (page - 1) * pageSize);
+      const { rows, total } = await runScreen(query, sort, limit, (page - 1) * pageSize, columns);
       const tookMs = Math.round((performance.now() - started) * 100) / 100;
       return { rows, total, page, tookMs };
     },
 
+    async funnel(clauses): Promise<FunnelCount[]> {
+      if (clauses.length === 0 || !(await published())) return [];
+      return runFunnel(clauses);
+    },
+
     async exportCsv(query, sort, columns): Promise<CsvExport> {
-      const { rows } = await runScreen(query, sort, MAX_LIMIT, 0);
+      const { rows } = await runScreen(query, sort, MAX_LIMIT, 0, columns?.length ? columns : undefined);
       const keep =
         columns && columns.length
           ? columns.filter((c) => rows.length === 0 || c in rows[0])
           : Object.keys(rows[0] ?? {});
-      const lines = [keep.join(",")];
+      const lines = [keep.map(csvCell).join(",")];
       for (const row of rows) lines.push(keep.map((c) => csvCell(row[c])).join(","));
       const blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv" });
       return { blob, filename: "crible-screen.csv" };

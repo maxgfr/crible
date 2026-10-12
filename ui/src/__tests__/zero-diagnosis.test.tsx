@@ -8,8 +8,18 @@ import { topLevelClauses, toDsl } from "../dsl/explain";
 import { parse } from "../dsl/parser";
 
 const totals: Record<string, number> = {};
+// the client's funnel() contract: alone + cumulative per clause, stopping
+// at the first empty cumulative
 vi.mock("../data", () => ({
-  screen: (query: string) => Promise.resolve({ rows: [], total: totals[query] ?? 0 }),
+  funnel: (clauses: string[]) => {
+    const out: { clause: string; alone: number; cumulative: number }[] = [];
+    for (let i = 0; i < clauses.length; i += 1) {
+      const cumulative = totals[clauses.slice(0, i + 1).join(" AND ")] ?? 0;
+      out.push({ clause: clauses[i], alone: totals[clauses[i]] ?? 0, cumulative });
+      if (cumulative === 0) break;
+    }
+    return Promise.resolve(out);
+  },
 }));
 
 import { ZeroDiagnosis } from "../components/ZeroDiagnosis";

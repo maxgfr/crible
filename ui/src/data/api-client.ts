@@ -10,6 +10,7 @@ import {
   type SiteManifest,
   type DslErrorDetail,
   type FieldInfo,
+  type FunnelCount,
   type PriceBar,
   type Preset,
   type ProviderInfo,
@@ -17,6 +18,26 @@ import {
   type SearchHit,
   type StatusResponse,
 } from "./types";
+
+// a non-2xx answer is an error, never data: the message carries the status
+// and the server's own `detail` when it sent one (FastAPI's error shape)
+async function apiError(response: Response, what = "API error"): Promise<Error> {
+  let detail = "";
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    if (body && body.detail !== undefined) {
+      detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+    }
+  } catch {
+    /* no JSON body — the status alone */
+  }
+  return new Error(`${what} ${response.status}${detail ? `: ${detail}` : ""}`);
+}
+
+async function okJson<T>(response: Response): Promise<T> {
+  if (!response.ok) throw await apiError(response);
+  return (await response.json()) as T;
+}
 
 export async function screen(
   query: string,
@@ -33,8 +54,7 @@ export async function screen(
     const body = await response.json();
     throw new DslApiError(body.detail as DslErrorDetail);
   }
-  if (!response.ok) throw new Error(`API error ${response.status}`);
-  return (await response.json()) as ScreenResponse;
+  return okJson<ScreenResponse>(response);
 }
 
 export function exportCsvUrl(query: string, sort: string | null, columns?: string[]): string {
@@ -45,24 +65,21 @@ export function exportCsvUrl(query: string, sort: string | null, columns?: strin
 }
 
 export async function presets(): Promise<Preset[]> {
-  const response = await fetch("/api/presets");
-  return (await response.json()) as Preset[];
+  return okJson<Preset[]>(await fetch("/api/presets"));
 }
 
 export async function company(symbol: string): Promise<CompanyDetail | null> {
   const response = await fetch(`/api/company/${encodeURIComponent(symbol)}`);
   if (response.status === 404) return null;
-  return (await response.json()) as CompanyDetail;
+  return okJson<CompanyDetail>(response);
 }
 
 export async function status(): Promise<StatusResponse> {
-  const response = await fetch("/api/status");
-  return (await response.json()) as StatusResponse;
+  return okJson<StatusResponse>(await fetch("/api/status"));
 }
 
 export async function providers(): Promise<ProviderInfo[]> {
-  const response = await fetch("/api/providers");
-  return (await response.json()) as ProviderInfo[];
+  return okJson<ProviderInfo[]>(await fetch("/api/providers"));
 }
 
 export async function search(q: string): Promise<SearchHit[]> {
@@ -87,12 +104,28 @@ export async function prices(symbol: string): Promise<PriceBar[]> {
 
 export async function requestFetch(symbol: string): Promise<FetchQueued> {
   const response = await fetch(`/api/fetch/${encodeURIComponent(symbol)}`, { method: "POST" });
-  if (!response.ok) throw new Error(`fetch request refused (${response.status})`);
+  if (!response.ok) throw await apiError(response, "fetch request refused");
   return (await response.json()) as FetchQueued;
 }
 
+// the API has no aggregate endpoint: one total-only screen per count, in
+// order, stopping once the cumulative funnel is empty (nothing after it
+// can matter)
+export async function funnel(clauses: string[]): Promise<FunnelCount[]> {
+  const out: FunnelCount[] = [];
+  for (let i = 0; i < clauses.length; i += 1) {
+    const alone = (await screen(clauses[i], null, 1, 1)).total;
+    const cumulative = (await screen(clauses.slice(0, i + 1).join(" AND "), null, 1, 1)).total;
+    out.push({ clause: clauses[i], alone, cumulative });
+    if (cumulative === 0) break;
+  }
+  return out;
+}
+
 export const apiClient: DataClient = {
-  screen,
+  // the server returns every column — the projection hint is static-only
+  screen: (query, sort, page, pageSize) => screen(query, sort, page, pageSize),
+  funnel,
   presets,
   company,
   status,

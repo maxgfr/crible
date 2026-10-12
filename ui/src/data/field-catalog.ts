@@ -66,7 +66,6 @@ const CATALOG: Record<string, CatalogEntry> = {
   fcf_conversion: { label: "FCF conversion", group: "Profitability" },
   income_quality_ratio: { label: "Income quality (OCF/NI)", group: "Profitability" },
   effective_tax_rate: { label: "Effective tax rate", group: "Profitability" },
-  return_on_invested_capital: { label: "ROIC", group: "Profitability" },
   rule_of_40: { label: "Rule of 40", group: "Profitability" },
   sloan_accruals: { label: "Sloan accruals", group: "Profitability" },
   debt_to_equity_ratio: { label: "Debt / equity", group: "Health" },

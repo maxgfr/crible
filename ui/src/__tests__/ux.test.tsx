@@ -7,6 +7,7 @@
 import { act, fireEvent, render, screen as rtl, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App, { PAGE_SIZE } from "../App";
+import { parseHash } from "../router";
 import { SearchBox } from "../components/SearchBox";
 import { PresetsMenu } from "../components/PresetsMenu";
 import { StatusView } from "../components/StatusView";
@@ -89,6 +90,116 @@ describe("screen permalinks", () => {
     render(<App />);
     await waitFor(() => expect(screenCalls.length).toBe(1));
     expect(screenCalls[0]).toEqual({ query: "", sort: "-composite_rank", page: 1 });
+  });
+});
+
+// a screen endpoint whose responses resolve only when the test says so —
+// the shape of a slow first load racing a faster follow-up
+function deferredScreenApi() {
+  const pending = new Map<string, (rows: Record<string, unknown>[]) => void>();
+  screenCalls.length = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url) === "/api/screen") {
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        screenCalls.push({ query: body.query, sort: body.sort ?? null, page: body.page });
+        const rows = await new Promise<Record<string, unknown>[]>((resolve) =>
+          pending.set(body.query, resolve));
+        return {
+          ok: true, status: 200,
+          json: async () => ({ rows, total: rows.length, page: body.page, tookMs: 1 }),
+        };
+      }
+      if (String(url) === "/api/presets") {
+        return {
+          ok: true, status: 200,
+          json: async () => [
+            { id: "top-ranked", name: "Top ranked", description: "d", dsl: "composite_rank >= 80" },
+          ],
+        };
+      }
+      if (String(url) === "/api/status") {
+        return { ok: true, status: 200, json: async () => ({ universe: 8, snapshot: true }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    }),
+  );
+  return pending;
+}
+
+describe("request races", () => {
+  it("a stale screen response never overwrites the newer one", async () => {
+    window.location.hash = "#/?q=altman_z%20%3E%202.99";
+    const pending = deferredScreenApi();
+    render(<App />);
+    await waitFor(() => expect(pending.has("altman_z > 2.99")).toBe(true));
+
+    // the slow first load is still in flight when a preset is picked
+    fireEvent.click(await rtl.findByRole("button", { name: "Presets" }));
+    fireEvent.click(rtl.getByText("Top ranked"));
+    await waitFor(() => expect(pending.has("composite_rank >= 80")).toBe(true));
+
+    await act(async () => pending.get("composite_rank >= 80")!([ROWS[1]]));
+    await waitFor(() => expect(rtl.getAllByText("SAP.DE").length).toBeGreaterThan(0));
+    await act(async () => pending.get("altman_z > 2.99")!([ROWS[0]]));
+
+    // the newer screen stays: rows, URL and the ran query all belong to it
+    expect(rtl.queryByText("AIR.PA")).not.toBeInTheDocument();
+    expect(rtl.getAllByText("SAP.DE").length).toBeGreaterThan(0);
+    expect(parseHash(window.location.hash).q).toBe("composite_rank >= 80");
+  });
+
+  it("Enter does not start a second screen while one is running", async () => {
+    const pending = deferredScreenApi();
+    render(<App />);
+    await waitFor(() => expect(screenCalls.length).toBe(1));
+    const input = rtl.getByLabelText("DSL query") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "piotroski_f >= 7" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20)); // let a stray run reach fetch
+    });
+    expect(screenCalls.length).toBe(1);
+    await act(async () => pending.get("")!(ROWS));
+  });
+
+  it("a sort click while a screen runs never supersedes it", async () => {
+    const pending = deferredScreenApi();
+    render(<App />);
+    await waitFor(() => expect(screenCalls.length).toBe(1));
+    await act(async () => pending.get("")!(ROWS));
+    await waitFor(() => expect(rtl.getAllByText("AIR.PA").length).toBeGreaterThan(0));
+
+    const input = rtl.getByLabelText("DSL query") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "piotroski_f >= 7" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(pending.has("piotroski_f >= 7")).toBe(true));
+    fireEvent.click(rtl.getByRole("button", { name: /^Piotroski F/ }));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(screenCalls.length).toBe(2); // no re-sort of the OLD query started
+    await act(async () => pending.get("piotroski_f >= 7")!([ROWS[1]]));
+    expect(parseHash(window.location.hash).q).toBe("piotroski_f >= 7");
+  });
+
+  it("a URL edit that only changes the sort re-runs the screen", async () => {
+    mockApi();
+    render(<App />);
+    await waitFor(() => expect(window.location.hash).toContain("sort=-composite_rank"));
+    window.location.hash = "#/?q=&sort=-altman_z";
+    await waitFor(() => expect(screenCalls.length).toBe(2));
+    expect(screenCalls[1]).toEqual({ query: "", sort: "-altman_z", page: 1 });
+  });
+});
+
+describe("export", () => {
+  it("the blank default screen is exportable (q='' is a real screen)", async () => {
+    mockApi();
+    render(<App />);
+    await waitFor(() => expect(rtl.getAllByText("AIR.PA").length).toBeGreaterThan(0));
+    expect(rtl.getByRole("button", { name: /Export all results/ })).toBeEnabled();
   });
 });
 

@@ -44,8 +44,9 @@ describe("fetchLiveQuote", () => {
       .mockRejectedValueOnce(new TypeError("cors"))
       .mockResolvedValueOnce(ok(YAHOO));
     vi.stubGlobal("fetch", fetchMock);
-    const quote = await fetchLiveQuote("AIR.PA");
+    const quote = await fetchLiveQuote("AIR.PA", { proxies: true });
     expect(quote).toMatchObject({ price: 123.45, previousClose: 120, currency: "EUR" });
+    expect(quote?.source).toBe("Yahoo Finance via corsproxy.io");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     // the mirror wraps the SAME Yahoo url
     expect(String(fetchMock.mock.calls[1][0])).toContain(
@@ -64,8 +65,33 @@ describe("fetchLiveQuote", () => {
   it("resolves null when every route fails", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new TypeError("down"));
     vi.stubGlobal("fetch", fetchMock);
-    expect(await fetchLiveQuote("AIR.PA")).toBeNull();
+    expect(await fetchLiveQuote("AIR.PA", { proxies: true })).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(3); // every route tried once
+  });
+
+  it("API mode never sends tickers to third-party proxies by default", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("cors"));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await fetchLiveQuote("AIR.PA")).toBeNull(); // the test build is API mode
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/^https:\/\/query1\.finance\.yahoo\.com\//);
+  });
+
+  it("VITE_LIVE_QUOTE_PROXY=1 opts API mode into the proxies", async () => {
+    vi.stubEnv("VITE_LIVE_QUOTE_PROXY", "1");
+    try {
+      const fetchMock = vi.fn().mockRejectedValue(new TypeError("cors"));
+      vi.stubGlobal("fetch", fetchMock);
+      await fetchLiveQuote("AIR.PA");
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("a direct answer is labelled as coming straight from Yahoo", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(ok(YAHOO)));
+    expect((await fetchLiveQuote("AIR.PA"))?.source).toBe("Yahoo Finance (direct)");
   });
 });
 
@@ -79,6 +105,7 @@ describe("LiveQuote chip", () => {
     expect(chip).toHaveTextContent("+2.9% vs last close");
     expect(chip).toHaveTextContent("dataset close 2020-01-02");
     expect(chip).toHaveTextContent(/unofficial/);
+    expect(chip).toHaveTextContent("Yahoo Finance (direct)"); // the route is named
   });
 
   it("fetches nothing when the published close is today's", async () => {

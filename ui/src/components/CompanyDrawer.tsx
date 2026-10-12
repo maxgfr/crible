@@ -93,7 +93,7 @@ const KEY_RATIOS: [string, string[]][] = [
   ]],
   ["Profitability", [
     "gross_margin", "operating_margin", "net_profit_margin", "return_on_assets",
-    "return_on_equity", "return_on_capital_employed", "return_on_invested_capital",
+    "return_on_equity", "return_on_capital_employed",
   ]],
   ["Balance", [
     "current_ratio", "quick_ratio", "cash_ratio", "debt_to_equity_ratio",
@@ -174,9 +174,18 @@ function saveDrawerPrefs(prefs: DrawerPrefs): void {
   }
 }
 
-function clampWidth(width: number): number {
-  return Math.min(Math.max(width, MIN_WIDTH), Math.round(window.innerWidth * 0.96));
+function maxWidth(): number {
+  return Math.round(window.innerWidth * 0.96);
 }
+
+function clampWidth(width: number): number {
+  return Math.min(Math.max(width, MIN_WIDTH), maxWidth());
+}
+
+// what Tab can land on inside the dialog (h3 jump targets are tabIndex -1)
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]),' +
+  ' textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function num(value: unknown): string {
   if (value === null || value === undefined) return "—";
@@ -219,25 +228,52 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
   const [prefs, setPrefs] = useState<DrawerPrefs>(() => loadDrawerPrefs());
   const [dragging, setDragging] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
+  // the live width while a drag is in progress — written straight to the
+  // CSS variable, committed to state (and storage) once, on pointerup
+  const dragWidth = useRef<number | null>(null);
 
   // FR-012 — after an on-demand fetch is queued, poll until the ingest
   // service has crawled + computed (one loop cycle, ~1-3 min), then swap the
   // drawer content in place. Gives up after ~6 min (rate-limit, bad symbol).
   const [fetchState, setFetchState] = useState<"idle" | "queued" | "failed">("idle");
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // `live` drops a late answer for the PREVIOUS symbol (A → B quickly must
+  // never paint A's data under B's title); a failed load is an error state,
+  // never an endless "Loading…"
   useEffect(() => {
+    let live = true;
     setDetail("loading");
+    setLoadError(null);
     setFetchState("idle");
-    company(symbol).then(setDetail);
+    company(symbol).then(
+      (next) => {
+        if (live) setDetail(next);
+      },
+      (err: unknown) => {
+        if (!live) return;
+        setDetail(null);
+        setLoadError(err instanceof Error ? err.message : String(err));
+      },
+    );
+    return () => {
+      live = false;
+    };
   }, [symbol]);
 
   useEffect(() => {
     if (fetchState !== "queued") return;
     const poll = setInterval(async () => {
-      const fresh = await company(symbol);
-      if (fresh && fresh.periods.length > 0) {
-        setDetail(fresh);
-        setFetchState("idle");
+      try {
+        const fresh = await company(symbol);
+        if (fresh && fresh.periods.length > 0) {
+          setDetail(fresh);
+          setFetchState("idle");
+        }
+      } catch {
+        /* transient — the next tick retries, the give-up timer still runs */
       }
     }, 20_000);
     const giveUp = setTimeout(() => setFetchState("failed"), 6 * 60_000);
@@ -246,6 +282,34 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
       clearTimeout(giveUp);
     };
   }, [fetchState, symbol]);
+
+  // a real modal: everything beside the drawer is inert while it is open
+  // (no Tab, no click, no screen-reader browse into the background).
+  // Declared before the focus effect so the background is live again by
+  // the time focus returns to the opener.
+  useEffect(() => {
+    const aside = asideRef.current;
+    const parent = aside?.parentElement;
+    if (!aside || !parent) return;
+    const made = new Set<Element>();
+    const mark = () => {
+      for (const el of Array.from(parent.children)) {
+        if (el !== aside && !el.hasAttribute("inert")) {
+          el.setAttribute("inert", "");
+          made.add(el);
+        }
+      }
+    };
+    mark();
+    // siblings mounted while the drawer is open (a grid replacing the
+    // first-run placeholder) join the background
+    const observer = new MutationObserver(mark);
+    observer.observe(parent, { childList: true });
+    return () => {
+      observer.disconnect();
+      for (const el of made) el.removeAttribute("inert");
+    };
+  }, []);
 
   // dialog semantics: focus moves in on open and back out on close
   useEffect(() => {
@@ -259,11 +323,40 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
   }, [prefs]);
 
   // dragging the left edge resizes; a drag always leaves expanded mode so
-  // the width under the pointer is the width you get
+  // the width under the pointer is the width you get. No React render and
+  // no storage write per pointermove — the CSS variable follows the pointer
   const onResizeMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!dragging) return;
     const width = clampWidth(window.innerWidth - event.clientX);
-    setPrefs({ width, expanded: false });
+    dragWidth.current = width;
+    asideRef.current?.style.setProperty("--drawer-w", `${width}px`);
+    asideRef.current?.classList.remove("expanded");
+    event.currentTarget.setAttribute("aria-valuenow", String(width));
+  };
+
+  const onResizeEnd = () => {
+    setDragging(false);
+    const width = dragWidth.current;
+    dragWidth.current = null;
+    if (width !== null) setPrefs({ width, expanded: false });
+  };
+
+  // Tab / Shift+Tab wrap inside the dialog (aria-modal promises a trap)
+  const onTrapKey = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Tab" || !asideRef.current) return;
+    const focusables = Array.from(asideRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    const inside = active instanceof Node && asideRef.current.contains(active);
+    if (event.shiftKey && (active === first || !inside)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (active === last || !inside)) {
+      event.preventDefault();
+      first.focus();
+    }
   };
 
   const onResizeKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -275,17 +368,23 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
 
   return (
     <aside
+      ref={asideRef}
       className={`drawer${prefs.expanded ? " expanded" : ""}${dragging ? " dragging" : ""}`}
       style={{ "--drawer-w": prefs.expanded ? EXPANDED_WIDTH : `${prefs.width}px` } as CSSProperties}
       role="dialog"
       aria-modal="true"
       aria-label={`${symbol} details`}
+      onKeyDown={onTrapKey}
     >
       <div
         className="drawer-resize"
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize drawer (arrow keys)"
+        aria-valuenow={prefs.width}
+        aria-valuemin={MIN_WIDTH}
+        aria-valuemax={maxWidth()}
+        aria-valuetext={prefs.expanded ? "expanded" : `${prefs.width} pixels`}
         tabIndex={0}
         onPointerDown={(event) => {
           event.preventDefault();
@@ -293,8 +392,8 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
           setDragging(true);
         }}
         onPointerMove={onResizeMove}
-        onPointerUp={() => setDragging(false)}
-        onPointerCancel={() => setDragging(false)}
+        onPointerUp={onResizeEnd}
+        onPointerCancel={onResizeEnd}
         onKeyDown={onResizeKey}
       />
       <button ref={closeRef} className="drawer-close" onClick={onClose}>
@@ -308,7 +407,14 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
         {prefs.expanded ? "Shrink" : "Expand"}
       </button>
       {detail === "loading" && <p className="meta">Loading {symbol}…</p>}
-      {detail === null && <p className="meta">{symbol}: not in the universe.</p>}
+      {loadError !== null && (
+        <div className="error-banner" role="alert">
+          Could not load {symbol}: {loadError}
+        </div>
+      )}
+      {detail === null && loadError === null && (
+        <p className="meta">{symbol}: not in the universe.</p>
+      )}
       {detail && detail !== "loading" && (
         <>
           <h2>

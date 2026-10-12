@@ -1,6 +1,8 @@
 // FR-007 — the results grid: TanStack Table, engine-sorted columns (the sort
 // travels to DuckDB, never a client-side sort of one page), dense monospaced
 // numerals, score coloring, symbol links + row click open the company drawer.
+// Memoised: up to 500 rows × N cells must not re-render on every keystroke
+// in the query bar — App keeps every prop referentially stable.
 
 import {
   createColumnHelper,
@@ -8,7 +10,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { fieldLabel } from "../data/field-catalog";
 import { formatCell } from "../format";
 import { ZeroDiagnosis } from "./ZeroDiagnosis";
@@ -35,9 +37,13 @@ function ariaSort(sort: string | null | undefined, column: string): "ascending" 
   return undefined;
 }
 
-export function ResultsGrid({ rows, columns, selected, onSelect, sort, onSort, hrefFor, query }: Props) {
-  const helper = createColumnHelper<Row>();
-  const linkFor = hrefFor ?? ((symbol: string) => `#/company/${encodeURIComponent(symbol)}`);
+const helper = createColumnHelper<Row>();
+const defaultHref = (symbol: string) => `#/company/${encodeURIComponent(symbol)}`;
+
+export const ResultsGrid = memo(function ResultsGrid({
+  rows, columns, selected, onSelect, sort, onSort, hrefFor, query,
+}: Props) {
+  const linkFor = hrefFor ?? defaultHref;
   const tableColumns = useMemo(
     () =>
       columns.map((name) =>
@@ -138,4 +144,4 @@ export function ResultsGrid({ rows, columns, selected, onSelect, sort, onSort, h
       </table>
     </div>
   );
-}
+});
