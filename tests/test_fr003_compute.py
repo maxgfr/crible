@@ -1420,3 +1420,168 @@ def test_a_london_listing_in_gbp_is_priced_in_pence() -> None:
     assert quote_currency("SHEL.L", "USD") == "USD"  # a USD line on the LSE stays USD
     assert quote_currency("NPN.JO", "ZAR") == "ZAc"
     assert quote_currency("AIR.PA", "EUR") == "EUR"
+
+
+def test_a_stale_latest_period_is_not_priced() -> None:
+    """199 latest rows from fiscal 2011–2023 got a P/E against today's close."""
+    frames = {(s, "annual"): income_frame(rows, ["2019", "2020", "2021"]) for s, rows in IMPROVING.items()}
+    frames[("income", "annual")]["BasicAverageShares"] = [10.0, 10.0, 10.0]
+    stale = build_symbol_snapshot("OLD", frames, computed_at=1.0, price_quote=(20.0, "2026-10-09")).iloc[-1]
+    assert pd.isna(stale["price_to_earnings_ratio"]) and pd.isna(stale["market_cap"])
+    fresh = build_symbol_snapshot("NEW", frames, computed_at=1.0, price_quote=(20.0, "2022-09-30")).iloc[-1]
+    assert pd.notna(fresh["price_to_earnings_ratio"])
+
+
+def test_share_counts_with_a_scale_error_are_dropped() -> None:
+    """MCD in EDGAR from 2021: 746.3 'shares' after 744,600,000."""
+    from crible.compute.canonical import scrub_share_scale
+    from crible.providers.edgar import facts_to_frames
+
+    shares = pd.Series([778.2e6, 758.1e6, 744.6e6, 746.3e6, 0.7463e3])
+    assert pd.isna(scrub_share_scale(shares).iloc[4])
+    assert scrub_share_scale(shares).iloc[:4].notna().all()
+    # a 4:1 split is a real change, kept
+    assert scrub_share_scale(pd.Series([250e6, 1000e6])).notna().all()
+    # at the source: a share fact below any listed company's count is dropped
+    fact = {"end": "2021-12-31", "start": "2021-01-01", "form": "10-K", "fp": "FY", "filed": "2022-02-01"}
+    facts = {
+        "facts": {
+            "us-gaap": {
+                "WeightedAverageNumberOfSharesOutstandingBasic": {
+                    "units": {"shares": [{**fact, "val": 746.3}]}
+                },
+                "Revenues": {"units": {"USD": [{**fact, "val": 23e9}]}},
+            }
+        }
+    }
+    income = facts_to_frames(facts)[("income", "annual")]
+    assert "BasicAverageShares" not in income.columns or income["BasicAverageShares"].isna().all()
+
+
+def test_fx_companions_include_equity() -> None:
+    from crible.providers.fx import attach_fx
+
+    snap = pd.DataFrame({"symbol": ["A"], "period": ["2025"], "currency": ["USD"], "total_equity": [110.0]})
+    assert attach_fx(snap, None, rates={"USD": 1.1}).loc[0, "total_equity_eur"] == pytest.approx(100.0)
+
+
+def test_a_split_after_the_fiscal_year_end_rebases_the_price() -> None:
+    """BKNG split 25:1 after its fiscal year: statements count the old shares,
+    the price is post-split — market cap read 4 % of the real one."""
+    frames = {
+        (s, "annual"): income_frame(rows, ["2023-12-31", "2024-12-31", "2025-12-31"])
+        for s, rows in IMPROVING.items()
+    }
+    frames[("income", "annual")]["BasicAverageShares"] = [10.0, 10.0, 10.0]
+    frames[("income", "annual")]["_fetched_at"] = pd.Timestamp("2026-02-01").timestamp()
+    frames[("prices", "daily")] = pd.DataFrame(
+        {"Date": ["2026-06-01", "2026-06-02"], "Close": [5000.0, 200.0], "Stock Splits": [0.0, 25.0]}
+    )
+    row = build_symbol_snapshot("BK", frames, computed_at=1.0).iloc[-1]
+    assert row["market_cap"] == pytest.approx(200.0 * 25 * 10)
+    # a split the statements already reflect (fetched after it) is not applied twice
+    frames[("income", "annual")]["_fetched_at"] = pd.Timestamp("2026-07-01").timestamp()
+    row = build_symbol_snapshot("BK", frames, computed_at=1.0).iloc[-1]
+    assert row["market_cap"] == pytest.approx(200.0 * 10)
+    # the dump's events count too, once
+    frames[("income", "annual")]["_fetched_at"] = pd.Timestamp("2026-02-01").timestamp()
+    row = build_symbol_snapshot("BK", frames, computed_at=1.0, splits=[("2026-06-02", 25.0)]).iloc[-1]
+    assert row["market_cap"] == pytest.approx(200.0 * 25 * 10)
+
+
+def test_statements_in_two_currencies_are_never_merged(tmp_path) -> None:
+    """VALE3.SA: CVM in BRL, Yahoo in USD — reconcile put BRL debt next to
+    USD capex; P/E TTM read 101.7 against 21."""
+    from crible.compute.snapshot import build_snapshot
+    from crible.ingest.raw import write_raw_statement
+
+    periods = ["2023-12-31", "2024-12-31", "2025-12-31"]
+    usd = {"TotalRevenue": [40e9, 41e9, 42e9], "NetIncome": [8e9, 8e9, 9e9], "CapitalExpenditure": [-6e9] * 3}
+    brl = {"TotalRevenue": [210e9, 213e9, 220e9], "NetIncome": [40e9, 41e9, 45e9]}
+    for provider, rows in (("yfinance", usd), ("cvm", brl)):
+        write_raw_statement(
+            tmp_path,
+            symbol="VALE3.SA",
+            provider=provider,
+            statement_type="income",
+            freq="annual",
+            frame=pd.DataFrame({"period": periods, **rows}),
+            fetched_at=1.0,
+        )
+    row = build_snapshot(tmp_path).set_index("period").loc["2025-12-31"]
+    assert row["revenue"] == 220e9  # the BRL filing, whole
+    assert pd.isna(row["capital_expenditure"])  # no USD cell slipped in
+    assert row["reporting_currency"] == "BRL"
+
+
+def test_warrants_units_and_rights_are_not_companies() -> None:
+    from crible.compute.snapshot import derivative_listings
+
+    universe = {
+        "TNON",
+        "TNONW",
+        "ACAH",
+        "ACAHU",
+        "ACAHW",
+        "ACAHR",
+        "GOOG",
+        "GOOGL",
+        "BRK-B",
+        "META",
+        "MET",
+        "SNOW",
+    }
+    assert derivative_listings(universe) == {"TNONW", "ACAHU", "ACAHW", "ACAHR"}
+
+
+def test_adrs_are_priced_in_their_statements_currency(tmp_path) -> None:
+    """TM quotes in USD and files in JPY: P/E read 0.06 and passed classic-value."""
+    import json
+
+    from crible.compute.snapshot import build_snapshot
+    from crible.ingest.raw import write_raw_statement
+
+    (tmp_path / "mirror" / "defeatbeta").mkdir(parents=True)
+    (tmp_path / "mirror" / "defeatbeta" / "company_tickers.json").write_text(
+        json.dumps({"0": {"ticker": "TM", "cik_str": 1094517, "financial_currency": "JPY"}})
+    )
+    (tmp_path / "mirror" / "fx").mkdir(parents=True)
+    (tmp_path / "mirror" / "fx" / "rates.json").write_text('{"rates": {"USD": 1.1, "JPY": 165.0}}')
+    pd.DataFrame({"symbol": ["TM"], "currency": ["USD"]}).to_parquet(tmp_path / "universe.parquet")
+    write_raw_statement(
+        tmp_path,
+        symbol="TM",
+        provider="yfinance",
+        statement_type="income",
+        freq="annual",
+        frame=pd.DataFrame({"period": ["2026-03-31"], "NetIncome": [4.8e12], "BasicAverageShares": [1.3e10]}),
+        fetched_at=1.0,
+    )
+    write_raw_statement(
+        tmp_path,
+        symbol="TM",
+        provider="yfinance",
+        statement_type="prices",
+        freq="daily",
+        frame=pd.DataFrame({"Date": ["2026-09-25"], "Close": [190.0]}),
+        fetched_at=1.0,
+    )
+    row = build_snapshot(tmp_path).iloc[-1]
+    assert row["reporting_currency"] == "JPY"
+    eps_jpy = 4.8e12 / 1.3e10
+    assert row["price_to_earnings_ratio"] == pytest.approx(190.0 / 1.1 * 165.0 / eps_jpy)
+
+
+def test_an_audited_share_scale_error_never_outranks_the_scraped_count() -> None:
+    frames = {
+        ("income", "annual"): income_frame(
+            {"NetIncome": [8e9], "BasicAverageShares": [713e6]}, ["2025-12-31"]
+        )
+    }
+    audited = {
+        ("income", "annual"): income_frame(
+            {"NetIncome": [8e9], "BasicAverageShares": [713.4]}, ["2025-12-31"]
+        )
+    }
+    row = build_symbol_snapshot("MCD", frames, computed_at=1.0, audited_frames=audited).iloc[-1]
+    assert row["shares_outstanding"] == 713e6

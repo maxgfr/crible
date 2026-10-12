@@ -555,12 +555,23 @@ def _heal_fx(data) -> int:
     return len(fetch_rates(data) or {})
 
 
+def _heal_statement_currencies(data) -> str:
+    """Mirror the SEC directory with each filer's financial currency (daily):
+    the snapshot prices ADRs in the currency of their statements."""
+    from crible.compute.snapshot import STATEMENT_CURRENCIES_FILE, STATEMENT_CURRENCIES_URL
+    from crible.ingest.mirror import fetch_if_stale
+
+    source, name = STATEMENT_CURRENCIES_FILE
+    return fetch_if_stale(data, source, name, STATEMENT_CURRENCIES_URL, max_age_seconds=20 * 3600).source
+
+
 def _self_heal_reference_data(data, *, gleif: bool = True, fx: bool = True) -> dict:
     out: dict = {}
     if gleif:
         _stage(out, "gleif", _heal_gleif, data)
     if fx:
         _stage(out, "fx", _heal_fx, data)
+        _stage(out, "statement_currencies", _heal_statement_currencies, data)
     return out
 
 
@@ -1025,6 +1036,7 @@ def run_loop(
     tasks = [
         LoopTask("gleif", 7 * 86400, lambda: _heal_gleif(data)),
         LoopTask("fx", 20 * 3600, lambda: _heal_fx(data)),
+        LoopTask("statement_currencies", 20 * 3600, lambda: _heal_statement_currencies(data)),
         LoopTask("prices", 20 * 3600, prices),
         # just bootstrapped (or long-lived DB) — the next universe refresh a week out
         LoopTask(

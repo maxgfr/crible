@@ -26,6 +26,7 @@ from crible.providers.edgar import (
     CONCEPT_MAP,
     NEGATED_CONCEPTS,
     SHARE_COLUMNS,
+    plausible_shares,
     STATEMENT_OF,
 )
 
@@ -92,7 +93,7 @@ def _accumulate(wanted: dict[str, int], num_reader) -> dict[int, dict[tuple[str,
         elif qtrs != "4":
             continue  # income/cashflow: full-year duration only (drops interims)
         value = _float(row.get("value"))
-        if value is None:
+        if value is None or not plausible_shares(column, value):
             continue
         if tag in NEGATED_CONCEPTS:
             value = -value

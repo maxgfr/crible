@@ -71,6 +71,10 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
     "GrossProfit": ("GrossProfit", "income"),
     "OperatingIncomeLoss": ("OperatingIncome", "income"),
     "NetIncomeLoss": ("NetIncome", "income"),
+    # filers that stopped tagging NetIncomeLoss (Booking since 2016): the
+    # common-shareholder figure first, the minorities-inclusive total last
+    "NetIncomeLossAvailableToCommonStockholdersBasic": ("NetIncome", "income"),
+    "ProfitLoss": ("NetIncome", "income"),
     "IncomeTaxExpenseBenefit": ("TaxProvision", "income"),
     "InterestExpense": ("InterestExpense", "income"),
     "WeightedAverageNumberOfSharesOutstandingBasic": ("BasicAverageShares", "income"),
@@ -163,6 +167,14 @@ NEGATED_CONCEPTS = {
 STATEMENT_OF = {column: stmt for column, stmt in CONCEPT_MAP.values()}
 
 SHARE_COLUMNS = {"BasicAverageShares", "OrdinarySharesNumber"}
+# no listed company has fewer shares: such a value is a filer's scale error
+# (MCD and SR tag MILLIONS as units from 2021 — 713.4 shares, a $168 k market
+# cap and a P/E of 0.00002 that passed classic-value); dropped at the source
+MIN_PLAUSIBLE_SHARES = 10_000
+
+
+def plausible_shares(column: str, value: float) -> bool:
+    return column not in SHARE_COLUMNS or value >= MIN_PLAUSIBLE_SHARES
 
 
 def _full_year(start: str, end: str) -> bool:
@@ -229,6 +241,8 @@ def facts_to_frames(companyfacts: dict[str, Any]) -> dict[tuple[str, str], pd.Da
             try:
                 value = float(entry["val"])
             except (KeyError, TypeError, ValueError):
+                continue
+            if not plausible_shares(column, value):
                 continue
             if concept in NEGATED_CONCEPTS:
                 value = -value

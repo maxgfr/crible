@@ -8,6 +8,7 @@ half-written snapshot.
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 
@@ -31,6 +32,8 @@ from crible.compute.scores import all_scores
 from crible.ingest.raw import RawInventory, iter_raw_files
 from crible.providers.audited import merge_audited
 from crible.providers.fx import load_rates, price_factor, quote_currency
+
+log = logging.getLogger("crible.compute.snapshot")
 
 SNAPSHOT_NAME = "snapshot.parquet"
 
@@ -67,6 +70,7 @@ def build_symbol_snapshot(
     price_quote: tuple[float, str] | None = None,
     quote_features: dict | None = None,
     currency: tuple[str | None, str | None, dict | None] | None = None,
+    splits: list[tuple[str, float]] | None = None,
 ) -> pd.DataFrame:
     """One symbol's rows: merged canonical fields → price → per-period blocks
     → latest-row overlays (momentum, TTM) → provenance. ±inf never leaves:
@@ -84,11 +88,19 @@ def build_symbol_snapshot(
         price, price_asof, features = _resolve_price(frames, price_quote, quote_features, canonical.index)
     elif quote_features is not None:
         features = _fill_features(features, quote_features)
+    if price is not None and price_asof and _stale_period(canonical.index[-1], price_asof):
+        # a 2015 fiscal year priced at today's close is no P/E at all
+        price = pd.Series(float("nan"), index=price.index)
     reporting = currency[1] if currency else None
     if price is not None and currency:
         factor = price_factor(*currency)
         # an all-NaN price keeps the price-ratio columns, empty
         price = price * factor if factor is not None else pd.Series(float("nan"), index=price.index)
+    if price is not None:
+        # a split after the fiscal year end: the statements still count the
+        # old shares, so the price goes back to their basis (BKNG's 25:1 put
+        # its market cap at 4 % of the real one)
+        price = price * _split_factor(canonical, frames, splits or [], price_asof, audited_fields)
 
     out = _period_blocks(canonical, price)
     _overlay_latest(out, canonical, price, price_asof, features, frames, audited_frames)
@@ -106,8 +118,13 @@ def _merge_audited(
     if not audited_frames:
         return canonical, {}
     from crible.compute.reconcile import align_periods, reconcile
+    from crible.providers.edgar import MIN_PLAUSIBLE_SHARES
 
     audited = build_canonical(audited_frames)
+    # raw parsed before the source floor existed still carries MCD's 713.4
+    # "shares": a scale error never outranks the scraped count
+    for column in ("shares_outstanding", "shares_outstanding_end"):
+        audited[column] = audited[column].where(audited[column] >= MIN_PLAUSIBLE_SHARES)
     if canonical.empty:
         fields = {str(p): [c for c in audited.columns if pd.notna(audited.loc[p, c])] for p in audited.index}
         return audited, fields
@@ -161,6 +178,94 @@ def _resolve_price(
     price = pd.Series(float("nan"), index=index)
     price.iloc[-1] = value
     return price, price_asof, features
+
+
+def _split_factor(
+    canonical: pd.DataFrame,
+    frames: dict[tuple[str, str], pd.DataFrame],
+    splits: list[tuple[str, float]],
+    price_asof: str | None,
+    audited_fields: dict[str, list[str]],
+) -> float:
+    """Cumulative split ratio between the latest period's share count and the
+    price: splits dated after the period end (and, when the count is Yahoo's,
+    after the statements' fetch — Yahoo restates counts for past splits), up
+    to the price date. Sources: the crawled bars' "Stock Splits" column and
+    the dump's split events."""
+    from crible.compute.canonical import period_dates
+
+    period = canonical.index[-1]
+    end = period_dates(pd.Index([period])).iloc[0]
+    if pd.isna(end):
+        return 1.0
+    after = end
+    if "shares_outstanding" not in audited_fields.get(str(period), []):
+        fetched = [
+            pd.to_datetime(frame["_fetched_at"].max(), unit="s")
+            for key, frame in frames.items()
+            if key[0] in ("income", "balance")
+            and "_fetched_at" in frame.columns
+            and frame["_fetched_at"].notna().any()
+        ]
+        if fetched:
+            after = max(after, max(fetched))
+    until = pd.to_datetime(str(price_asof)[:10], errors="coerce") if price_asof else pd.NaT
+    events = list(splits)
+    bars = frames.get(("prices", "daily"))
+    if bars is not None and "Stock Splits" in bars.columns:
+        date_col = next((c for c in ("Date", "date", "Datetime") if c in bars.columns), None)
+        if date_col:
+            hits = bars[pd.to_numeric(bars["Stock Splits"], errors="coerce").fillna(0) > 0]
+            events += [
+                (str(d)[:10], float(r)) for d, r in zip(hits[date_col], hits["Stock Splits"], strict=True)
+            ]
+    factor, seen = 1.0, set()
+    for day, ratio in events:
+        when = pd.to_datetime(str(day)[:10], errors="coerce")
+        if (
+            pd.isna(when)
+            or when <= after
+            or (pd.notna(until) and when > until)
+            or ratio <= 0
+            or str(day)[:10] in seen
+        ):
+            continue
+        seen.add(str(day)[:10])  # the same split from both sources counts once
+        factor *= ratio
+    return factor
+
+
+def _load_splits(data_dir: Path | str) -> dict[str, list[tuple[str, float]]]:
+    """symbol → [(date, ratio)] from the dump's split events ("25:1")."""
+    path = Path(data_dir) / "events" / "defeatbeta-splits.parquet"
+    if not path.exists():
+        return {}
+    out: dict[str, list[tuple[str, float]]] = {}
+    for symbol, day, text in pd.read_parquet(path, columns=["symbol", "date", "split_factor"]).itertuples(
+        index=False
+    ):
+        try:
+            new, old = str(text).split(":", 1)
+            ratio = float(new) / float(old)
+        except (ValueError, ZeroDivisionError):
+            continue
+        out.setdefault(str(symbol), []).append((str(day)[:10], ratio))
+    return out
+
+
+# the latest fiscal period must end within this many days of the price date
+# for a price-based multiple to mean anything (an annual report lands ~3
+# months after year end, the next one 12 months later — 18 months is the
+# outer edge of "the latest accounts")
+MAX_PRICED_PERIOD_AGE_DAYS = 550
+
+
+def _stale_period(period, price_asof: str) -> bool:
+    from crible.compute.canonical import period_dates
+
+    end = period_dates(pd.Index([period])).iloc[0]
+    priced = pd.to_datetime(str(price_asof)[:10], errors="coerce")
+    return pd.notna(end) and pd.notna(priced) and (priced - end).days > MAX_PRICED_PERIOD_AGE_DAYS
 
 
 def _days_between(a: str, b: str) -> float:
@@ -339,6 +444,115 @@ def _reporting_currency(audited: dict[tuple[str, str], pd.DataFrame]) -> str | N
     return None
 
 
+# the SEC ticker directory republished with each filer's financial
+# currency (defeatbeta) — mirrored daily as reference data: 1,445 US listings
+# report in another currency than their USD quote (TM in JPY: P/E 0.06)
+STATEMENT_CURRENCIES_URL = (
+    "https://huggingface.co/datasets/defeatbeta/yahoo-finance-data/resolve/main/data/US/company_tickers.json"
+)
+STATEMENT_CURRENCIES_FILE = ("defeatbeta", "company_tickers.json")
+
+
+def load_statement_currencies(data_dir: Path | str) -> dict[str, str]:
+    """ticker → the currency its statements are in, {} without the mirror."""
+    import json
+
+    path = Path(data_dir) / "mirror" / STATEMENT_CURRENCIES_FILE[0] / STATEMENT_CURRENCIES_FILE[1]
+    try:
+        entries = json.loads(path.read_text()).values()
+    except (OSError, ValueError, AttributeError):
+        return {}
+    return {
+        str(e["ticker"]).strip().upper(): str(e["financial_currency"]).strip()
+        for e in entries
+        if isinstance(e, dict) and e.get("ticker") and e.get("financial_currency")
+    }
+
+
+# US derivative lines of a listed company (SPAC warrants, units, rights): Yahoo
+# serves them the company's statements, and ratios on a $0.05 warrant price
+# topped the net-net preset (TNONW: NCAV 23,654× its "market cap")
+DERIVATIVE_SUFFIXES = ("WS", "WT", "UN", "RT", "W", "U", "R")
+
+
+def derivative_listings(universe: set[str]) -> set[str]:
+    """Symbols that are a listed base symbol plus a derivative suffix."""
+    out = set()
+    for symbol in universe:
+        if "." in symbol or "-" in symbol:
+            continue  # US common tickers only; share classes (BRK-B) stay
+        for suffix in DERIVATIVE_SUFFIXES:
+            if symbol.endswith(suffix) and len(symbol) > len(suffix) and symbol[: -len(suffix)] in universe:
+                out.add(symbol)
+                break
+    return out
+
+
+def _universe_symbols(data_dir: Path | str) -> set[str]:
+    path = Path(data_dir) / "universe.parquet"
+    if not path.exists():
+        return set()
+    return set(pd.read_parquet(path, columns=["symbol"])["symbol"].astype(str))
+
+
+# the currency each audited source files in, by construction of its parser
+# (ESEF records its own per filing as _currency)
+AUDITED_CURRENCIES = {
+    "edgar": "USD",
+    "edgar-fsds": "USD",
+    "companies-house": "GBP",
+    "cvm": "BRL",
+    "twse": "TWD",
+}
+
+
+def _audited_currency(per_provider: dict[str, dict[tuple[str, str], pd.DataFrame]]) -> str | None:
+    """The reporting currency of the audited layer: its first source (in
+    precedence order) that holds frames."""
+    for provider, frames in per_provider.items():
+        if not frames:
+            continue
+        if provider in AUDITED_CURRENCIES:
+            return AUDITED_CURRENCIES[provider]
+        return _reporting_currency(frames)
+    return None
+
+
+# overlapping audited/scraped cells further apart than this, consistently,
+# are two currencies (or units), not a restatement
+CURRENCY_CONFLICT_FACTOR = 2.0
+
+
+def _currency_conflict(
+    scraped: dict[tuple[str, str], pd.DataFrame],
+    audited: dict[tuple[str, str], pd.DataFrame],
+    audited_currency: str | None,
+) -> bool:
+    """True when the scraped and audited statements are not in one currency:
+    both declare theirs and they differ, or — raw written before currencies
+    were recorded — the overlapping values sit wholesale apart (median
+    ratio beyond 2× across at least three cells)."""
+    scraped_currency = _reporting_currency(scraped)
+    if scraped_currency and audited_currency:
+        return scraped_currency != audited_currency
+    a, s = build_canonical(audited), build_canonical(scraped)
+    if a.empty or s.empty:
+        return False
+    from crible.compute.reconcile import align_periods
+
+    a = align_periods(a, s.index)
+    common = a.index.intersection(s.index)
+    columns = [
+        c for c in ("revenue", "total_assets", "total_equity", "net_income", "operating_cashflow") if c in a
+    ]
+    ratios = (a.loc[common, columns] / s.loc[common, columns]).abs().stack()
+    ratios = ratios[np.isfinite(ratios) & (ratios > 0)]
+    if len(ratios) < 3:
+        return False
+    median = float(ratios.median())
+    return not (1 / CURRENCY_CONFLICT_FACTOR <= median <= CURRENCY_CONFLICT_FACTOR)
+
+
 def _price_quotes(data_dir: Path | str) -> dict[str, dict]:
     """symbol → {close, price_asof, <momentum features>} from the imported
     dump distillate (load_prices_latest backfills feature columns missing
@@ -382,11 +596,16 @@ def build_symbol_rows(
     quotes = _price_quotes(data_dir)
     quote_currencies = _listing_currencies(data_dir)
     rates = load_rates(data_dir)
+    splits = _load_splits(data_dir)
+    statement_currencies = load_statement_currencies(data_dir)
+    derivatives = derivative_listings(_universe_symbols(data_dir))
     # ONE scan of the raw layer for the whole build (it used to be 8 globs
     # per symbol — the dominant cost at 20k symbols)
     inventory = inventory if inventory is not None else RawInventory.scan(data_dir)
     parts = []
     for symbol in symbols:
+        if symbol in derivatives:
+            continue  # a warrant/unit/right is not the company: no ratios on its price
         scraped = latest_raw_frames(data_dir, symbol, provider="yfinance", inventory=inventory)
         scraped_provider = "yfinance"
         if not any(key[0] in ("income", "balance", "cashflow") for key in scraped):
@@ -398,14 +617,25 @@ def build_symbol_rows(
                 scraped = {**fallback, **scraped}
                 scraped_provider = "defeatbeta"
         # the audited layer, per region (a listing realistically has one)
-        audited = merge_audited(
-            *(
-                latest_raw_frames(data_dir, symbol, provider=audited_provider, inventory=inventory)
-                for audited_provider in AUDITED_PRECEDENCE
+        per_provider = {
+            audited_provider: latest_raw_frames(
+                data_dir, symbol, provider=audited_provider, inventory=inventory
             )
-        )
+            for audited_provider in AUDITED_PRECEDENCE
+        }
+        audited = merge_audited(*per_provider.values())
         if not scraped and not audited:
             continue
+        audited_currency = _audited_currency(per_provider)
+        if scraped and audited and _currency_conflict(scraped, audited, audited_currency):
+            # VALE3.SA: CVM files in BRL, Yahoo reports in USD — a cell-by-cell
+            # merge put BRL debt next to USD capex in one row. The audited
+            # filing stands alone; the crawl keeps only its price bars
+            log.warning(
+                "snapshot %s: scraped and audited statements are in different currencies — audited only",
+                symbol,
+            )
+            scraped = {key: frame for key, frame in scraped.items() if key[0] == "prices"}
         quote = quotes.get(symbol)
         # pass the audited frames ALWAYS (not only when scraped exists): an
         # audited-only listing has empty scraped canonical, so build_symbol_snapshot
@@ -420,9 +650,10 @@ def build_symbol_rows(
             quote_features=quote,
             currency=(
                 quote_currencies.get(symbol),
-                _reporting_currency(audited) or _reporting_currency(scraped),
+                audited_currency or _reporting_currency(scraped) or statement_currencies.get(symbol),
                 rates,
             ),
+            splits=splits.get(symbol),
         )
         if not part.empty:
             parts.append(part)

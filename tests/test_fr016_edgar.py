@@ -842,3 +842,31 @@ def test_fr016_a_refused_user_agent_falls_back_to_the_ticker_mirror() -> None:
     client = EdgarClient(http=Http(), user_agent="crible-screener")
     assert client.company_tickers() == {"AAPL": 320193}
     assert "huggingface.co" in seen[-1]
+
+
+def test_fr016_net_income_falls_back_to_the_common_shareholder_concept() -> None:
+    """Booking tags NetIncomeLossAvailableToCommonStockholdersBasic only since
+    2016: its P/E was empty."""
+    fy = {"start": "2025-01-01", "end": "2025-12-31", "form": "10-K", "fp": "FY", "filed": "2026-02-01"}
+    facts = {
+        "facts": {
+            "us-gaap": {
+                "NetIncomeLossAvailableToCommonStockholdersBasic": {"units": {"USD": [{**fy, "val": 5.4e9}]}},
+                "ProfitLoss": {"units": {"USD": [{**fy, "val": 5.5e9}]}},
+            }
+        }
+    }
+    income = facts_to_frames(facts)[("income", "annual")].set_index("period")
+    assert income.loc["2025-12-31", "NetIncome"] == 5.4e9
+    both = {
+        "facts": {
+            "us-gaap": {
+                **facts["facts"]["us-gaap"],
+                "NetIncomeLoss": {"units": {"USD": [{**fy, "val": 5.3e9}]}},
+            }
+        }
+    }
+    assert (
+        facts_to_frames(both)[("income", "annual")].set_index("period").loc["2025-12-31", "NetIncome"]
+        == 5.3e9
+    )

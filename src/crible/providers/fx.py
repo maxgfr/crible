@@ -27,7 +27,7 @@ FRANKFURTER_URL = "https://api.frankfurter.app/latest?base=EUR"
 
 # absolute-magnitude snapshot fields worth a cross-currency companion; ratios
 # are currency-neutral and deliberately excluded
-FX_FIELDS = ("revenue", "net_income", "total_assets", "stockholders_equity")
+FX_FIELDS = ("revenue", "net_income", "total_assets", "total_equity")
 
 
 def to_eur(amount, currency, rates: dict[str, float]) -> float | None:

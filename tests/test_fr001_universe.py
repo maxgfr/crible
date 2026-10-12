@@ -198,3 +198,30 @@ def test_fr001_bootstrap_rejects_frame_missing_required_columns(con) -> None:
         ).fetchone()[0]
         == 0
     )
+
+
+def test_fr001_secondary_german_listings_crawl_last_in_their_region() -> None:
+    import duckdb
+    import pandas as pd
+
+    from crible.universe import bootstrap_universe
+
+    con = duckdb.connect()
+    bootstrap_universe(
+        con,
+        pd.DataFrame(
+            {
+                "symbol": ["AIR.PA", "AIR.BE", "AIR.DE"],
+                "name": ["Airbus"] * 3,
+                "country": ["France", "France", "France"],
+                "sector": ["Industrials"] * 3,
+                "industry": ["X"] * 3,
+                "exchange": ["PAR", "BER", "GER"],
+                "currency": ["EUR"] * 3,
+                "market_cap": ["Mega Cap"] * 3,
+            }
+        ),
+    )
+    priority = dict(con.execute("SELECT symbol, crawl_priority FROM companies").fetchall())
+    assert priority["AIR.PA"] == priority["AIR.DE"] == 0
+    assert priority["AIR.BE"] == 7

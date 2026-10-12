@@ -65,6 +65,22 @@ FIELD_CANDIDATES: dict[str, list[str]] = {
 
 CANONICAL_FIELDS = list(FIELD_CANDIDATES)
 
+SHARE_FIELDS = ("shares_outstanding", "shares_outstanding_end")
+# a period off the symbol's median count by more than this is the same error
+# in another period (splits stay well inside it)
+SHARE_SCALE_MAX_FACTOR = 1_000
+
+
+def scrub_share_scale(shares: pd.Series) -> pd.Series:
+    """NaN for share counts in another unit than the symbol's other periods
+    (the filer-level floor lives in providers/edgar.py)."""
+    median = shares.median()
+    if pd.isna(median):
+        return shares
+    ratio = shares / median
+    return shares.where(ratio.isna() | ratio.between(1 / SHARE_SCALE_MAX_FACTOR, SHARE_SCALE_MAX_FACTOR))
+
+
 # outflows reported negative (yfinance convention): their growth is the
 # growth of the magnitude
 OUTFLOW_FIELDS = ("capital_expenditure", "dividends_paid")
@@ -180,5 +196,7 @@ def build_canonical(frames: dict[tuple[str, str], pd.DataFrame], freq: str = "an
         out["total_debt"] = out["long_term_debt"] + out["short_term_debt"]
     if out["ebitda"].isna().all():
         out["ebitda"] = out["earnings_before_interest_and_taxes"] + out["depreciation_and_amortization"]
+    for share_column in SHARE_FIELDS:
+        out[share_column] = scrub_share_scale(out[share_column])
 
     return out.sort_index()

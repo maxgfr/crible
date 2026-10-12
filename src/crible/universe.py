@@ -70,6 +70,12 @@ CAP_RANK = {
     "Nano Cap": 5,
 }
 UNKNOWN_CAP_RANK = 6
+# Germany's regional exchanges mostly carry duplicate lines of companies whose
+# primary listing is elsewhere — Yahoo returns no statements for them, and the
+# nightly spent its whole budget there before reaching the sample. They crawl
+# last within their region (rank 7 < 8 keeps region dominance).
+SECONDARY_LISTING_SUFFIXES = (".BE", ".DU", ".F", ".MU", ".SG", ".HM", ".HA")
+SECONDARY_LISTING_RANK = 7
 
 # FinanceDatabase country names → ISO-3166 alpha-2. The DSL filters on these
 # codes (country IN ('FR','DE')); unmapped names fall back to the full name so
@@ -231,9 +237,11 @@ def bootstrap_universe(con: duckdb.DuckDBPyConnection, frame: pd.DataFrame) -> B
         rows["delisted"] = False
     market_cap = rows["market_cap"] if "market_cap" in rows.columns else None
     rows["market_cap_class"] = market_cap if market_cap is not None else None
-    rows["crawl_priority"] = rows["region"].map(REGION_PRIORITY) * 8 + rows["market_cap_class"].map(
-        CAP_RANK
-    ).fillna(UNKNOWN_CAP_RANK).astype("int64")
+    cap_rank = rows["market_cap_class"].map(CAP_RANK).fillna(UNKNOWN_CAP_RANK).astype("int64")
+    secondary = rows["symbol"].astype(str).str.upper().str.endswith(SECONDARY_LISTING_SUFFIXES)
+    rows["crawl_priority"] = rows["region"].map(REGION_PRIORITY) * 8 + cap_rank.where(
+        ~secondary, SECONDARY_LISTING_RANK
+    )
 
     staged = rows[
         [

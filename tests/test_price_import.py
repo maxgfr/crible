@@ -154,7 +154,8 @@ def test_snapshot_falls_back_to_the_distilled_quote(tmp_path) -> None:
     _universe(tmp_path)
     import_huggingface(tmp_path, shards=[_shard(tmp_path)])
     frame = pd.DataFrame(
-        {"period": ["2025-12-31"], "TotalRevenue": [400.0], "NetIncome": [56.0], "BasicAverageShares": [10.0]}
+        # a real filer's share count (EDGAR counts under 10,000 are scale errors)
+        {"period": ["2025-12-31"], "TotalRevenue": [400e6], "NetIncome": [56e6], "BasicAverageShares": [10e6]}
     )
     write_raw_statement(
         tmp_path,
@@ -168,8 +169,8 @@ def test_snapshot_falls_back_to_the_distilled_quote(tmp_path) -> None:
     snapshot = build_snapshot(tmp_path, symbols=["AAPL"]).set_index("period")
     row = snapshot.loc["2025-12-31"]
     assert row["price_asof"] == "2026-12-01"
-    assert row["market_cap"] == 1120.0  # 112 × 10 shares
-    assert round(row["price_to_earnings_ratio"], 4) == round(1120.0 / 56.0, 4)
+    assert row["market_cap"] == 112.0 * 10e6  # 112 × 10 M shares
+    assert round(row["price_to_earnings_ratio"], 4) == round(112.0 * 10e6 / 56e6, 4)
     assert round(row["return_6m"], 6) == round(112.0 / 106.0 - 1.0, 6)
 
 

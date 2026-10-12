@@ -695,6 +695,18 @@ serait pire qu'un taux manquant).
   used). Listings crawled before this change carry no currency until their next crawl.
 - **TTM**: the source (audited 10-Q or scraped) whose last quarter is the most recent wins; a
   window ending more than 200 days before the price date is dropped.
+- **Prices that cannot apply are not applied.** A latest fiscal period ending more than 550
+  days before the price date gets no price-based column (a 2015 year at today's close is no
+  P/E). A split after the period end (crawled bars' `Stock Splits`, the dump's split events)
+  rebases the price on the statements' share count — skipped when Yahoo already restated it.
+- **Unit and currency sanity.** EDGAR/FSDS share counts below 10,000 are a filer's scale error
+  (MCD tags millions as units) and are dropped; a period more than 1,000× off the company's
+  median count likewise. When a filing and Yahoo report in different currencies (CVM in BRL,
+  Yahoo in USD for VALE3.SA) — declared, or visible as values wholesale apart — the filing
+  stands alone instead of being merged cell by cell. US listings take their statements'
+  currency from the SEC directory mirror (TM files in JPY, TSM in TWD, BABA in CNY).
+- **Warrants, units and rights** (a listed US base symbol + W/WS/WT/U/UN/R/RT) get no snapshot
+  row: Yahoo serves them the company's statements, and ratios on their price are noise.
 - **Global peer group**: a listing whose region × sector has fewer than 5 peers is ranked (and
   gets its Mohanram medians) against **every** latest row, not just the other leftovers.
   `composite_rank` needs at least two pillars: a momentum-only listing (a SPAC warrant with no
@@ -737,6 +749,20 @@ recalcul complet les applique) :
   n'ont pas de devise avant leur prochain crawl.
 - **TTM** : la source (10-Q audité ou scrapé) dont le dernier trimestre est le plus récent
   l'emporte ; une fenêtre close plus de 200 jours avant la date du prix est écartée.
+- **Un prix qui ne peut pas s'appliquer n'est pas appliqué.** Une dernière période close plus
+  de 550 jours avant la date du prix ne reçoit aucune colonne dépendant du prix. Une division
+  d'actions après la clôture (colonne `Stock Splits` des barres crawlées, événements du dump)
+  ramène le prix sur la base d'actions des comptes — sauf si Yahoo l'a déjà retraitée.
+- **Cohérence d'unités et de devises.** Un nombre d'actions EDGAR/FSDS sous 10 000 est une
+  erreur d'échelle du déposant (MCD déclare des millions comme unités) et est écarté ; une
+  période à plus de 1 000× la médiane de la société aussi. Quand un dépôt et Yahoo publient
+  dans des devises différentes (CVM en BRL, Yahoo en USD pour VALE3.SA) — déclaré ou visible
+  par des valeurs en bloc éloignées —, le dépôt est pris seul plutôt que fusionné cellule par
+  cellule. Les cotations US prennent la devise de leurs comptes dans le miroir de l'annuaire
+  SEC (TM en JPY, TSM en TWD, BABA en CNY).
+- **Warrants, unités et droits** (symbole US coté + W/WS/WT/U/UN/R/RT) n'ont pas de ligne de
+  snapshot : Yahoo leur sert les comptes de la société et les ratios sur leur prix sont du
+  bruit.
 - **Groupe de pairs global** : une valeur dont le couple région × secteur compte moins de 5
   pairs est classée (et reçoit ses médianes Mohanram) contre **toutes** les dernières lignes,
   pas seulement les autres orphelines. `composite_rank` exige au moins deux piliers : une
