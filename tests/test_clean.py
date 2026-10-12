@@ -18,6 +18,26 @@ def marked_dir(tmp_path, monkeypatch):
     return tmp_path
 
 
+def test_clean_recognises_a_raw_layout_without_universe(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    (tmp_path / "raw" / "provider=yfinance").mkdir(parents=True)
+    result = runner.invoke(app, ["clean", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert not tmp_path.exists()
+
+
+@pytest.mark.parametrize("folder", ["raw", "snapshot"])
+def test_clean_refuses_a_project_dir_that_merely_has_a_raw_folder(tmp_path, monkeypatch, folder) -> None:
+    """`crible --data-dir ~/work clean -y` must not delete ~/work because it
+    happens to contain a raw/ (or snapshot/) folder."""
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    (tmp_path / folder).mkdir()
+    (tmp_path / "thesis.tex").write_text("years of work")
+    result = runner.invoke(app, ["clean", "--yes"])
+    assert result.exit_code == 1
+    assert (tmp_path / "thesis.tex").exists()
+
+
 def test_clean_removes_a_marked_dataset_dir(marked_dir) -> None:
     result = runner.invoke(app, ["clean", "--yes"])
     assert result.exit_code == 0, result.output

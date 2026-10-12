@@ -15,18 +15,20 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from crible import store
 from crible.dsl.parser import DslError
 from crible.presets import PRESETS
 from crible.runtime import Runtime, SnapshotMissingError
 
 MAX_PAGE_SIZE = 1000
-EXPORT_LIMIT = 10_000
+# page × page_size stays within store.MAX_OFFSET — no int64 OFFSET overflow
+MAX_PAGE = store.MAX_OFFSET // MAX_PAGE_SIZE
 
 
 class ScreenRequest(BaseModel):
     query: str
     sort: str | None = None
-    page: int = Field(default=1, ge=1)
+    page: int = Field(default=1, ge=1, le=MAX_PAGE)
     page_size: int = Field(default=100, ge=1, le=MAX_PAGE_SIZE)
 
 
@@ -69,10 +71,12 @@ def create_app() -> FastAPI:
 
     @app.get("/api/screen.csv")
     def screen_csv(query: str, sort: str | None = None, columns: str | None = None):
-        """Full result set of the query; `columns` (comma-separated) restricts
-        the export to the currently visible columns (FR-007 AC-1)."""
+        """The query's result set up to ``store.EXPORT_LIMIT`` rows — a
+        larger one is cut there and the ``X-Crible-Truncated`` header carries
+        the full match count; `columns` (comma-separated) restricts the export
+        to the currently visible columns (FR-007 AC-1)."""
         try:
-            rows, _ = runtime().screen(query, sort=sort, limit=EXPORT_LIMIT, offset=0)
+            rows, total = runtime().screen(query, sort=sort, limit=store.EXPORT_LIMIT, offset=0)
         except SnapshotMissingError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         if columns:
@@ -84,11 +88,11 @@ def create_app() -> FastAPI:
         buffer = io.StringIO()
         rows.to_csv(buffer, index=False)
         buffer.seek(0)
-        return StreamingResponse(
-            buffer,
-            media_type="text/csv",
-            headers={"Content-Disposition": 'attachment; filename="crible-screen.csv"'},
-        )
+        headers = {"Content-Disposition": 'attachment; filename="crible-screen.csv"'}
+        if total > len(rows):
+            headers["X-Crible-Truncated"] = str(total)
+            headers["Access-Control-Expose-Headers"] = "X-Crible-Truncated"
+        return StreamingResponse(buffer, media_type="text/csv", headers=headers)
 
     @app.get("/api/presets")
     def presets():

@@ -38,23 +38,25 @@ def _runtime() -> Runtime:
 
 
 @mcp.tool()
-def screen(query: str = "", sort: str | None = None, limit: int = 50) -> dict:
+def screen(query: str = "", sort: str | None = None, limit: int = 50, offset: int = 0) -> dict:
     """Screen the covered universe with the crible DSL.
 
     Blank query = every covered company. sort is a column name, '-' prefix
     for descending (e.g. '-composite_rank'). Returns at most `limit` rows
-    (capped at 200) plus the total match count.
+    (capped at 200) starting at `offset`, plus the total match count — page
+    with offset += limit while offset < total.
     """
     limit = max(1, min(int(limit), MAX_LIMIT))
+    offset = max(0, int(offset))
     try:
-        rows, total = _runtime().screen(query, sort=sort, limit=limit)
+        rows, total = _runtime().screen(query, sort=sort, limit=limit, offset=offset)
     except DslError as exc:
         # the message already carries position + did-you-mean hint
         raise ValueError(f"DSL error: {exc}") from exc
     except SnapshotMissingError as exc:
         raise ValueError(str(exc)) from exc
     records = json.loads(rows.to_json(orient="records"))  # NaN → null
-    return {"total": total, "returned": len(records), "rows": records}
+    return {"total": total, "offset": offset, "returned": len(records), "rows": records}
 
 
 @mcp.tool()

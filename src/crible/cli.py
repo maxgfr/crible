@@ -101,19 +101,28 @@ def screen(
 def export(
     query: str = typer.Argument(None, help="Filter DSL"),
     preset: str = typer.Option(None, "--preset"),
-    out: Path = typer.Option(..., "--out", help="CSV file to write the FULL result set to"),
+    out: Path = typer.Option(..., "--out", help="CSV file to write the result set (≤ 10,000 rows) to"),
     sort: str = typer.Option(None, "--sort"),
 ) -> None:
-    """Write the FULL result set of a query to CSV (same rows as GET /screen.csv)."""
+    """Write a query's result set to CSV, up to 10,000 rows (same rows as GET
+    /screen.csv) — a warning says when it was truncated."""
+    from crible import store
+
     dsl = _resolve_query(query, preset)
     try:
-        rows, total = Runtime.from_env().screen(dsl, sort=sort, limit=10_000, offset=0)
+        rows, total = Runtime.from_env().screen(dsl, sort=sort, limit=store.EXPORT_LIMIT, offset=0)
     except SnapshotMissingError as exc:
         _fail(str(exc))
     except DslError as exc:
         _fail(f"invalid query: {exc}")
     rows.to_csv(out, index=False)
     typer.echo(f"wrote {len(rows)} of {total} rows to {out}")
+    if total > len(rows):
+        typer.secho(
+            f"warning: export truncated at {len(rows)} rows ({total} match) — narrow the query",
+            err=True,
+            fg=typer.colors.YELLOW,
+        )
 
 
 @app.command()
@@ -142,9 +151,14 @@ def status() -> None:
     typer.echo(json.dumps(Runtime.from_env().status(), indent=2, default=str))
 
 
-# any of these at the top level marks a directory as a crible dataset — the
-# guard keeps a mistyped --data-dir from deleting an arbitrary folder
-_DATASET_MARKERS = ("universe.parquet", "raw", "snapshot", "status.json", "crible.duckdb")
+# files only crible writes mark a directory as a crible dataset — the guard
+# keeps a mistyped --data-dir from deleting an arbitrary folder (a bare raw/ or
+# snapshot/ folder is too common a name to count)
+_DATASET_MARKERS = ("universe.parquet", "crible.duckdb", "raw/provider=*")
+
+
+def _is_dataset(target: Path) -> bool:
+    return any(any(target.glob(marker)) for marker in _DATASET_MARKERS)
 
 
 @app.command()
@@ -161,7 +175,7 @@ def clean(
     if not target.exists():
         typer.echo(f"nothing to clean: {target} does not exist")
         return
-    if not any((target / marker).exists() for marker in _DATASET_MARKERS):
+    if not _is_dataset(target):
         typer.secho(
             f"refusing: {target} does not look like a crible dataset "
             f"(none of {', '.join(_DATASET_MARKERS)} present)",

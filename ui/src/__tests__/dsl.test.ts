@@ -9,6 +9,7 @@ import { compileQuery, compileSort } from "../dsl/compiler";
 import { DslError, parse } from "../dsl/parser";
 
 const whitelist = new Set<string>(golden.whitelist);
+const types: Record<string, string> = golden.types;
 
 describe("DSL golden parity", () => {
   it("the golden file is meaningful", () => {
@@ -19,7 +20,7 @@ describe("DSL golden parity", () => {
 
   it("compiles every query vector to identical SQL and params", () => {
     for (const c of golden.cases) {
-      const [sql, params] = compileQuery(parse(c.query), whitelist);
+      const [sql, params] = compileQuery(parse(c.query), whitelist, types);
       expect(sql, c.query).toBe(c.sql);
       expect(params, c.query).toEqual(c.params);
     }
@@ -35,7 +36,7 @@ describe("DSL golden parity", () => {
     for (const e of golden.errors) {
       let caught: DslError | null = null;
       try {
-        compileQuery(parse(e.query), whitelist);
+        compileQuery(parse(e.query), whitelist, types);
       } catch (err) {
         caught = err as DslError;
       }
@@ -43,6 +44,22 @@ describe("DSL golden parity", () => {
       expect(caught!.message, e.query).toBe(e.message);
       expect(caught!.position, e.query).toBe(e.position);
       expect(caught!.hint, e.query).toBe(e.hint);
+    }
+  });
+
+  it("raises identical sort errors", () => {
+    expect(golden.sort_errors.length).toBeGreaterThan(0);
+    for (const e of golden.sort_errors) {
+      let caught: DslError | null = null;
+      try {
+        compileSort(e.sort, whitelist);
+      } catch (err) {
+        caught = err as DslError;
+      }
+      expect(caught, e.sort).toBeInstanceOf(DslError);
+      expect(caught!.message, e.sort).toBe(e.message);
+      expect(caught!.position, e.sort).toBe(e.position);
+      expect(caught!.hint, e.sort).toBe(e.hint);
     }
   });
 });

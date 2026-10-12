@@ -53,14 +53,15 @@ function matchedChars(a: string, b: string): number {
 }
 
 /** difflib.get_close_matches(word, sorted(candidates), n=1, cutoff=0.6) —
- * candidates are iterated in sorted order and the first best ratio wins. */
+ * heapq.nlargest over (ratio, candidate): on an equal ratio the LARGEST
+ * candidate string wins. */
 export function closestMatch(word: string, candidates: string[], cutoff = 0.6): string | null {
   let best: string | null = null;
   let bestScore = -1;
   for (const candidate of candidates) {
     const total = candidate.length + word.length;
     const score = total === 0 ? 1 : (2 * matchedChars(candidate, word)) / total;
-    if (score >= cutoff && score > bestScore) {
+    if (score >= cutoff && (score > bestScore || (score === bestScore && best !== null && candidate > best))) {
       best = candidate;
       bestScore = score;
     }
@@ -78,9 +79,41 @@ function checkField(field: string, whitelist: Set<string>, position: number): st
   throw new DslError(`unknown field ${pyRepr(field)} at position ${position}`, position, hint);
 }
 
+/** Coarse kind of a DuckDB column type (mirrors compiler.field_kind). */
+export type FieldKind = "string" | "boolean" | "number" | "other";
+
+export function fieldKind(duckdbType: string): FieldKind {
+  const upper = String(duckdbType).toUpperCase();
+  if (upper.includes("VARCHAR")) return "string";
+  if (upper === "BOOLEAN") return "boolean";
+  if (["INT", "DOUBLE", "FLOAT", "DECIMAL", "REAL"].some((t) => upper.includes(t))) return "number";
+  return "other";
+}
+
+const KIND_HINTS: Record<string, [string, string]> = {
+  number: ["a numeric field", "compare it to a number, e.g. {field} > 0"],
+  boolean: ["a true/false field", "compare it to true or false, e.g. {field} = true"],
+  string: ["a text field", "compare it to a quoted string, e.g. {field} = 'value'"],
+};
+
+/** A literal of the wrong type is a DslError — DuckDB would raise a
+ * ConversionException or silently cast. */
+function checkValue(field: string, value: number | string, kind: string | undefined, position: number): void {
+  if (kind === undefined || !(kind in KIND_HINTS)) return;
+  if ((typeof value === "string") === (kind === "string")) return;
+  const [noun, example] = KIND_HINTS[kind];
+  throw new DslError(
+    `${pyRepr(field)} is ${noun} at position ${position}`,
+    position,
+    example.replace("{field}", field),
+  );
+}
+
+/** `types` (field → kind) turns on literal type checking. */
 export function compileQuery(
   ast: AstNode,
   whitelist: Set<string>,
+  types: Record<string, string> = {},
 ): [string, (number | string)[]] {
   const params: (number | string)[] = [];
 
@@ -88,11 +121,13 @@ export function compileQuery(
     switch (node.type) {
       case "comparison": {
         const field = checkField(node.field, whitelist, node.position);
+        checkValue(field, node.value, types[field], node.position);
         params.push(node.value);
         return `"${field}" ${OPERATORS[node.op]} ?`;
       }
       case "in": {
         const field = checkField(node.field, whitelist, node.position);
+        for (const value of node.values) checkValue(field, value, types[field], node.position);
         params.push(...node.values);
         const placeholders = node.values.map(() => "?").join(", ");
         return `"${field}" IN (${placeholders})`;
@@ -107,16 +142,20 @@ export function compileQuery(
   return [emit(ast), params];
 }
 
+/** ORDER BY with `"symbol" ASC` as the final tie-break (the whole order when
+ * no sort is asked) — LIMIT/OFFSET pages over ties would repeat or skip rows. */
 export function compileSort(sort: string | null, whitelist: Set<string>): string {
-  if (!sort) return "";
   const clauses: string[] = [];
-  for (const part of sort.split(",")) {
+  const fields = new Set<string>();
+  for (const part of (sort ?? "").split(",")) {
     const raw = part.trim();
     if (!raw) continue;
     const direction = raw.startsWith("-") ? "DESC" : "ASC";
     const field = raw.replace(/^[+-]+/, "");
     checkField(field, whitelist, 0);
     clauses.push(`"${field}" ${direction}`);
+    fields.add(field);
   }
+  if (whitelist.has("symbol") && !fields.has("symbol")) clauses.push('"symbol" ASC');
   return clauses.length ? ` ORDER BY ${clauses.join(", ")}` : "";
 }

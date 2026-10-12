@@ -6,6 +6,7 @@ writer per layer). One implementation of screening for CLI, API and UI.
 from __future__ import annotations
 
 import json
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,12 +17,46 @@ import pandas as pd
 from crible import config
 from crible.compute.snapshot import SNAPSHOT_NAME
 from crible.dsl.parser import DslError
-from crible.store import screen as store_screen
-from crible.store import screen_count, whitelist_from_relation
+from crible.store import field_types_from_relation, screen_with_total
 
 
 class SnapshotMissingError(RuntimeError):
     """No snapshot has been computed yet — run `crible ingest` then `crible compute`."""
+
+
+# The latest-period table is materialised ONCE per published snapshot (keyed
+# on its path + mtime + size) instead of re-running the row_number() window
+# over the whole parquet on every request — twice (rows + count) before.
+_LATEST_SQL = """
+    CREATE TABLE snapshot_latest AS
+    SELECT * EXCLUDE (_rn) FROM (
+        SELECT s.*, row_number() OVER (PARTITION BY s.symbol ORDER BY s.period DESC) AS _rn
+        FROM read_parquet(?) s
+    ) WHERE _rn = 1
+"""
+_latest_lock = threading.Lock()
+_latest_cache: dict[str, tuple[tuple[int, int], duckdb.DuckDBPyConnection, dict[str, str]]] = {}
+
+
+def _latest(snapshot: Path) -> tuple[duckdb.DuckDBPyConnection, dict[str, str]]:
+    """(a cursor on the materialised snapshot_latest, field → kind)."""
+    try:
+        stat = snapshot.stat()
+    except FileNotFoundError:
+        raise SnapshotMissingError(
+            "no snapshot yet — run `crible ingest` then `crible compute` first"
+        ) from None
+    key, stamp = str(snapshot.resolve()), (stat.st_mtime_ns, stat.st_size)
+    with _latest_lock:
+        cached = _latest_cache.get(key)
+        if cached is None or cached[0] != stamp:
+            con = duckdb.connect()
+            con.execute(_LATEST_SQL, [snapshot.as_posix()])
+            # the previous connection is left to the GC: a request may still
+            # hold a cursor on it
+            cached = (stamp, con, field_types_from_relation(con))
+            _latest_cache[key] = cached
+        return cached[1].cursor(), cached[2]
 
 
 @dataclass
@@ -40,26 +75,6 @@ class Runtime:
     def universe_path(self) -> Path:
         return self.data_dir / "universe.parquet"
 
-    def mount_snapshot(self, con: duckdb.DuckDBPyConnection) -> None:
-        """Expose ``snapshot_latest``: the latest fiscal period per symbol.
-
-        The snapshot is self-contained (universe metadata embedded at compute
-        time), so this only ever reads Parquet.
-        """
-        snapshot = self.snapshot_path()
-        if not snapshot.exists():
-            raise SnapshotMissingError("no snapshot yet — run `crible ingest` then `crible compute` first")
-        con.execute(
-            f"""
-            CREATE OR REPLACE TEMP VIEW snapshot_latest AS
-            SELECT * EXCLUDE (_rn) FROM (
-                SELECT s.*,
-                       row_number() OVER (PARTITION BY s.symbol ORDER BY s.period DESC) AS _rn
-                FROM read_parquet('{snapshot.as_posix()}') s
-            ) WHERE _rn = 1
-            """
-        )
-
     # -------------------------------------------------------------- surface
 
     def screen(
@@ -70,13 +85,11 @@ class Runtime:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[pd.DataFrame, int]:
-        con = duckdb.connect()
+        con, types = _latest(self.snapshot_path())
         try:
-            self.mount_snapshot(con)
-            whitelist = whitelist_from_relation(con, "snapshot_latest")
-            rows = store_screen(con, query, whitelist=whitelist, sort=sort, limit=limit, offset=offset)
-            total = screen_count(con, query, whitelist=whitelist)
-            return rows, total
+            return screen_with_total(
+                con, query, whitelist=set(types), sort=sort, limit=limit, offset=offset, types=types
+            )
         finally:
             con.close()
 
@@ -87,12 +100,11 @@ class Runtime:
         list, so the builder can only offer fields the DSL whitelist accepts.
         Empty (never an error) while no snapshot exists.
         """
-        con = duckdb.connect()
         try:
-            try:
-                self.mount_snapshot(con)
-            except SnapshotMissingError:
-                return []
+            con, _ = _latest(self.snapshot_path())
+        except SnapshotMissingError:
+            return []
+        try:
             described = con.execute("DESCRIBE snapshot_latest").fetchall()
         finally:
             con.close()
@@ -111,8 +123,8 @@ class Runtime:
             con = duckdb.connect()
             try:
                 rows = con.execute(
-                    f"SELECT * FROM read_parquet('{self.universe_path().as_posix()}') WHERE symbol = ?",
-                    [symbol],
+                    "SELECT * FROM read_parquet(?) WHERE symbol = ?",
+                    [self.universe_path().as_posix(), symbol],
                 ).fetchdf()
             finally:
                 con.close()
@@ -124,9 +136,8 @@ class Runtime:
             con = duckdb.connect()
             try:
                 history = con.execute(
-                    f"SELECT * FROM read_parquet('{self.snapshot_path().as_posix()}')"
-                    " WHERE symbol = ? ORDER BY period DESC",
-                    [symbol],
+                    "SELECT * FROM read_parquet(?) WHERE symbol = ? ORDER BY period DESC",
+                    [self.snapshot_path().as_posix(), symbol],
                 ).fetchdf()
             finally:
                 con.close()
@@ -159,11 +170,10 @@ class Runtime:
         con = duckdb.connect()
         try:
             rows = con.execute(
-                f"SELECT symbol, name, country, sector"
-                f" FROM read_parquet('{self.universe_path().as_posix()}')"
+                "SELECT symbol, name, country, sector FROM read_parquet(?)"
                 " WHERE symbol ILIKE ? OR name ILIKE ?"
                 " ORDER BY symbol LIMIT ?",
-                [f"%{needle}%", f"%{needle}%", limit],
+                [self.universe_path().as_posix(), f"%{needle}%", f"%{needle}%", limit],
             ).fetchall()
         finally:
             con.close()
@@ -175,10 +185,10 @@ class Runtime:
             con = duckdb.connect()
             try:
                 path = self.universe_path().as_posix()
-                out["universe"] = con.execute(f"SELECT count(*) FROM read_parquet('{path}')").fetchone()[0]
+                out["universe"] = con.execute("SELECT count(*) FROM read_parquet(?)", [path]).fetchone()[0]
                 out["by_region"] = dict(
                     con.execute(
-                        f"SELECT region, count(*) FROM read_parquet('{path}') GROUP BY region"
+                        "SELECT region, count(*) FROM read_parquet(?) GROUP BY region", [path]
                     ).fetchall()
                 )
             finally:

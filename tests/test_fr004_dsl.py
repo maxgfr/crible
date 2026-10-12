@@ -175,3 +175,17 @@ def test_fr004_property_arbitrary_input_rejected_or_whitelisted(text: str) -> No
         if token.startswith('"') and token.endswith('"'):
             assert token.strip('"') in WHITELIST
     assert sql.count("?") == len(params)
+
+
+def test_fr004_total_is_real_for_a_count_only_page() -> None:
+    """limit=0 (count only) and a page past the end both report the real total."""
+    import duckdb
+    import pandas as pd
+
+    from crible.store import screen_with_total
+
+    con = duckdb.connect()
+    con.register("snapshot_latest", pd.DataFrame({"symbol": ["A", "B", "C"], "x": [1.0, 2.0, 3.0]}))
+    whitelist = {"symbol", "x"}
+    assert screen_with_total(con, "x > 0", whitelist=whitelist, limit=0)[1] == 3
+    assert screen_with_total(con, "x > 0", whitelist=whitelist, limit=2, offset=10)[1] == 3

@@ -171,3 +171,26 @@ def test_export_site_cli_guard_exits_nonzero(data_dir, tmp_path_factory) -> None
     out = tmp_path_factory.mktemp("site")
     result = CliRunner().invoke(app, ["export-site", "--out", str(out), "--min-symbols", "4"])
     assert result.exit_code == 1
+
+
+def test_export_site_shard_failure_is_a_refusal_that_writes_nothing(
+    data_dir, tmp_path_factory, monkeypatch
+) -> None:
+    """A shard past the git wall is a SiteExportError (clean CLI message),
+    and the previous export in the output directory stays intact."""
+    import crible.price_series as price_series
+
+    out = tmp_path_factory.mktemp("site")
+    export_site(data_dir, out, min_symbols=2)
+    before = (out / "manifest.json").read_text()
+    (out / "prices-00.parquet").write_bytes(b"last-good shard")
+
+    def too_big(*args, **kwargs):
+        raise price_series.ShardSizeError("prices-00.parquet is too big")
+
+    monkeypatch.setattr("crible.site_export.export_price_shards", too_big)
+    with pytest.raises(SiteExportError, match="too big"):
+        export_site(data_dir, out, min_symbols=2)
+    assert (out / "manifest.json").read_text() == before
+    assert (out / "prices-00.parquet").read_bytes() == b"last-good shard"
+    assert not list(out.parent.glob(f".tmp-{out.name}*"))

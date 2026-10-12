@@ -35,16 +35,57 @@ def _check_field(field: str, whitelist: set[str], position: int) -> str:
     raise DslError(f"unknown field {field!r} at position {position}", position=position, hint=hint)
 
 
-def compile_query(ast: object, whitelist: set[str]) -> tuple[str, list[float | str]]:
+def field_kind(duckdb_type: str) -> str:
+    """Coarse kind of a DuckDB column type: string | boolean | number | other."""
+    upper = str(duckdb_type).upper()
+    if "VARCHAR" in upper:
+        return "string"
+    if upper == "BOOLEAN":
+        return "boolean"
+    if any(t in upper for t in ("INT", "DOUBLE", "FLOAT", "DECIMAL", "REAL")):
+        return "number"
+    return "other"
+
+
+# kind → (message noun, example comparison) for a literal of the wrong type
+_KIND_HINTS = {
+    "number": ("a numeric field", "compare it to a number, e.g. {field} > 0"),
+    "boolean": ("a true/false field", "compare it to true or false, e.g. {field} = true"),
+    "string": ("a text field", "compare it to a quoted string, e.g. {field} = 'value'"),
+}
+
+
+def _check_value(field: str, value: float | str, kind: str | None, position: int) -> None:
+    """A literal of the wrong type is a DslError (422) — DuckDB would raise a
+    ConversionException (500) or silently cast."""
+    if kind not in _KIND_HINTS:
+        return
+    expects_text = kind == "string"
+    if isinstance(value, str) == expects_text:
+        return
+    noun, example = _KIND_HINTS[kind]
+    raise DslError(
+        f"{field!r} is {noun} at position {position}", position=position, hint=example.format(field=field)
+    )
+
+
+def compile_query(
+    ast: object, whitelist: set[str], types: dict[str, str] | None = None
+) -> tuple[str, list[float | str]]:
+    """``types`` (field → field_kind) turns on literal type checking."""
     params: list[float | str] = []
+    types = types or {}
 
     def emit(node: object) -> str:
         if isinstance(node, Comparison):
             field = _check_field(node.field, whitelist, node.position)
+            _check_value(field, node.value, types.get(field), node.position)
             params.append(node.value)
             return f'"{field}" {OPERATORS[node.op]} ?'
         if isinstance(node, InList):
             field = _check_field(node.field, whitelist, node.position)
+            for value in node.values:
+                _check_value(field, value, types.get(field), node.position)
             params.extend(node.values)
             placeholders = ", ".join("?" for _ in node.values)
             return f'"{field}" IN ({placeholders})'
@@ -59,10 +100,12 @@ def compile_query(ast: object, whitelist: set[str]) -> tuple[str, list[float | s
 
 
 def compile_sort(sort: str | None, whitelist: set[str]) -> str:
-    if not sort:
-        return ""
+    """ORDER BY with ``"symbol" ASC`` as the final tie-break (and the whole
+    order when no sort is asked): LIMIT/OFFSET pages over ties — integer
+    piotroski_f, NULL ranks — would otherwise repeat or skip rows."""
     clauses = []
-    for raw in sort.split(","):
+    fields = set()
+    for raw in (sort or "").split(","):
         raw = raw.strip()
         if not raw:
             continue
@@ -70,4 +113,7 @@ def compile_sort(sort: str | None, whitelist: set[str]) -> str:
         field = raw.lstrip("+-")
         _check_field(field, whitelist, position=0)
         clauses.append(f'"{field}" {direction}')
+        fields.add(field)
+    if "symbol" in whitelist and "symbol" not in fields:
+        clauses.append('"symbol" ASC')
     return f" ORDER BY {', '.join(clauses)}" if clauses else ""

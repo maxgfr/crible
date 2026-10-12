@@ -12,6 +12,9 @@ Grammar (case-insensitive keywords):
 
 Every error is a DslError carrying the offending token and its position —
 the parser is the only thing that ever reads user input; SQL never does.
+Positions count code points; whitespace and digits are ASCII-only (the TS port
+matches both). Queries are capped in length and nesting depth so a hostile
+input is a 4xx, never a RecursionError.
 """
 
 from __future__ import annotations
@@ -72,8 +75,11 @@ TOKEN_RE = re.compile(
   | (?P<string>'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")
   | (?P<word>[A-Za-z_][A-Za-z0-9_.]*)
     """,
-    re.VERBOSE,
+    re.VERBOSE | re.ASCII,
 )
+
+MAX_QUERY_LENGTH = 2000
+MAX_DEPTH = 32
 
 KEYWORDS = {"and": "AND", "or": "OR", "not": "NOT", "in": "IN"}
 
@@ -109,6 +115,7 @@ class _Parser:
         self.tokens = tokens
         self.text = text
         self.index = 0
+        self.depth = 0
 
     def peek(self) -> Token | None:
         return self.tokens[self.index] if self.index < len(self.tokens) else None
@@ -143,14 +150,22 @@ class _Parser:
         token = self.peek()
         if token is None:
             raise DslError("unexpected end of query", position=len(self.text))
-        if token.kind == "NOT":
+        if token.kind in ("NOT", "LPAREN"):
             self.take()
-            return Not(self.parse_unary())
-        if token.kind == "LPAREN":
-            self.take()
-            inner = self.parse_expr()
-            self.take("RPAREN")
-            return inner
+            self.depth += 1
+            if self.depth > MAX_DEPTH:
+                raise DslError(
+                    f"query nests too deeply at position {token.position}",
+                    position=token.position,
+                    hint=f"at most {MAX_DEPTH} levels of NOT / parentheses",
+                )
+            if token.kind == "NOT":
+                node: object = Not(self.parse_unary())
+            else:
+                node = self.parse_expr()
+                self.take("RPAREN")
+            self.depth -= 1
+            return node
         return self.parse_comparison()
 
     def parse_value(self) -> float | str:
@@ -186,8 +201,15 @@ class _Parser:
 
 
 def parse(text: str) -> object:
-    if not text or not text.strip():
+    # ASCII whitespace only — the tokenizer's class, and the TS port's
+    if not text or not text.strip(" \t\n\r\f\v"):
         raise DslError("empty query", position=0)
+    if len(text) > MAX_QUERY_LENGTH:
+        raise DslError(
+            f"query too long ({len(text)} characters) at position {MAX_QUERY_LENGTH}",
+            position=MAX_QUERY_LENGTH,
+            hint=f"at most {MAX_QUERY_LENGTH} characters",
+        )
     tokens = tokenize(text)
     parser = _Parser(tokens, text)
     ast = parser.parse_expr()

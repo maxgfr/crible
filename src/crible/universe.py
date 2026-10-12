@@ -307,7 +307,9 @@ def export_universe_parquet(con: duckdb.DuckDBPyConnection, data_dir) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     tmp = directory / ".tmp-universe.parquet"
     final = directory / "universe.parquet"
-    con.execute(f"COPY companies TO '{tmp.as_posix()}' (FORMAT parquet)")
+    # COPY cannot bind its target: quote it as a SQL literal
+    target = tmp.as_posix().replace("'", "''")
+    con.execute(f"COPY companies TO '{target}' (FORMAT parquet)")
     tmp.rename(final)
 
 
@@ -329,7 +331,7 @@ def restore_universe_from_parquet(con: duckdb.DuckDBPyConnection, path) -> int:
         raise UniverseSourceError(f"no last-good universe parquet at {file}")
     con.execute(SCHEMA)
     ensure_cap_columns(con)
-    con.execute(f"INSERT OR REPLACE INTO companies BY NAME SELECT * FROM read_parquet('{file.as_posix()}')")
+    con.execute("INSERT OR REPLACE INTO companies BY NAME SELECT * FROM read_parquet(?)", [file.as_posix()])
     return con.execute("SELECT count(*) FROM companies").fetchone()[0]
 
 

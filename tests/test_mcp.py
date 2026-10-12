@@ -73,3 +73,16 @@ def test_mcp_surface_is_read_only() -> None:
     """Guard: only the five read tools exist — no crawl/refresh/compute."""
     tools = asyncio.run(mcp_server.mcp.list_tools())
     assert sorted(t.name for t in tools) == ["company", "fields", "presets", "screen", "status"]
+
+
+def test_mcp_screen_pages_with_an_offset(data_dir) -> None:
+    first = mcp_server.screen("", sort="-composite_rank", limit=2)
+    second = mcp_server.screen("", sort="-composite_rank", limit=2, offset=2)
+    assert [r["symbol"] for r in first["rows"]] == ["AAPL", "AIR.PA"]
+    assert [r["symbol"] for r in second["rows"]] == ["SAP.DE"]
+    assert second["offset"] == 2 and second["total"] == 3
+
+
+def test_mcp_type_mismatch_is_a_readable_error(data_dir) -> None:
+    with pytest.raises(ValueError, match="numeric field"):
+        mcp_server.screen("piotroski_f = 'high'")

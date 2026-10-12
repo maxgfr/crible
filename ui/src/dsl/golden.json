@@ -25,9 +25,42 @@
     "composite_rank",
     "quality_rank",
     "value_rank",
+    "ncav_growth",
+    "name_growth",
     "top10k",
     "primary_listing"
   ],
+  "types": {
+    "symbol": "string",
+    "name": "string",
+    "country": "string",
+    "country_name": "string",
+    "region": "string",
+    "sector": "string",
+    "industry": "string",
+    "exchange": "string",
+    "currency": "string",
+    "period": "string",
+    "revenue": "number",
+    "net_income": "number",
+    "total_assets": "number",
+    "free_cash_flow": "number",
+    "return_on_equity": "number",
+    "debt_to_equity_ratio": "number",
+    "price_to_earnings_ratio": "number",
+    "price_to_book_ratio": "number",
+    "earnings_yield": "number",
+    "piotroski_f": "number",
+    "altman_z": "number",
+    "beneish_m": "number",
+    "composite_rank": "number",
+    "quality_rank": "number",
+    "value_rank": "number",
+    "ncav_growth": "number",
+    "name_growth": "number",
+    "top10k": "boolean",
+    "primary_listing": "boolean"
+  },
   "cases": [
     {
       "query": "piotroski_f >= 7",
@@ -174,28 +207,89 @@
         1.0,
         0.0
       ]
+    },
+    {
+      "query": "name = \"Double \\\"quoted\\\"\"",
+      "sql": "\"name\" = ?",
+      "params": [
+        "Double \"quoted\""
+      ]
+    },
+    {
+      "query": "country = 'FR' and not sector = 'Energy' or region In ('europe')",
+      "sql": "((\"country\" = ?) AND (NOT (\"sector\" = ?))) OR (\"region\" IN (?))",
+      "params": [
+        "FR",
+        "Energy",
+        "europe"
+      ]
+    },
+    {
+      "query": "NOT NOT piotroski_f >= 7",
+      "sql": "NOT (NOT (\"piotroski_f\" >= ?))",
+      "params": [
+        7.0
+      ]
+    },
+    {
+      "query": "name = 'Société Générale' AND country = 'FR'",
+      "sql": "(\"name\" = ?) AND (\"country\" = ?)",
+      "params": [
+        "Société Générale",
+        "FR"
+      ]
+    },
+    {
+      "query": "name = '😀' AND piotroski_f > 1",
+      "sql": "(\"name\" = ?) AND (\"piotroski_f\" > ?)",
+      "params": [
+        "😀",
+        1.0
+      ]
+    },
+    {
+      "query": "top10k = false",
+      "sql": "\"top10k\" = ?",
+      "params": [
+        0.0
+      ]
+    },
+    {
+      "query": "(((piotroski_f > 1)))",
+      "sql": "\"piotroski_f\" > ?",
+      "params": [
+        1.0
+      ]
     }
   ],
   "sorts": [
     {
       "sort": "-composite_rank",
-      "sql": " ORDER BY \"composite_rank\" DESC"
+      "sql": " ORDER BY \"composite_rank\" DESC, \"symbol\" ASC"
     },
     {
       "sort": "country,-piotroski_f",
-      "sql": " ORDER BY \"country\" ASC, \"piotroski_f\" DESC"
+      "sql": " ORDER BY \"country\" ASC, \"piotroski_f\" DESC, \"symbol\" ASC"
     },
     {
       "sort": "+name",
-      "sql": " ORDER BY \"name\" ASC"
+      "sql": " ORDER BY \"name\" ASC, \"symbol\" ASC"
     },
     {
       "sort": "",
-      "sql": ""
+      "sql": " ORDER BY \"symbol\" ASC"
     },
     {
       "sort": "symbol , -altman_z",
       "sql": " ORDER BY \"symbol\" ASC, \"altman_z\" DESC"
+    },
+    {
+      "sort": "-symbol",
+      "sql": " ORDER BY \"symbol\" DESC"
+    },
+    {
+      "sort": "piotroski_f",
+      "sql": " ORDER BY \"piotroski_f\" ASC, \"symbol\" ASC"
     }
   ],
   "errors": [
@@ -270,6 +364,122 @@
       "message": "unexpected end of query",
       "position": 10,
       "hint": null
+    },
+    {
+      "query": "sector = 5",
+      "message": "'sector' is a text field at position 0 — compare it to a quoted string, e.g. sector = 'value'",
+      "position": 0,
+      "hint": "compare it to a quoted string, e.g. sector = 'value'"
+    },
+    {
+      "query": "revenue = \"abc\"",
+      "message": "'revenue' is a numeric field at position 0 — compare it to a number, e.g. revenue > 0",
+      "position": 0,
+      "hint": "compare it to a number, e.g. revenue > 0"
+    },
+    {
+      "query": "top10k = 'yes'",
+      "message": "'top10k' is a true/false field at position 0 — compare it to true or false, e.g. top10k = true",
+      "position": 0,
+      "hint": "compare it to true or false, e.g. top10k = true"
+    },
+    {
+      "query": "country IN ('FR', 5)",
+      "message": "'country' is a text field at position 0 — compare it to a quoted string, e.g. country = 'value'",
+      "position": 0,
+      "hint": "compare it to a quoted string, e.g. country = 'value'"
+    },
+    {
+      "query": "growth > 1",
+      "message": "unknown field 'growth' at position 0 — did you mean 'ncav_growth'?",
+      "position": 0,
+      "hint": "did you mean 'ncav_growth'?"
+    },
+    {
+      "query": "name = '😀' AND zz > 1",
+      "message": "unknown field 'zz' at position 15 — no similar field exists",
+      "position": 15,
+      "hint": "no similar field exists"
+    },
+    {
+      "query": "piotroski_f > ٣",
+      "message": "unexpected character '٣' at position 14",
+      "position": 14,
+      "hint": null
+    },
+    {
+      "query": "​piotroski_f > 1",
+      "message": "unexpected character '\\u200b' at position 0",
+      "position": 0,
+      "hint": null
+    },
+    {
+      "query": " piotroski_f > 1",
+      "message": "unexpected character '\\xa0' at position 0",
+      "position": 0,
+      "hint": null
+    },
+    {
+      "query": "piotroski_f > 1",
+      "message": "unexpected character '\\x85' at position 0",
+      "position": 0,
+      "hint": null
+    },
+    {
+      "query": "",
+      "message": "unexpected character '\\x85' at position 0",
+      "position": 0,
+      "hint": null
+    },
+    {
+      "query": " \t ",
+      "message": "empty query",
+      "position": 0,
+      "hint": null
+    },
+    {
+      "query": "name = '😀' AND 😀 > 1",
+      "message": "unexpected character '😀' at position 15",
+      "position": 15,
+      "hint": null
+    },
+    {
+      "query": "NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT piotroski_f > 1",
+      "message": "query nests too deeply at position 128 — at most 32 levels of NOT / parentheses",
+      "position": 128,
+      "hint": "at most 32 levels of NOT / parentheses"
+    },
+    {
+      "query": "((((((((((((((((((((((((((((((((((((((((piotroski_f > 1))))))))))))))))))))))))))))))))))))))))",
+      "message": "query nests too deeply at position 32 — at most 32 levels of NOT / parentheses",
+      "position": 32,
+      "hint": "at most 32 levels of NOT / parentheses"
+    },
+    {
+      "query": "piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1 AND piotroski_f > 1",
+      "message": "query too long (2215 characters) at position 2000 — at most 2000 characters",
+      "position": 2000,
+      "hint": "at most 2000 characters"
+    }
+  ],
+  "sort_errors": [
+    {
+      "sort": "-nope",
+      "message": "unknown field 'nope' at position 0 — no similar field exists",
+      "position": 0,
+      "hint": "no similar field exists"
+    },
+    {
+      "sort": "piotroski",
+      "message": "unknown field 'piotroski' at position 0 — did you mean 'piotroski_f'?",
+      "position": 0,
+      "hint": "did you mean 'piotroski_f'?"
+    },
+    {
+      "sort": "growth",
+      "message": "unknown field 'growth' at position 0 — did you mean 'ncav_growth'?",
+      "position": 0,
+      "hint": "did you mean 'ncav_growth'?"
     }
   ]
 }

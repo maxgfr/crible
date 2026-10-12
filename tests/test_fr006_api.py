@@ -161,3 +161,89 @@ def test_fr006_csv_export_restricts_to_visible_columns(client) -> None:
         client.get("/api/screen.csv", params={"query": "piotroski_f >= 5", "columns": "nope"}).status_code
         == 422
     )
+
+
+def test_fr006_paths_with_a_quote_never_break_the_readers(tmp_path, monkeypatch) -> None:
+    """Data directories are interpolated nowhere: a `'` in the path is data."""
+    import pandas as pd
+
+    from crible.runtime import Runtime
+
+    data = tmp_path / "o'brien"
+    (data / "snapshot").mkdir(parents=True)
+    pd.DataFrame({"symbol": ["A", "B"], "period": ["2024", "2024"], "revenue": [1.0, 2.0]}).to_parquet(
+        data / "snapshot" / "snapshot.parquet"
+    )
+    pd.DataFrame(
+        {"symbol": ["A"], "name": ["Alpha"], "country": ["FR"], "sector": ["Tech"], "region": ["europe"]}
+    ).to_parquet(data / "universe.parquet")
+    runtime = Runtime(data_dir=data)
+    rows, total = runtime.screen("revenue > 0")
+    assert total == 2
+    assert runtime.search("alp")[0]["symbol"] == "A"
+    assert runtime.company("A")["profile"]["name"] == "Alpha"
+    assert runtime.status()["universe"] == 1
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"query": "country = 5"},
+        {"query": 'piotroski_f = "abc"'},
+        {"query": "NOT " * 3000 + "piotroski_f > 1"},
+        {"query": "(" * 3000 + "piotroski_f > 1"},
+        {"query": "piotroski_f > 1", "page": 10**17, "page_size": 1000},
+        {"query": "piotroski_f > 1", "page": 2**40},
+        {"query": "piotroski_f > 1", "sort": "-nope"},
+        {"query": "name = '😀' AND ٣ > 1"},
+    ],
+)
+def test_fr006_hostile_screen_input_is_a_4xx_never_a_5xx(client, body) -> None:
+    response = client.post("/api/screen", json=body)
+    assert 400 <= response.status_code < 500, response.text
+
+
+def test_fr006_hostile_csv_and_price_paths_are_4xx_or_empty(client) -> None:
+    assert client.get("/api/screen.csv", params={"query": "country = 5"}).status_code == 422
+    assert client.get("/api/prices/*").json() == []
+    assert client.get("/api/prices/[AB]*").json() == []
+
+
+def test_fr006_duckdb_error_maps_to_422(tmp_path, monkeypatch) -> None:
+    """Whatever the compiler lets through (a DATE column has no literal type
+    check), a DuckDB error is the query's fault — 422 with the engine message
+    as the hint, never a 500."""
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    snapshot = pd.DataFrame(
+        {"symbol": ["A"], "period": ["2025"], "listed": pd.to_datetime(["2020-01-01"]).date}
+    )
+    publish_snapshot(snapshot, tmp_path)
+    response = TestClient(create_app()).post("/api/screen", json={"query": "listed = 'not a date'"})
+    assert response.status_code == 422, response.text
+    assert "Conversion" in response.json()["detail"]["error"]
+
+
+def test_fr006_pages_are_deterministic_and_never_overlap(client) -> None:
+    """Ties on the sort key are broken by symbol: two pages of 2 over 4 rows
+    cover each row exactly once, every time."""
+    seen = []
+    for page in (1, 2):
+        body = client.post(
+            "/api/screen", json={"query": "", "sort": "-beneish_m", "page": page, "page_size": 2}
+        ).json()
+        seen += [r["symbol"] for r in body["rows"]]
+    assert sorted(seen) == sorted(["AIR.PA", "SAP.DE", "AAPL", "7203.T"])
+    unsorted = [client.post("/api/screen", json={"query": ""}).json()["rows"] for _ in range(3)]
+    assert all([r["symbol"] for r in rows] == ["7203.T", "AAPL", "AIR.PA", "SAP.DE"] for rows in unsorted)
+
+
+def test_fr006_truncated_export_says_so(client, monkeypatch) -> None:
+    from crible import store
+
+    monkeypatch.setattr(store, "EXPORT_LIMIT", 2)
+    response = client.get("/api/screen.csv", params={"query": ""})
+    assert response.status_code == 200
+    assert response.headers["X-Crible-Truncated"] == "4"
+    assert len(response.text.strip().splitlines()) == 3  # header + 2 rows
+    full = client.get("/api/screen.csv", params={"query": "piotroski_f >= 9"})
+    assert "X-Crible-Truncated" not in full.headers

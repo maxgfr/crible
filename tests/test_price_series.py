@@ -157,3 +157,32 @@ def test_load_all_series_resolves_every_symbol(tmp_path) -> None:
     write_series(tmp_path, "stooq", store_frame("BMW.DE", days=5, start="2026-01-05"))
     series = load_all_series(tmp_path)
     assert sorted(series["symbol"].unique()) == ["AAPL", "BMW.DE"]
+
+
+def test_symbol_series_never_globs_the_symbol(tmp_path) -> None:
+    """`/api/prices/*` used to read EVERY raw directory (glob injection)."""
+    write_yf_bars(tmp_path, "AIR.PA", yf_frame(5))
+    write_yf_bars(tmp_path, "SAP.DE", yf_frame(5))
+    write_series(tmp_path, "stooq-uk", store_frame("VOD.L", 5, "2026-01-05"))
+    for pattern in ("*", "[AS]*", "?IR.PA", "*.PA"):
+        assert load_symbol_series(tmp_path, pattern).empty, pattern
+    assert set(load_symbol_series(tmp_path, "AIR.PA")["symbol"]) == {"AIR.PA"}
+    assert set(load_symbol_series(tmp_path, "VOD.L")["symbol"]) == {"VOD.L"}
+
+
+def test_symbol_series_reads_only_its_rows_from_a_dump(tmp_path, monkeypatch) -> None:
+    """The dump stores are read with a parquet filter, never whole."""
+    write_series(
+        tmp_path, "stooq-uk", pd.concat([store_frame(s, 5, "2026-01-05") for s in ("BP.L", "VOD.L")])
+    )
+    calls = []
+    original = pd.read_parquet
+
+    def spy(path, *args, **kwargs):
+        calls.append(kwargs.get("filters"))
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(pd, "read_parquet", spy)
+    series = load_symbol_series(tmp_path, "VOD.L")
+    assert set(series["symbol"]) == {"VOD.L"} and len(series) == 5
+    assert [("symbol", "==", "VOD.L")] in calls

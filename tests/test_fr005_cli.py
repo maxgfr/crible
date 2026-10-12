@@ -210,3 +210,37 @@ def test_cli_ingest_symbols_targets_exactly_that_set(data_dir, monkeypatch) -> N
     assert result.exit_code == 0, result.output
     assert calls["symbols"] == ["OVH.PA", "MC.PA"]
     assert "2 ok" in result.output
+
+
+def test_fr005_export_warns_when_the_result_is_truncated(tmp_path, monkeypatch) -> None:
+    import pandas as pd
+    from typer.testing import CliRunner
+
+    from crible import store
+    from crible.cli import app
+    from crible.compute.snapshot import publish_snapshot
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    publish_snapshot(
+        pd.DataFrame({"symbol": ["A", "B", "C"], "period": ["2025"] * 3, "x": [1.0, 2.0, 3.0]}), tmp_path
+    )
+    monkeypatch.setattr(store, "EXPORT_LIMIT", 2)
+    result = CliRunner().invoke(app, ["export", "--out", str(tmp_path / "out.csv")])
+    assert result.exit_code == 0, result.output
+    assert "truncated" in result.output
+    assert len((tmp_path / "out.csv").read_text().strip().splitlines()) == 3
+
+
+def test_fr005_type_mismatch_is_a_clean_error_not_a_traceback(tmp_path, monkeypatch) -> None:
+    import pandas as pd
+    from typer.testing import CliRunner
+
+    from crible.cli import app
+    from crible.compute.snapshot import publish_snapshot
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    publish_snapshot(pd.DataFrame({"symbol": ["A"], "period": ["2025"], "sector": ["Tech"]}), tmp_path)
+    result = CliRunner().invoke(app, ["screen", "sector = 5"])
+    assert result.exit_code == 1
+    assert "text field" in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)

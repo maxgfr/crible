@@ -80,10 +80,16 @@ def normalize_yf_bars(frame: pd.DataFrame, symbol: str) -> pd.DataFrame:
 
 
 def _load_yf_series(data_dir: Path | str, symbol: str | None = None) -> pd.DataFrame:
-    """Newest prices-daily raw file per symbol, normalized."""
-    pattern = (symbol or "*").replace("/", "_")
+    """Newest prices-daily raw file per symbol, normalized. One symbol is an
+    exact path — never a glob pattern (`/api/prices/*` read every directory)."""
+    root = Path(data_dir) / "raw" / "provider=yfinance"
+    if symbol is None:
+        directories = root.glob("symbol=*")
+    else:
+        exact = root / f"symbol={symbol.replace('/', '_')}"
+        directories = [exact] if exact.parent == root and exact.is_dir() else []
     parts = []
-    for directory in (Path(data_dir) / "raw").glob(f"provider=yfinance/symbol={pattern}"):
+    for directory in directories:
         # zero-padded ms stamps make lexical order chronological
         files = sorted(directory.glob("prices-daily-*.parquet"))
         if not files:
@@ -99,12 +105,14 @@ def _load_yf_series(data_dir: Path | str, symbol: str | None = None) -> pd.DataF
 
 
 def _load_store_series(data_dir: Path | str, symbol: str | None = None) -> pd.DataFrame:
-    """The imported dump series (data/prices/<source>.parquet), lean schema."""
+    """The imported dump series (data/prices/<source>[-<market>].parquet),
+    lean schema; one symbol reads only its rows (parquet filter pushdown)."""
     parts = []
-    for file in sorted(series_dir(data_dir).glob("*.parquet")):
-        table = pd.read_parquet(file)
-        if symbol is not None:
-            table = table[table["symbol"] == symbol]
+    for file in sorted(series_dir(data_dir).glob("[!.]*.parquet")):
+        if symbol is None:
+            table = pd.read_parquet(file)
+        else:
+            table = pd.read_parquet(file, filters=[("symbol", "==", symbol)])
         if len(table):
             parts.append(table.assign(date=pd.to_datetime(table["date"])))
     return _concat(parts)
