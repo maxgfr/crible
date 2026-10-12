@@ -228,6 +228,40 @@ _PRESETS = [
         columns=("sloan_accruals", "income_quality_ratio", "fcf_conversion", "beneish_m"),
     ),
     Preset(
+        id="quality-compounders",
+        name="Quality compounders",
+        description=(
+            "High return on invested capital (ROIC ≥ 15%) and gross profitability (≥ 30% of assets),"
+            " without diluting shareholders (share count up at most 2% a year)"
+        ),
+        dsl="roic >= 0.15 AND gross_profitability >= 0.3 AND net_share_issuance <= 0.02",
+        columns=("roic", "gross_profitability", "net_share_issuance", "return_on_equity", "fcf_margin"),
+    ),
+    Preset(
+        id="consistent-cash",
+        name="Consistent free cash flow",
+        description="Positive free cash flow in at least 4 of the last 5 reported years",
+        dsl="positive_fcf_years_5y >= 4",
+        columns=("positive_fcf_years_5y", "free_cash_flow", "fcf_margin", "fcf_conversion"),
+    ),
+    Preset(
+        id="altman-z2-safe",
+        name="Altman Z″ safe zone",
+        description=(
+            "Bankruptcy-safe zone under Altman's Z″ for non-manufacturers and emerging markets"
+            " (Z″ > 2.6, book equity, no price needed)"
+        ),
+        dsl="altman_z_double_prime > 2.6",
+        columns=("altman_z_double_prime", "altman_z", "debt_to_equity_ratio", "interest_coverage_ratio"),
+    ),
+    Preset(
+        id="net-buybacks",
+        name="Net buybacks",
+        description="Share count down over the last fiscal year (net buybacks, no dilution)",
+        dsl="net_share_issuance < 0",
+        columns=("net_share_issuance", "shareholder_yield", "free_cash_flow_yield", "market_cap"),
+    ),
+    Preset(
         id="all-indicators",
         name="All indicators",
         description=(

@@ -65,6 +65,11 @@ def con(tmp_path_factory) -> duckdb.DuckDBPyConnection:
                 random() * 1.2 - 0.4 AS return_12_1,
                 CAST(floor(random() * 7) AS TINYINT) AS mohanram_g,
                 random() * 3 AS dechow_f,
+                random() * 0.4 - 0.1 AS roic,
+                random() * 0.6 AS gross_profitability,
+                random() * 0.2 - 0.1 AS net_share_issuance,
+                CAST(floor(random() * 6) AS TINYINT) AS positive_fcf_years_5y,
+                random() * 8 - 1 AS altman_z_double_prime,
                 {fillers}
             FROM range({ROWS}) t(i)
         ) TO '{path.as_posix()}' (FORMAT parquet)

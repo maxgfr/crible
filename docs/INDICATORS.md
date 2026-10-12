@@ -44,6 +44,11 @@ imputée** ; la colonne `missing_inputs` du snapshot nomme les champs absents.
 | `volatility_1y` | annualized σ of daily log returns | ≥ 0 | context | — |
 | `ttm_*` / `price_to_earnings_ttm` / `price_to_sales_ttm` / `ttm_fcf_yield` | trailing 12 months | — | — | crawled + audited discrete-quarter issuers |
 | `revenue_cagr_3y` / `net_income_cagr_3y` | 3-year compound growth | ~unbounded | higher · plus haut | — |
+| `roic` | NOPAT / average invested capital | ~unbounded | higher · plus haut | — (`>= 0.15` in Quality compounders) |
+| `gross_profitability` | gross profit / total assets | ~0–1 | higher · plus haut | — |
+| `net_share_issuance` | YoY change of the period-end share count | ~unbounded | lower · plus bas | `> 0` → dilution |
+| `positive_fcf_years_5y` | positive-FCF years among the last 5 | 0–5 | higher · plus haut | — |
+| `altman_z_double_prime` | Altman Z″ (non-manufacturers, book equity) | ~unbounded | higher · plus haut | `> 2.6` safe · `< 1.1` distress |
 
 Direction reminder: distress and manipulation scores are **risk** measures (lower is
 safer); value and quality metrics are **opportunity** measures (higher is better).
@@ -737,6 +742,100 @@ recalcul complet les applique) :
   l'écran par défaut.
 - **ESEF** : la part du groupe (`…AttributableToOwnersOfParent`) l'emporte sur le total incluant
   les minoritaires, comme EDGAR/TWSE/CVM/yfinance.
+
+---
+
+## 22. ROIC — `roic`
+
+**Formula**
+
+```
+tax_rate         = income_tax_expense / income_before_tax     (clipped to 0–50 %, NaN on a pretax loss)
+NOPAT            = EBIT × (1 − tax_rate)
+invested_capital = total_equity + total_debt − cash_and_equivalents   (averaged over the year)
+roic             = NOPAT / invested_capital                   (NaN when invested capital ≤ 0)
+```
+
+**EN** — What the operating business earns, after tax, on the capital shareholders and lenders
+put in. Unlike ROE it cannot be inflated by leverage; unlike ROA it ignores idle cash. A
+sustained ROIC above the cost of capital (~8–10 %) is the signature of a moat. The averaged
+capital needs a prior year, so the first period is `NaN`.
+
+**FR** — Ce que l'activité gagne, après impôt, sur le capital apporté par les actionnaires et
+les prêteurs. Contrairement au ROE, le levier ne peut pas le gonfler ; contrairement au ROA, la
+trésorerie dormante n'y pèse pas. Un ROIC durablement au-dessus du coût du capital (~8–10 %)
+signe un avantage concurrentiel. Le capital moyen exige l'exercice précédent : la première
+période vaut `NaN`.
+
+---
+
+## 23. Gross profitability — `gross_profitability`
+
+**Formula** — `gross_profit / total_assets`
+
+**EN** — Novy-Marx (2013, *The Other Side of Value*): gross profit scaled by assets predicts
+returns as well as book-to-market, and it is measured above the lines (R&D, SG&A, D&A) where
+accounting choices distort earnings. Compare within an industry: asset-light businesses score
+structurally higher.
+
+**FR** — Novy-Marx (2013) : la marge brute rapportée à l'actif prédit les rendements aussi bien
+que le book-to-market, et se mesure au-dessus des lignes (R&D, frais généraux, amortissements)
+où les choix comptables déforment le résultat. À comparer au sein d'un secteur : les modèles
+peu capitalistiques ressortent structurellement plus haut.
+
+---
+
+## 24. Net share issuance — `net_share_issuance`
+
+**Formula** — `shares_outstanding_end / prior-year shares_outstanding_end − 1` (period-end
+count, the weighted average as a fallback; NaN across a calendar gap)
+
+**EN** — Positive = the share count grew (dilution: options, acquisitions paid in stock, capital
+raises); negative = net buybacks. Persistent dilution is one of the most reliable negative
+signals in the equity literature (Pontiff & Woodgate 2008); the grid colors dilution red.
+
+**FR** — Positif = le nombre d'actions a augmenté (dilution : stock-options, acquisitions payées
+en titres, augmentations de capital) ; négatif = rachats nets. Une dilution persistante est l'un
+des signaux négatifs les plus robustes de la littérature (Pontiff & Woodgate 2008) ; la grille
+colore la dilution en rouge.
+
+---
+
+## 25. Free-cash-flow consistency — `positive_fcf_years_5y`
+
+**Formula** — the number of fiscal years with `free_cash_flow > 0` among the last five
+reported; `NaN` until three years are reported (never extrapolated).
+
+**EN** — One good year proves little; a business that converts earnings into cash year after
+year is the one that can fund dividends, buybacks and growth without the market's permission.
+Yahoo-only listings carry ~4 annual periods, audited EDGAR listings up to 8.
+
+**FR** — Une bonne année ne prouve pas grand-chose ; une entreprise qui transforme ses bénéfices
+en trésorerie année après année peut financer dividendes, rachats et croissance sans dépendre du
+marché. Les valeurs Yahoo seules portent ~4 exercices, les valeurs EDGAR auditées jusqu'à 8.
+
+---
+
+## 26. Altman Z″ — `altman_z_double_prime`
+
+**Formula**
+
+```
+Z″ = 6.56·(working_capital / TA) + 3.26·(retained_earnings / TA)
+   + 6.72·(EBIT / TA) + 1.05·(total_equity / total_liabilities)
+```
+
+**EN** — Altman's 2002 revision for non-manufacturers and emerging markets: the sales/assets
+term (an industry artefact) is dropped and the market value of equity is replaced by **book**
+equity, so it scores any company with a balance sheet — no price needed. Zones: **> 2.60 safe,
+1.10–2.60 grey, < 1.10 distress**. Prefer it to the classic `altman_z` for services, retail,
+software and non-US listings.
+
+**FR** — La révision 2002 d'Altman pour les non-industriels et les marchés émergents : le terme
+ventes/actif (un artefact sectoriel) disparaît et la capitalisation est remplacée par les
+capitaux propres **comptables** ; il note donc toute société dotée d'un bilan, sans cours.
+Zones : **> 2,60 sûr, 1,10–2,60 gris, < 1,10 détresse**. À préférer au `altman_z` classique pour
+les services, la distribution, le logiciel et les cotations hors US.
 
 ---
 

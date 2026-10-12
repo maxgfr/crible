@@ -50,6 +50,27 @@ def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
     out["revenue_cagr_3y"] = _cagr_3y(c["revenue"])
     out["net_income_cagr_3y"] = _cagr_3y(c["net_income"])
 
+    # ROIC = NOPAT / average invested capital. NOPAT taxes EBIT at the
+    # effective rate (tax / pretax, clipped to 0–50 %, undefined on a pretax
+    # loss); invested capital = equity + debt − cash. Non-positive capital →
+    # NaN (a negative denominator would read a loss as a return)
+    pretax = c["income_before_tax"]
+    tax_rate = (c["income_tax_expense"] / pretax.where(pretax > 0)).clip(0.0, 0.5)
+    invested = average(c["total_equity"] + c["total_debt"] - c["cash_and_equivalents"])
+    out["roic"] = ebit * (1 - tax_rate) / invested.where(invested > 0)
+    # Novy-Marx (2013) gross profitability — the quality factor that survives
+    # accounting choices below the gross line
+    out["gross_profitability"] = c["gross_profit"] / c["total_assets"].where(c["total_assets"] > 0)
+    # net share issuance: the yearly change of the period-end share count —
+    # positive dilutes, negative is a net buyback
+    shares_end = price_shares(c)
+    prior_shares = prior_period(shares_end)
+    out["net_share_issuance"] = (shares_end / prior_shares - 1).where(prior_shares > 0)
+    # earnings-quality consistency: positive-FCF years among the last five
+    # reported (at least three needed — never extrapolated)
+    fcf = c["free_cash_flow"]
+    out["positive_fcf_years_5y"] = (fcf > 0).astype(float).where(fcf.notna()).rolling(5, min_periods=3).sum()
+
     # Greenblatt magic-formula: return on capital = EBIT / (NWC + net fixed assets).
     # Non-positive invested capital would sign-flip the ratio (negative EBIT over a
     # negative denominator reads as a high return) and corrupt magic_formula_rank,

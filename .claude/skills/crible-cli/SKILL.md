@@ -89,6 +89,14 @@ comma-separated for multi-key (`--sort "country,-piotroski_f"`).
   `shareholder_yield` (dividends + net buybacks / market cap),
   `sloan_accruals` (lower/negative is better), `cash_conversion_cycle` (days,
   lower is better — negative means suppliers finance operations).
+- **Capital efficiency & dilution**: `roic` (NOPAT / average invested capital,
+  equity + debt − cash), `gross_profitability` (gross profit / assets,
+  Novy-Marx), `net_share_issuance` (YoY change of the share count: > 0
+  dilutes, < 0 = net buybacks), `positive_fcf_years_5y` (0–5),
+  `altman_z_double_prime` (Altman Z″ on book equity, no price needed: > 2.6
+  safe, < 1.1 distress — prefer it to `altman_z` outside manufacturing).
+- **Removed**: `return_on_invested_capital` (financetoolkit's formula was not
+  a ROIC) — use `roic`.
 - **TTM**: `ttm_revenue`/`ttm_net_income`/`ttm_operating_cashflow`/
   `ttm_free_cash_flow` + `price_to_earnings_ttm`/`price_to_sales_ttm`/
   `ttm_fcf_yield` — the last four discrete quarters (crawled symbols +

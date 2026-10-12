@@ -71,6 +71,7 @@ const RANK_PILLARS: [string, string, string[]][] = [
 const SCORES: [string, string, string[]][] = [
   ["Piotroski F", "piotroski_f", PIOTROSKI],
   ["Altman Z", "altman_z", ALTMAN],
+  ["Altman Z″ (non-manufacturers)", "altman_z_double_prime", []],
   ["Beneish M", "beneish_m", BENEISH],
   ["Zmijewski", "zmijewski_score", []],
   ["Ohlson O", "ohlson_o", []],
@@ -82,7 +83,7 @@ const SCORES: [string, string, string[]][] = [
 const CASH_QUALITY = [
   "ebitda_margin", "fcf_margin", "fcf_conversion", "income_quality_ratio",
   "sloan_accruals", "rule_of_40", "capex_coverage_ratio", "dividend_coverage",
-  "dividend_payout_ratio",
+  "dividend_payout_ratio", "positive_fcf_years_5y", "net_share_issuance",
 ];
 // the classic ratio families, grouped the way an analyst scans them
 const KEY_RATIOS: [string, string[]][] = [
@@ -93,7 +94,7 @@ const KEY_RATIOS: [string, string[]][] = [
   ]],
   ["Profitability", [
     "gross_margin", "operating_margin", "net_profit_margin", "return_on_assets",
-    "return_on_equity", "return_on_capital_employed",
+    "return_on_equity", "return_on_capital_employed", "roic", "gross_profitability",
   ]],
   ["Balance", [
     "current_ratio", "quick_ratio", "cash_ratio", "debt_to_equity_ratio",

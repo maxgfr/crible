@@ -1332,3 +1332,71 @@ def test_fr003_price_is_converted_into_the_reporting_currency() -> None:
     ).iloc[-1]
     assert pd.isna(unknown["price_to_earnings_ratio"])  # no rate → no mixed-currency multiple
     assert pd.notna(unknown["net_profit_margin"])  # price-free ratios are unaffected
+
+
+# ------------------------------------------------ new indicators (schema 9)
+
+
+def _new_indicators_canonical() -> pd.DataFrame:
+    from crible.compute.canonical import CANONICAL_FIELDS
+
+    periods = ["2021", "2022", "2023", "2024", "2025"]
+    base: dict[str, list[float]] = {f: [float("nan")] * 5 for f in CANONICAL_FIELDS}
+    base.update(
+        {
+            "earnings_before_interest_and_taxes": [100.0, 110.0, 120.0, 130.0, 140.0],
+            "income_before_tax": [90.0, 100.0, 110.0, 120.0, 125.0],
+            "income_tax_expense": [22.5, 25.0, 27.5, 30.0, 31.25],  # 25 % every year
+            "total_equity": [500.0, 520.0, 540.0, 560.0, 580.0],
+            "total_debt": [200.0] * 5,
+            "cash_and_equivalents": [100.0] * 5,
+            "gross_profit": [300.0, 310.0, 320.0, 330.0, 340.0],
+            "total_assets": [1000.0] * 5,
+            "shares_outstanding": [100.0] * 5,
+            "shares_outstanding_end": [100.0, 100.0, 104.0, 104.0, 98.8],
+            "free_cash_flow": [10.0, -5.0, 20.0, 30.0, 40.0],
+            "working_capital": [150.0] * 5,
+            "retained_earnings": [200.0] * 5,
+            "total_liabilities": [400.0] * 5,
+            "revenue": [1000.0] * 5,
+        }
+    )
+    return pd.DataFrame(base, index=pd.Index(periods, name="period"))
+
+
+def test_roic_is_nopat_over_average_invested_capital() -> None:
+    out = compute_extras(_new_indicators_canonical())
+    # 2025: NOPAT = 140 × (1 − 0.25) = 105; invested (560+200−100 + 580+200−100)/2 = 670
+    assert out.loc["2025", "roic"] == pytest.approx(105.0 / 670.0)
+    assert pd.isna(out.loc["2021", "roic"])  # no opening capital
+
+
+def test_roic_undefined_on_a_pretax_loss_or_negative_capital() -> None:
+    canonical = _new_indicators_canonical()
+    canonical.loc["2025", "income_before_tax"] = -10.0
+    assert pd.isna(compute_extras(canonical).loc["2025", "roic"])
+    canonical = _new_indicators_canonical()
+    canonical["total_equity"] = -1000.0
+    assert compute_extras(canonical)["roic"].isna().all()
+
+
+def test_gross_profitability_share_issuance_and_fcf_consistency() -> None:
+    out = compute_extras(_new_indicators_canonical())
+    assert out.loc["2025", "gross_profitability"] == pytest.approx(0.34)
+    assert out.loc["2023", "net_share_issuance"] == pytest.approx(0.04)  # dilution
+    assert out.loc["2025", "net_share_issuance"] == pytest.approx(-0.05)  # buyback
+    assert pd.isna(out.loc["2021", "net_share_issuance"])
+    # FCF signs + − + + + : 4 positive years of the last 5; needs 3 reported
+    assert out.loc["2025", "positive_fcf_years_5y"] == 4.0
+    assert out.loc["2023", "positive_fcf_years_5y"] == 2.0
+    assert pd.isna(out.loc["2022", "positive_fcf_years_5y"])
+
+
+def test_altman_z_double_prime_uses_book_equity_and_no_sales() -> None:
+    out = altman(_new_indicators_canonical())
+    x1, x2, x3, x4 = 150 / 1000, 200 / 1000, 140 / 1000, 580 / 400
+    assert out.loc["2025", "altman_z_double_prime"] == pytest.approx(
+        6.56 * x1 + 3.26 * x2 + 6.72 * x3 + 1.05 * x4
+    )
+    # no price needed: the classic Z is NaN without a market value, Z'' is not
+    assert pd.isna(out.loc["2025", "altman_z"])

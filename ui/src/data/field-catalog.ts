@@ -57,6 +57,8 @@ const CATALOG: Record<string, CatalogEntry> = {
   return_on_equity: { label: "ROE", group: "Profitability" },
   return_on_assets: { label: "ROA", group: "Profitability" },
   return_on_capital_employed: { label: "ROCE", group: "Profitability" },
+  roic: { label: "ROIC (NOPAT / invested capital)", group: "Profitability" },
+  gross_profitability: { label: "Gross profitability (GP / assets)", group: "Profitability" },
   net_profit_margin: { label: "Net margin", group: "Profitability" },
   gross_margin: { label: "Gross margin", group: "Profitability" },
   operating_margin: { label: "Operating margin", group: "Profitability" },
@@ -77,6 +79,8 @@ const CATALOG: Record<string, CatalogEntry> = {
   dividend_coverage: { label: "Dividend cover", group: "Health" },
   dividend_payout_ratio: { label: "Payout ratio", group: "Health" },
   capex_coverage_ratio: { label: "Capex coverage", group: "Health" },
+  net_share_issuance: { label: "Net share issuance (YoY)", group: "Health" },
+  positive_fcf_years_5y: { label: "Positive-FCF years (of 5)", group: "Health" },
   // efficiency (turnover & working-capital cycle)
   asset_turnover_ratio: { label: "Asset turnover", group: "Efficiency" },
   inventory_turnover_ratio: { label: "Inventory turnover", group: "Efficiency" },
@@ -97,6 +101,7 @@ const CATALOG: Record<string, CatalogEntry> = {
   // scores
   piotroski_f: { label: "Piotroski F", group: "Scores" },
   altman_z: { label: "Altman Z", group: "Scores" },
+  altman_z_double_prime: { label: "Altman Z″ (non-manufacturers)", group: "Scores" },
   beneish_m: { label: "Beneish M", group: "Scores" },
   zmijewski_score: { label: "Zmijewski", group: "Scores" },
   ohlson_o: { label: "Ohlson O", group: "Scores" },

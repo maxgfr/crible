@@ -23,6 +23,12 @@ const INVERTED_GROWTH = new Set([
   "net_debt_to_ebitda_ratio_growth",
 ]);
 
+// signed year-over-year changes that are not *_growth columns: shown with
+// their sign like growth; issuance up dilutes the holder (inverted)
+const SIGNED_CHANGES: Record<string, "up-is-good" | "up-is-bad"> = {
+  net_share_issuance: "up-is-bad",
+};
+
 // P&L flows, margins, returns and yields where a NEGATIVE value is a loss
 // by definition — the minus sign is the non-color half of the verdict.
 // Positive stays neutral (profitable is the baseline, not a win to paint);
@@ -33,7 +39,7 @@ const NEGATIVE_IS_BAD = new Set([
   "ttm_net_income", "ttm_operating_cashflow", "ttm_free_cash_flow",
   "gross_margin", "operating_margin", "ebitda_margin", "net_profit_margin",
   "fcf_margin",
-  "return_on_equity", "return_on_assets",
+  "return_on_equity", "return_on_assets", "roic", "gross_profitability",
   "earnings_yield", "free_cash_flow_yield", "ttm_fcf_yield",
   "shareholder_yield", "greenblatt_earnings_yield", "greenblatt_roc",
 ]);
@@ -50,6 +56,9 @@ export function verdictKind(column: string, value: number): VerdictKind | null {
       return value >= 7 ? "good" : value <= 3 ? "bad" : null;
     case "altman_z":
       return value > 2.99 ? "good" : value < 1.81 ? "bad" : null;
+    // Altman (2002) Z″ zones: safe above 2.60, distress below 1.10
+    case "altman_z_double_prime":
+      return value > 2.6 ? "good" : value < 1.1 ? "bad" : null;
     case "beneish_m":
       return value > -1.78 ? "warn" : "good";
     // distress models read like Altman: safe (green) below 0, distress above
@@ -83,7 +92,7 @@ export function verdictKind(column: string, value: number): VerdictKind | null {
 
 /** The columns verdictKind can decide — the synthesis families draw on it. */
 export const VERDICT_COLUMNS = [
-  "piotroski_f", "altman_z", "beneish_m", "zmijewski_score", "ohlson_o",
+  "piotroski_f", "altman_z", "altman_z_double_prime", "beneish_m", "zmijewski_score", "ohlson_o",
   "montier_c", "dechow_f", "graham_margin_of_safety", "ncav_to_market_cap",
   "fcf_conversion", "dividend_coverage", "rule_of_40", "peg_ratio",
 ] as const;
@@ -120,8 +129,8 @@ export function formatCell(column: string, value: unknown): FormattedCell {
     if (NEGATIVE_IS_BAD.has(column)) {
       return { text, className: value < 0 ? "num-bad" : "", flag: "" };
     }
-    if (column.endsWith("_growth") || column.endsWith("_cagr_3y")) {
-      const goodWhenUp = !INVERTED_GROWTH.has(column);
+    if (column.endsWith("_growth") || column.endsWith("_cagr_3y") || column in SIGNED_CHANGES) {
+      const goodWhenUp = !INVERTED_GROWTH.has(column) && SIGNED_CHANGES[column] !== "up-is-bad";
       return {
         text: value > 0 ? `+${text}` : text,
         className:

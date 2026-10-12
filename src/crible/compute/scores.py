@@ -94,6 +94,10 @@ def altman(canonical: pd.DataFrame, price: pd.Series | None = None) -> pd.DataFr
         market_value_of_equity, c["total_liabilities"]
     )
     x5 = altman_model.get_sales_to_total_assets_ratio(c["revenue"], c["total_assets"])
+    # Z'' (Altman 2002) for non-manufacturers and emerging markets: no sales
+    # term (asset turnover is an industry artefact) and BOOK equity instead of
+    # the market value — so it also scores a company with no price
+    x4_book = c["total_equity"] / c["total_liabilities"].where(c["total_liabilities"] > 0)
     return pd.DataFrame(
         {
             "altman_x1_wc_ta": x1,
@@ -102,6 +106,7 @@ def altman(canonical: pd.DataFrame, price: pd.Series | None = None) -> pd.DataFr
             "altman_x4_mve_tl": x4,
             "altman_x5_s_ta": x5,
             "altman_z": altman_model.get_altman_z_score(x1, x2, x3, x4, x5),
+            "altman_z_double_prime": 6.56 * x1 + 3.26 * x2 + 6.72 * x3 + 1.05 * x4_book,
         },
         index=canonical.index,
     )

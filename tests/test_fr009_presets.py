@@ -45,6 +45,11 @@ def test_fr009_every_indicator_has_a_preset() -> None:
         "fcf_margin",
         "fcf_conversion",
         "dividend_coverage",
+        "roic",
+        "gross_profitability",
+        "net_share_issuance",
+        "positive_fcf_years_5y",
+        "altman_z_double_prime",
     ]
     all_dsl = " ".join(p.dsl for p in PRESETS.values())
     missing = [key for key in indicator_keys if key not in all_dsl]
@@ -107,6 +112,11 @@ def test_fr009_running_a_preset_is_byte_for_byte_its_dsl() -> None:
             "return_12_1": [0.35, -0.1, 0.28],
             "mohanram_g": [5.0, 2.0, 6.0],
             "dechow_f": [0.4, 2.1, 0.7],
+            "roic": [0.18, 0.04, 0.22],
+            "gross_profitability": [0.35, 0.1, 0.4],
+            "net_share_issuance": [-0.01, 0.08, 0.0],
+            "positive_fcf_years_5y": [5.0, 2.0, 4.0],
+            "altman_z_double_prime": [3.1, 0.9, 2.7],
         }
     )
     con.register("snapshot_latest", frame)

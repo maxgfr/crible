@@ -3,7 +3,7 @@
 // un-thresholded ratios stay neutral — no coloring by taste.
 
 import { describe, expect, it } from "vitest";
-import { VERDICT_COLUMNS, formatCell, formatNumber, formatPercent, verdictKind } from "../format";
+import { FLAGS, VERDICT_COLUMNS, formatCell, formatNumber, formatPercent, verdictKind } from "../format";
 
 describe("formatNumber", () => {
   it("scales billions/millions and keeps small numbers precise", () => {
@@ -138,4 +138,21 @@ test("negative P&L, margin, return and yield figures read as losses", () => {
   // ranks, prices and balance-sheet stocks are never sign-colored
   expect(formatCell("composite_rank", 65).className).toBe("");
   expect(formatCell("total_debt", 2e9).className).toBe("");
+});
+
+describe("new indicators", () => {
+  it("Altman Z″ reads its published zones", () => {
+    expect(formatCell("altman_z_double_prime", 3.0).flag).toBe(FLAGS.good);
+    expect(formatCell("altman_z_double_prime", 0.9).flag).toBe(FLAGS.bad);
+    expect(formatCell("altman_z_double_prime", 2.0).flag).toBe("");
+  });
+
+  it("share issuance is signed and dilution reads bad", () => {
+    expect(formatCell("net_share_issuance", 0.04)).toMatchObject({ text: "+0.040", className: "num-bad" });
+    expect(formatCell("net_share_issuance", -0.05)).toMatchObject({ text: "-0.050", className: "num-good" });
+  });
+
+  it("a negative ROIC is a loss", () => {
+    expect(formatCell("roic", -0.02).className).toBe("num-bad");
+  });
 });

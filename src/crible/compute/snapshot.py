@@ -459,7 +459,9 @@ BASE_SCHEMA_NAME = "base-schema.json"
 # 8: short_term_debt canonical field + audited total_debt derivation
 # 9: audit fixes — shares_outstanding_end, guarded multiples, gap-aware YoY,
 #    in-house Piotroski, telescoped Dechow, fake ratios denied (ROIC & co),
-#    reporting_currency (price converted into the statements' currency)
+#    reporting_currency (price converted into the statements' currency),
+#    roic, gross_profitability, net_share_issuance, positive_fcf_years_5y,
+#    altman_z_double_prime
 ENGINE_SCHEMA_VERSION = 9
 
 
