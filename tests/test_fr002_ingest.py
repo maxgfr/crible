@@ -96,7 +96,7 @@ class FakeProvider:
             freq="annual",
             frame=pd.DataFrame({"period": ["2025"], "revenue": [100.0]}),
         )
-        return FetchResult(symbol=symbol, provider=self.id, statements=[payload], requests_used=1)
+        return FetchResult(symbol=symbol, provider=self.id, statements=[payload])
 
 
 class KeyedProvider:
@@ -113,7 +113,7 @@ class KeyedProvider:
 
     def fetch_statements(self, symbol: str) -> FetchResult:
         self.calls.append(symbol)
-        return FetchResult(symbol=symbol, provider=self.id, statements=[], requests_used=1)
+        return FetchResult(symbol=symbol, provider=self.id, statements=[])
 
 
 @pytest.fixture()

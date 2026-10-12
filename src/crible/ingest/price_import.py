@@ -79,6 +79,9 @@ class ImportReport:
 # (tradingview snapshots, no history) refreshes the close without clobbering
 # a dump's momentum. Provenance columns date the features honestly.
 QUOTE_COLUMNS = ["close", "price_asof", "source", "imported_at"]
+# lower wins a same-date quote tie (price_series.SOURCE_PRIORITY's order for
+# the dumps, the TradingView snapshot last)
+QUOTE_SOURCE_PRIORITY = {"yfinance": 0, "defeatbeta": 1, "stooq": 2, "huggingface": 3, "tradingview": 4}
 MOMENTUM_META = ["momentum_source", "momentum_asof", "momentum_imported_at"]
 
 # quote-only channels: excluded from the GLOBAL age gate (they refresh daily
@@ -172,12 +175,15 @@ def _merge_and_publish(data_dir: Path | str, fresh: pd.DataFrame) -> None:
     fresh = _stamp_momentum_provenance(fresh.copy())
     current = load_prices_latest(data_dir)
     combined = pd.concat([current, fresh], ignore_index=True)
-    quotes = combined.sort_values("price_asof", na_position="first").drop_duplicates("symbol", keep="last")[
-        ["symbol", *QUOTE_COLUMNS]
-    ]
+    # a same-date tie goes to the higher-priority source (a dump's end-of-day
+    # bar over a TradingView snapshot), then to the newer import — stable sort
+    combined["_rank"] = -combined["source"].map(QUOTE_SOURCE_PRIORITY).fillna(len(QUOTE_SOURCE_PRIORITY))
+    quotes = combined.sort_values(
+        ["price_asof", "_rank"], na_position="first", kind="stable"
+    ).drop_duplicates("symbol", keep="last")[["symbol", *QUOTE_COLUMNS]]
     features = (
         combined.dropna(subset=FEATURE_COLUMNS, how="all")
-        .sort_values("momentum_asof", na_position="first")
+        .sort_values("momentum_asof", na_position="first", kind="stable")
         .drop_duplicates("symbol", keep="last")[["symbol", *FEATURE_COLUMNS, *MOMENTUM_META]]
     )
     merged = quotes.merge(features, on="symbol", how="left").reset_index(drop=True)
@@ -272,6 +278,22 @@ def _stooq_number(value: str | None) -> float:
         return float("nan")
 
 
+def _drop_from_legacy_store(data_dir: Path | str, symbols: set[str]) -> None:
+    """The pre-split ``stooq.parquet`` keeps being read until every symbol in
+    it has moved to its market file — never two copies of one source's bars."""
+    from crible.price_series import series_dir
+
+    legacy = series_dir(data_dir) / "stooq.parquet"
+    if not legacy.exists():
+        return
+    table = pd.read_parquet(legacy)
+    rest = table[~table["symbol"].isin(symbols)]
+    if rest.empty:
+        legacy.unlink()
+    elif len(rest) < len(table):
+        write_series(data_dir, "stooq", rest)
+
+
 def import_stooq(data_dir: Path | str, archive: Path | str) -> ImportReport:
     """Import a manually-downloaded Stooq bulk archive (CSV members named
     <ticker>.<exchange>.txt, dates YYYYMMDD): windowed series + distillate.
@@ -282,6 +304,7 @@ def import_stooq(data_dir: Path | str, archive: Path | str) -> ImportReport:
     now = time.time()
     records: list[dict] = []
     series_parts: list[pd.DataFrame] = []
+    markets: set[str] = set()
     skipped = 0
     with zipfile.ZipFile(archive) as bundle:
         for member in bundle.namelist():
@@ -315,6 +338,7 @@ def import_stooq(data_dir: Path | str, archive: Path | str) -> ImportReport:
             if distilled is None:
                 continue
             records.append({"symbol": symbol, **distilled, "source": "stooq", "imported_at": now})
+            markets.add(member.rsplit("/", 1)[-1].removesuffix(".txt").rsplit(".", 1)[-1].lower())
             bars = pd.DataFrame(rows).assign(date=lambda f: pd.to_datetime(f["date"]))
             cutoff = bars["date"].max() - pd.Timedelta(days=SERIES_WINDOW_DAYS)
             series_parts.append(
@@ -324,6 +348,10 @@ def import_stooq(data_dir: Path | str, archive: Path | str) -> ImportReport:
     if not fresh.empty:
         _merge_and_publish(data_dir, fresh)
     if series_parts:
-        write_series(data_dir, "stooq", pd.concat(series_parts, ignore_index=True))
+        # one store per market (the weekly rotation imports one at a time —
+        # a single stooq.parquet was wiped by every import)
+        series = pd.concat(series_parts, ignore_index=True)
+        write_series(data_dir, f"stooq-{'-'.join(sorted(markets))}", series)
+        _drop_from_legacy_store(data_dir, set(series["symbol"]))
     log.info("import-prices: %d symbols from stooq (%d members unmapped)", len(fresh), skipped)
     return ImportReport(source="stooq", imported=len(fresh), skipped_unknown=skipped)

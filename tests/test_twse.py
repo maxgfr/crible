@@ -165,3 +165,42 @@ def test_run_twse_limit_zero_is_a_pure_noop(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
     assert run_twse(limit=0)["skipped"] == "limit 0"
     assert not (tmp_path / "mirror").exists()
+
+
+def test_run_twse_limit_counts_real_writes_only(tmp_path, monkeypatch) -> None:
+    """limit=1 over two codes: the unchanged first code must not eat the
+    limit forever — the second run reaches the second code."""
+    from crible.ingest.enrichment import run_twse
+    from crible.universe import bootstrap_universe
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    con = duckdb.connect(str(tmp_path / "crible.duckdb"))
+    rows = [
+        {
+            "symbol": f"{code}.TW",
+            "name": code,
+            "country": "Taiwan",
+            "sector": "IT",
+            "industry": "Semi",
+            "exchange": "TAI",
+            "currency": "TWD",
+            "market_cap": "Mega Cap",
+            "isin": None,
+        }
+        for code in ("2317", "2330")
+    ]
+    bootstrap_universe(con, pd.DataFrame(rows))
+    con.close()
+    http = _JsonHttp(
+        {
+            "t187ap06": [_income_row(code="2317"), _income_row(code="2330")],
+            "t187ap07": [
+                _balance_row(code="2317", year="114", quarter="4"),
+                _balance_row(code="2330", year="114", quarter="4"),
+            ],
+        }
+    )
+    run_twse(limit=1, http=http)
+    run_twse(limit=1, http=http)
+    assert list(tmp_path.glob("raw/provider=twse/symbol=2317.TW/*.parquet"))
+    assert list(tmp_path.glob("raw/provider=twse/symbol=2330.TW/*.parquet"))

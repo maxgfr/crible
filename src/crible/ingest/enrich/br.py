@@ -106,20 +106,23 @@ def run_cvm(
     outcome["years"] = fetched_years
 
     fetched_at = time.time()
+    written = 0  # the limit counts real writes: unchanged listings must not eat it forever
     for symbol, cnpj in sorted(mapping.items()):
-        if outcome["enriched"] >= limit:
+        if written >= limit:
             outcome["stopped"] = outcome.get("stopped") or "limit"
             break
         frames = accumulated.get(cnpj)
         if not frames:
             continue
-        write_audited_frames(
-            data,
-            symbol=symbol,
-            provider_id="cvm",
-            frames=frames,
-            fetched_at=fetched_at,
-            skip_identical=True,
+        written += bool(
+            write_audited_frames(
+                data,
+                symbol=symbol,
+                provider_id="cvm",
+                frames=frames,
+                fetched_at=fetched_at,
+                skip_identical=True,
+            )
         )
         outcome["enriched"] += 1
     log.info("cvm: enriched %d BR listings over %s", outcome["enriched"], fetched_years)

@@ -49,7 +49,7 @@ class FakeYfProvider:
             freq="annual",
             frame=pd.DataFrame({"period": ["2024", "2025"], "TotalRevenue": [90.0, 100.0]}),
         )
-        return FetchResult(symbol=symbol, provider=self.id, statements=[payload], requests_used=1)
+        return FetchResult(symbol=symbol, provider=self.id, statements=[payload])
 
 
 class FakePriceProvider:
@@ -303,3 +303,61 @@ def test_run_refresh_restores_queue_from_raw_and_advances(refresh_env) -> None:
     for directory in refresh_env.glob("raw/provider=*/symbol=*"):
         keys = ["-".join(p.stem.split("-", 2)[:2]) for p in directory.glob("*.parquet")]
         assert len(keys) == len(set(keys)), directory
+
+
+def test_refresh_crawl_stops_on_a_rate_limit_storm(tmp_path, monkeypatch) -> None:
+    """Persistent 429s end the crawl (breaker) instead of eating the compute
+    reserve; the rest of the refresh still publishes."""
+    from crible.ingest.service import run_refresh
+    from crible.providers.base import RateLimitedError
+
+    from tests.test_fr001_universe import fixture_frame
+
+    class Storm(FakeYfProvider):
+        def fetch_statements(self, symbol):
+            self.calls.append(symbol)
+            raise RateLimitedError("429")
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("crible.ingest.backoff.BackoffPolicy.delay", lambda self, attempt: 0.0)
+    storm = Storm()
+    result = run_refresh(
+        deadline_seconds=60,
+        fetch_universe=fixture_frame,
+        provider=storm,
+        price_provider=FakePriceProvider(),
+        edgar_client=FakeEdgarDirectory(),
+    )
+    assert result["crawl_stopped"] == "rate-limited"
+    assert len(storm.calls) == 3
+
+
+def test_an_empty_bootstrap_sample_is_not_a_crash(tmp_path, monkeypatch) -> None:
+    """CRIBLE_BOOTSTRAP_SAMPLE="," used to compile to `IN ()`."""
+    import duckdb
+
+    from crible.ingest.service import prioritize_sample
+
+    monkeypatch.setenv("CRIBLE_BOOTSTRAP_SAMPLE", ",")
+    from crible.ingest.service import bootstrap_sample
+
+    assert bootstrap_sample() == []
+    con = duckdb.connect()
+    con.execute("CREATE TABLE crawl_tasks (symbol VARCHAR, priority INTEGER, next_due DOUBLE)")
+    prioritize_sample(con, [])  # no ParserException
+
+
+def test_cap_stale_counts_groups_that_never_had_a_cap(tmp_path) -> None:
+    import duckdb
+
+    from crible.ingest.service import _top10k_stats
+
+    con = duckdb.connect()
+    con.execute(
+        "CREATE TABLE companies AS SELECT * FROM (VALUES"
+        " ('A', 'ga', 1, '2020-01-01', 'tradingview', TRUE),"
+        " ('B', 'gb', 2, NULL, NULL, TRUE),"
+        " ('C', 'gc', 3, CAST(current_date AS VARCHAR), 'tradingview', TRUE))"
+        " t(symbol, company_group, cap_rank_global, cap_asof, cap_source, top10k)"
+    )
+    assert _top10k_stats(con, tmp_path)["coverage_top10k"]["cap_stale_30d"] == 2

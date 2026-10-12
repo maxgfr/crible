@@ -116,7 +116,7 @@ def test_stooq_import_maps_exchange_suffixes(tmp_path) -> None:
     assert table.loc["BMW.DE", "source"] == "stooq"
 
     # the series store: OHLCV kept, adj_close NULL (Stooq is pre-adjusted)
-    series = pd.read_parquet(tmp_path / "prices" / "stooq.parquet")
+    series = pd.read_parquet(tmp_path / "prices" / "stooq-de.parquet")
     assert set(series["symbol"]) == {"BMW.DE"}
     assert series["adj_close"].isna().all()
     assert series["open"].notna().all() and series["volume"].notna().all()
@@ -301,3 +301,73 @@ def test_import_prices_cli_missing_archive_fails(tmp_path, monkeypatch) -> None:
     result = runner.invoke(app, ["import-prices", str(tmp_path / "nope.zip")])
     assert result.exit_code == 1
     assert "stooq.com/db/h" in result.output
+
+
+def _stooq_archive(tmp_path, name: str, members: dict[str, str]) -> str:
+    body = "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>\n"
+    body += "".join(f"X,D,2026{month:02d}01,000000,50,51,49,{50 + month},1000,0\n" for month in range(1, 13))
+    archive = tmp_path / name
+    with zipfile.ZipFile(archive, "w") as bundle:
+        for member in members:
+            bundle.writestr(member, body)
+    return archive
+
+
+def test_stooq_markets_accumulate_one_file_each(tmp_path) -> None:
+    """The weekly rotation imports one market at a time: the UK week must
+    not wipe the JP series imported the week before."""
+    from crible.price_series import load_symbol_series
+
+    _universe(tmp_path, symbols=("VOD.L", "7203.T"))
+    import_stooq(tmp_path, _stooq_archive(tmp_path, "d_jp_txt.zip", {"data/daily/jp/7203.jp.txt": ""}))
+    import_stooq(tmp_path, _stooq_archive(tmp_path, "d_uk_txt.zip", {"data/daily/uk/vod.uk.txt": ""}))
+    assert sorted(p.name for p in (tmp_path / "prices").glob("*.parquet")) == [
+        "stooq-jp.parquet",
+        "stooq-uk.parquet",
+    ]
+    assert len(load_symbol_series(tmp_path, "7203.T")) == 12
+    assert len(load_symbol_series(tmp_path, "VOD.L")) == 12
+
+
+def test_a_legacy_single_stooq_store_hands_over_reimported_symbols(tmp_path) -> None:
+    """data/prices/stooq.parquet from before the split is still read, but a
+    symbol re-imported into its market file leaves it — never two copies of
+    the same source's bars."""
+    from crible.price_series import load_symbol_series, write_series
+
+    _universe(tmp_path, symbols=("VOD.L", "BP.L"))
+    legacy = pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "symbol": s,
+                    "date": pd.date_range("2026-01-01", periods=3),
+                    "open": 1.0,
+                    "high": 1.0,
+                    "low": 1.0,
+                    "close": 1.0,
+                    "adj_close": float("nan"),
+                    "volume": 1.0,
+                    "source": "stooq",
+                }
+            )
+            for s in ("VOD.L", "BP.L")
+        ]
+    )
+    write_series(tmp_path, "stooq", legacy)
+    import_stooq(tmp_path, _stooq_archive(tmp_path, "d_uk_txt.zip", {"data/daily/uk/vod.uk.txt": ""}))
+    assert set(pd.read_parquet(tmp_path / "prices" / "stooq.parquet")["symbol"]) == {"BP.L"}
+    assert len(load_symbol_series(tmp_path, "VOD.L")) == 12
+    assert len(load_symbol_series(tmp_path, "BP.L")) == 3
+
+
+def test_a_same_date_quote_tie_is_settled_by_source_priority(tmp_path) -> None:
+    """Two sources closing on the same day: the dump's end-of-day bar wins
+    over a TradingView snapshot, whatever the import order."""
+    from crible.ingest.price_import import _merge_and_publish
+
+    _universe(tmp_path)
+    row = {"symbol": "AAPL", "price_asof": "2026-07-01", "imported_at": 1.0}
+    _merge_and_publish(tmp_path, pd.DataFrame([{**row, "close": 10.0, "source": "stooq"}]))
+    _merge_and_publish(tmp_path, pd.DataFrame([{**row, "close": 11.0, "source": "tradingview"}]))
+    assert load_prices_latest(tmp_path).set_index("symbol").loc["AAPL", "close"] == 10.0

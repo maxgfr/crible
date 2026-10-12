@@ -128,10 +128,19 @@ def bootstrap_data(
             f"{data_dir} already contains a dataset (universe.parquet or snapshot/)"
             " — pass --force to overwrite it"
         )
-    if http is None:
+    owned = http is None
+    if owned:
         import httpx
 
         http = httpx.Client(timeout=120, follow_redirects=True)
+    try:
+        return _download_and_extract(data_dir, repo, http)
+    finally:
+        if owned:
+            http.close()
+
+
+def _download_and_extract(data_dir: Path, repo: str, http) -> BootstrapDataReport:
 
     url = release_asset_url(repo)
     with tempfile.TemporaryDirectory(prefix=".crible-bootstrap-") as tmp:

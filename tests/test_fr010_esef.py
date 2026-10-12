@@ -154,11 +154,64 @@ COLLISION_JSON = {
 
 def test_fr010_concept_collision_resolves_by_declared_precedence() -> None:
     """F10 — two IFRS concepts map to NetIncome; the winner must be the one
-    declared first in CONCEPT_MAP (ProfitLoss), deterministically, not whichever
-    the JSON happened to list last."""
+    declared first in CONCEPT_MAP, deterministically, not whichever the JSON
+    happened to list last. The parent-only figure is declared first: EDGAR,
+    TWSE, CVM and yfinance all report net income attributable to the owners,
+    and ProfitLoss (minorities included) inflated P/E and ROE for groups with
+    material NCI."""
     frames = facts_to_frames(COLLISION_JSON)
     income = frames[("income", "annual")].set_index("period")
-    assert income.loc["2024", "NetIncome"] == 600000.0
+    assert income.loc["2024", "NetIncome"] == 500000.0
+    reversed_json = {"facts": dict(reversed(list(COLLISION_JSON["facts"].items())))}
+    income = facts_to_frames(reversed_json)[("income", "annual")].set_index("period")
+    assert income.loc["2024", "NetIncome"] == 500000.0
+
+
+def test_fr010_equity_is_the_owners_share_when_both_are_filed() -> None:
+    xbrl = {
+        "facts": {
+            "eq": {
+                "value": "900",
+                "dimensions": {"concept": "ifrs-full:Equity", "period": "2025-01-01T00:00:00"},
+            },
+            "eq_owners": {
+                "value": "750",
+                "dimensions": {
+                    "concept": "ifrs-full:EquityAttributableToOwnersOfParent",
+                    "period": "2025-01-01T00:00:00",
+                },
+            },
+        }
+    }
+    balance = facts_to_frames(xbrl)[("balance", "annual")].set_index("period")
+    assert balance.loc["2024", "StockholdersEquity"] == 750.0
+
+
+def _unit_fact(
+    concept: str, value: str, unit: str, period: str = "2024-01-01T00:00:00/2025-01-01T00:00:00"
+) -> dict:
+    return {"value": value, "dimensions": {"concept": concept, "period": period, "unit": unit}}
+
+
+def test_fr010_only_the_reporting_currency_is_kept_and_recorded() -> None:
+    """A USD reporter (ArcelorMittal) with EUR convenience-translation facts:
+    the majority iso4217 unit wins, the other currency is dropped whatever
+    the JSON order, and the frames carry _currency."""
+    xbrl = {
+        "facts": {
+            "rev_eur": _unit_fact("ifrs-full:Revenue", "55000", "iso4217:EUR"),
+            "rev_usd": _unit_fact("ifrs-full:Revenue", "62000", "iso4217:USD"),
+            "ni_usd": _unit_fact("ifrs-full:ProfitLossAttributableToOwnersOfParent", "1000", "iso4217:USD"),
+            "assets_usd": _unit_fact("ifrs-full:Assets", "90000", "iso4217:USD", "2025-01-01T00:00:00"),
+            "shares": _unit_fact("ifrs-full:WeightedAverageShares", "800", "xbrli:shares"),
+        }
+    }
+    frames = facts_to_frames(xbrl)
+    income = frames[("income", "annual")].set_index("period")
+    assert income.loc["2024", "TotalRevenue"] == 62000.0
+    assert income.loc["2024", "BasicAverageShares"] == 800.0  # non-monetary unit kept
+    assert set(income["_currency"]) == {"USD"}
+    assert set(frames[("balance", "annual")]["_currency"]) == {"USD"}
 
 
 # ------------------------------- dimensional RetainedEarnings recovery (SOCIE)
@@ -1119,3 +1172,104 @@ def test_fr010_sweep_max_age_zero_refetches_fresh_symbols(tmp_path, monkeypatch)
     assert run_esef_sweep(limit=10, client=FakeIndexClient(), mapping=mapping)["enriched"] == ["ABN.AS"]
     redo = run_esef_sweep(limit=10, client=FakeIndexClient(), mapping=mapping, refresh_seconds=0)
     assert redo["enriched"] == ["ABN.AS"]
+
+
+def _status_error(status: int):
+    import httpx
+
+    request = httpx.Request("GET", "https://filings.xbrl.org/x.json")
+    return httpx.HTTPStatusError(
+        str(status), request=request, response=httpx.Response(status, request=request)
+    )
+
+
+LEI_AIR = "LEIAIR0000000000001X"  # fixture ISIN NL0000235190 (AIR.PA)
+
+
+def test_fr010_sweep_skips_a_dead_filing_instead_of_stalling(tmp_path, monkeypatch) -> None:
+    """A 404 on the newest filer's json_url used to end the sweep unstamped —
+    the next run hit the same filing first and never got further."""
+    import duckdb as _duckdb
+
+    from crible.ingest.service import run_esef_sweep
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+
+    class OneDeadFiling:
+        def filings_index(self, page_size=100, page_number=1):
+            if page_number > 1:
+                return [], 2
+            return [
+                {"attributes": {"json_url": f"/{LEI_ABN}/2025-12-31/dead.json"}},
+                {"attributes": {"json_url": f"/{LEI_AIR}/2025-12-31/air.json"}},
+            ], 2
+
+        def fetch_xbrl_json(self, filing):
+            if "dead" in filing["attributes"]["json_url"]:
+                raise _status_error(404)
+            return XBRL_JSON
+
+    mapping = {"NL0011540547": LEI_ABN, "NL0000235190": LEI_AIR}
+    outcome = run_esef_sweep(limit=10, client=OneDeadFiling(), mapping=mapping, history=1)
+    assert outcome["enriched"] == ["AIR.PA"]
+    assert outcome["outage"] is None
+    con = _duckdb.connect(str(tmp_path / "crible.duckdb"))
+    stamped = con.execute("SELECT last_fetched_at FROM esef_tasks WHERE symbol = 'ABN.AS'").fetchone()
+    con.close()
+    assert stamped is not None and stamped[0] is not None
+
+
+def test_fr010_cycle_skips_a_filer_whose_filing_is_gone(tmp_path, monkeypatch) -> None:
+    from crible.ingest.service import run_esef_cycle
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+
+    class Client:
+        def filings_for_lei(self, lei):
+            return [{"attributes": {"json_url": f"/{lei}/x.json"}}]
+
+        def fetch_xbrl_json(self, filing):
+            if "LEI-ABN" in filing["attributes"]["json_url"]:
+                raise _status_error(410)
+            return XBRL_JSON
+
+    outcome = run_esef_cycle(
+        limit=10, client=Client(), mapping={"NL0011540547": "LEI-ABN", "NL0000235190": "LEI-AIR"}
+    )
+    assert outcome["enriched"] == ["AIR.PA"]
+    assert outcome["outage"] is None
+
+
+def test_fr010_sweep_still_stops_on_a_rate_limit(tmp_path, monkeypatch) -> None:
+    from crible.ingest.service import run_esef_sweep
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+
+    class Limited(FakeIndexClient):
+        def fetch_xbrl_json(self, filing):
+            raise _status_error(429)
+
+    outcome = run_esef_sweep(limit=10, client=Limited(), mapping={"NL0011540547": LEI_ABN}, history=1)
+    assert outcome["outage"] is not None
+
+
+def test_fr010_recording_the_currency_restamps_an_unchanged_filing(tmp_path) -> None:
+    """Raw written before _currency existed is otherwise kept forever (the
+    data compares equal), and MT.AS keeps mixing a EUR price with USD figures."""
+    from crible.ingest.enrich.eu import _write_history_frames
+    from crible.ingest.raw import write_raw_statement
+
+    frame = pd.DataFrame({"period": ["2024"], "TotalRevenue": [62000.0]})
+    write_raw_statement(
+        tmp_path,
+        symbol="MT.AS",
+        provider="esef",
+        statement_type="income",
+        freq="annual",
+        frame=frame.assign(_history_depth=3),
+        fetched_at=1.0,
+    )
+    _write_history_frames(tmp_path, "MT.AS", {("income", "annual"): frame.assign(_currency="USD")}, 2.0, 3)
+    files = sorted(tmp_path.glob("raw/provider=esef/symbol=MT.AS/income-annual-*.parquet"))
+    assert len(files) == 2
+    assert set(pd.read_parquet(files[-1])["_currency"]) == {"USD"}

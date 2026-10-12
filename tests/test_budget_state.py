@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from crible.ingest.budget import TokenBucket, load_bucket, save_bucket
 
 
@@ -122,3 +124,43 @@ def test_run_once_resumes_and_persists_the_window_when_it_owns_the_budget(tmp_pa
     run_once(limit=1, provider=FakeYfProvider())
     state = json.loads((tmp_path / "budget-state.json").read_text())
     assert len(state["stamps"]) == 2  # accumulated, not reset
+
+
+def test_seconds_until_available_counts_the_tokens_asked_for() -> None:
+    """325/330 used: 7 tokens need the 2 oldest stamps gone, not « 0 s »."""
+    from crible.ingest.budget import TokenBucket
+
+    clock = [0.0]
+    bucket = TokenBucket(capacity=330, window_seconds=3600, now=lambda: clock[0])
+    for i in range(325):
+        clock[0] = float(i)
+        assert bucket.try_acquire()
+    assert bucket.seconds_until_available(5) == 0.0
+    # stamps at t=0 and t=1 must expire: 1 + 3600 − 324
+    assert bucket.seconds_until_available(7) == pytest.approx(1 + 3600 - 324)
+
+
+def test_seconds_until_available_refuses_more_than_the_capacity() -> None:
+    from crible.ingest.budget import TokenBucket
+
+    with pytest.raises(ValueError):
+        TokenBucket(capacity=5).seconds_until_available(7)
+
+
+def test_run_once_honours_the_configured_budget(tmp_path, monkeypatch) -> None:
+    import crible.ingest.service as service
+
+    from tests.test_refresh import FakeYfProvider
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("CRIBLE_BUDGET_PER_HOUR", "120")
+    seen = {}
+    original = service._make_crawler
+
+    def spy(con, provider=None, budget=None):
+        seen["capacity"] = budget.capacity
+        return original(con, provider=provider, budget=budget)
+
+    monkeypatch.setattr(service, "_make_crawler", spy)
+    service.run_once(limit=1, provider=FakeYfProvider())
+    assert seen["capacity"] == 120

@@ -653,3 +653,137 @@ def test_fr016_period_end_share_count_maps_to_the_market_cap_base() -> None:
     canonical = build_canonical(facts_to_frames(facts))
     assert canonical.loc["2024-09-28", "shares_outstanding_end"] == 15_116_786_000.0
     assert canonical.loc["2024-09-28", "shares_outstanding"] == 15_343_783_000.0
+
+
+def _http_error(status: int):
+    import httpx
+
+    request = httpx.Request("GET", "https://data.sec.gov/api/xbrl/companyfacts/CIK.json")
+    return httpx.HTTPStatusError(
+        f"{status}", request=request, response=httpx.Response(status, request=request)
+    )
+
+
+def test_fr016_bulk_serves_every_share_class_of_a_cik(tmp_path, monkeypatch) -> None:
+    from crible.ingest.service import run_edgar_bulk
+
+    from tests.test_fsds import _us_universe
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    _us_universe(tmp_path, ["GOOG", "GOOGL"])
+    zip_path = _bulk_zip(tmp_path, {"CIK0001652044.json": COMPANYFACTS})
+    run_edgar_bulk(zip_path=zip_path, ticker_map={"GOOG": 1652044, "GOOGL": 1652044}, download=False)
+    for symbol in ("GOOG", "GOOGL"):
+        assert list(tmp_path.glob(f"raw/provider=edgar/symbol={symbol}/*.parquet")), symbol
+
+
+def test_fr016_a_4xx_on_one_cik_skips_it_instead_of_stalling_the_cycle(tmp_path, monkeypatch) -> None:
+    """A CIK with no companyfacts (404) used to abort the cycle unstamped —
+    every following run hit it first and never reached the rest."""
+    import duckdb as _duckdb
+
+    from crible.ingest.service import run_edgar_cycle
+
+    from tests.test_fsds import _us_universe
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    _us_universe(tmp_path, ["AAA", "BBB", "CCC"])
+
+    class Client:
+        def companyfacts(self, cik):
+            if cik == 2:
+                raise _http_error(404)
+            return COMPANYFACTS
+
+    outcome = run_edgar_cycle(limit=10, client=Client(), ticker_map={"AAA": 1, "BBB": 2, "CCC": 3})
+    assert sorted(outcome["enriched"]) == ["AAA", "CCC"]
+    assert outcome["outage"] is None
+    con = _duckdb.connect(str(tmp_path / "crible.duckdb"))
+    stamped = con.execute("SELECT last_fetched_at FROM edgar_tasks WHERE symbol = 'BBB'").fetchone()[0]
+    con.close()
+    assert stamped is not None  # not due again next run
+
+
+@pytest.mark.parametrize("status", [429, 503])
+def test_fr016_rate_limit_or_server_error_still_stops_the_cycle(tmp_path, monkeypatch, status) -> None:
+    from crible.ingest.service import run_edgar_cycle
+
+    from tests.test_fsds import _us_universe
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    _us_universe(tmp_path, ["AAA", "BBB"])
+    calls = []
+
+    class Client:
+        def companyfacts(self, cik):
+            calls.append(cik)
+            raise _http_error(status)
+
+    outcome = run_edgar_cycle(limit=10, client=Client(), ticker_map={"AAA": 1, "BBB": 2})
+    assert outcome["outage"] is not None
+    assert len(calls) == 1
+
+
+def test_fr016_a_reassigned_ticker_follows_its_new_cik(tmp_path, monkeypatch) -> None:
+    import time as _time
+
+    import duckdb as _duckdb
+
+    from crible.ingest.enrich._base import EDGAR_SCHEMA
+    from crible.ingest.service import run_edgar_cycle
+
+    from tests.test_fsds import _us_universe
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    _us_universe(tmp_path, ["XYZ"])
+    con = _duckdb.connect(str(tmp_path / "crible.duckdb"))
+    con.execute(EDGAR_SCHEMA)
+    con.execute("INSERT INTO edgar_tasks VALUES ('XYZ', 111, ?)", [_time.time()])
+    con.close()
+    # the old issuer's raw is there too — its stamp must not re-seed freshness
+    from crible.ingest.raw import write_raw_statement
+
+    write_raw_statement(
+        tmp_path,
+        symbol="XYZ",
+        provider="edgar",
+        statement_type="income",
+        freq="annual",
+        frame=pd.DataFrame({"period": ["2024"], "TotalRevenue": [1.0]}),
+        fetched_at=_time.time(),
+    )
+    calls = []
+
+    class Client:
+        def companyfacts(self, cik):
+            calls.append(cik)
+            return COMPANYFACTS
+
+    run_edgar_cycle(limit=10, client=Client(), ticker_map={"XYZ": 222})
+    assert calls == [222]  # the old issuer's freshness does not carry over
+
+
+def test_fr016_a_dropped_bulk_download_leaves_no_partial(tmp_path) -> None:
+    class Stream:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def iter_bytes(self, chunk_size=0):
+            yield b"PK partial"
+            raise ConnectionError("connection reset")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    class Http:
+        def stream(self, method, url, headers=None):
+            return Stream()
+
+    with pytest.raises(ConnectionError):
+        EdgarClient(http=Http(), user_agent="test").download_bulk(tmp_path / "companyfacts.zip")
+    assert list(tmp_path.iterdir()) == []

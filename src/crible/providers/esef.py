@@ -43,8 +43,10 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
     "ifrs-full:GrossProfit": ("GrossProfit", "income"),
     "ifrs-full:CostOfSales": ("CostOfRevenue", "income"),
     "ifrs-full:ProfitLossFromOperatingActivities": ("OperatingIncome", "income"),
-    "ifrs-full:ProfitLoss": ("NetIncome", "income"),
+    # the owners' share first — the parent-only convention EDGAR, TWSE, CVM
+    # and yfinance report; ProfitLoss (minorities included) is the fallback
     "ifrs-full:ProfitLossAttributableToOwnersOfParent": ("NetIncome", "income"),
+    "ifrs-full:ProfitLoss": ("NetIncome", "income"),
     # pretax + tax + interest → EBIT derivation (canonical.py) → Altman x3,
     # Greenblatt, interest coverage — when the filer tags interest at all
     "ifrs-full:ProfitLossBeforeTax": ("PretaxIncome", "income"),
@@ -60,8 +62,8 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
     "ifrs-full:CurrentAssets": ("CurrentAssets", "balance"),
     "ifrs-full:CurrentLiabilities": ("CurrentLiabilities", "balance"),
     "ifrs-full:Liabilities": ("TotalLiabilitiesNetMinorityInterest", "balance"),
-    "ifrs-full:Equity": ("StockholdersEquity", "balance"),
     "ifrs-full:EquityAttributableToOwnersOfParent": ("StockholdersEquity", "balance"),
+    "ifrs-full:Equity": ("StockholdersEquity", "balance"),
     "ifrs-full:RetainedEarnings": ("RetainedEarnings", "balance"),
     "ifrs-full:Inventories": ("Inventory", "balance"),
     "ifrs-full:TradeAndOtherCurrentReceivables": ("AccountsReceivable", "balance"),
@@ -137,19 +139,40 @@ STATEMENT_OF = {canonical: stmt for canonical, stmt in CONCEPT_MAP.values()}
 CONCEPT_RANK = {concept: rank for rank, concept in enumerate(CONCEPT_MAP)}
 
 
+def _reporting_unit(facts: dict[str, Any]) -> str | None:
+    """The filing's reporting currency: the iso4217 unit most mapped facts
+    carry (a convenience translation is the minority)."""
+    from collections import Counter
+
+    counts = Counter(
+        str(fact.get("dimensions", {}).get("unit"))
+        for fact in facts.values()
+        if fact.get("dimensions", {}).get("concept") in CONCEPT_MAP
+        and str(fact.get("dimensions", {}).get("unit", "")).startswith("iso4217:")
+    )
+    return counts.most_common(1)[0][0] if counts else None
+
+
 def facts_to_frames(xbrl_json: dict[str, Any]) -> dict[tuple[str, str], pd.DataFrame]:
     """xBRL-JSON → raw frames keyed by (statement_type, 'annual').
 
     Only full-year instant/duration facts without extra dimensions are kept —
     conservative by design: an audited number we are not sure about is a
-    number we do not take.
+    number we do not take. Monetary facts in another currency than the
+    filing's reporting one (convenience translations) are dropped, and the
+    frames carry that currency as ``_currency`` — the snapshot prices the
+    company in it (ArcelorMittal files in USD, quotes in EUR).
     """
     facts = xbrl_json.get("facts", {})
+    reporting_unit = _reporting_unit(facts)
     values: dict[str, dict[str, float]] = {}
     claimed: dict[tuple[str, str], int] = {}  # (year, column) → winning concept rank
     for fact in facts.values():
         dimensions = fact.get("dimensions", {})
         concept = dimensions.get("concept")
+        unit = str(dimensions.get("unit", ""))
+        if unit.startswith("iso4217:") and unit != reporting_unit:
+            continue
         extra = [k for k in dimensions if k not in ("concept", "entity", "period", "unit", "language")]
         if extra:
             # segmented/dimensional fact — whole-entity only, except the
@@ -196,7 +219,10 @@ def facts_to_frames(xbrl_json: dict[str, Any]) -> dict[tuple[str, str], pd.DataF
             if len(row) > 1:
                 rows.append(row)
         if rows:
-            frames[(statement_type, "annual")] = pd.DataFrame(rows)
+            frame = pd.DataFrame(rows)
+            if reporting_unit:
+                frame["_currency"] = reporting_unit.split(":", 1)[1]
+            frames[(statement_type, "annual")] = frame
     return frames
 
 
@@ -338,9 +364,15 @@ class EsefClient:
     def __init__(self, http=None, min_interval: float = 0.5) -> None:
         import httpx
 
+        self._owned = http is None
         self._http = http or httpx.Client(timeout=30, follow_redirects=True)
         self._min_interval = min_interval
         self._last_request: float | None = None
+
+    def close(self) -> None:
+        """Close the HTTP client this instance created."""
+        if self._owned:
+            self._http.close()
 
     def _get(self, url: str, **kwargs):
         if self._last_request is not None and self._min_interval > 0:

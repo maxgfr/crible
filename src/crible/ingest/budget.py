@@ -42,11 +42,17 @@ class TokenBucket:
             self._stamps.append(stamp)
         return True
 
-    def seconds_until_available(self) -> float:
+    def seconds_until_available(self, n: int = 1) -> float:
+        """Seconds until ``n`` tokens can be acquired at once: the ``excess``
+        oldest stamps must leave the window first. ``n`` above the capacity
+        can never be served — a ValueError, not an endless wait."""
+        if n > self.capacity:
+            raise ValueError(f"{n} tokens can never fit a {self.capacity}-token budget")
         self._evict()
-        if len(self._stamps) < self.capacity:
+        excess = len(self._stamps) + n - self.capacity
+        if excess <= 0:
             return 0.0
-        return max(0.0, self._stamps[0] + self.window - self._now())
+        return max(0.0, self._stamps[excess - 1] + self.window - self._now())
 
     def used_in_window(self) -> int:
         self._evict()

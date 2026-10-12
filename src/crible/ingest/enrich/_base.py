@@ -24,6 +24,7 @@ __all__ = [
     "CH_MAX_AGE",
     "CVM_MAX_AGE",
     "TWSE_MAX_AGE",
+    "entry_error",
 ]
 
 log = logging.getLogger("crible.ingest.enrichment")
@@ -67,6 +68,21 @@ CH_MAX_AGE = 30 * 24 * 3600
 CVM_MAX_AGE = 7 * 24 * 3600  # the current-year DFP/FCA refresh weekly
 
 TWSE_MAX_AGE = 24 * 3600  # daily snapshot endpoints — mirror for replayability
+
+
+def entry_error(exc: BaseException) -> bool:
+    """True when ``exc`` concerns ONE filing / CIK — an HTTP 4xx other than
+    429, or an unparseable body — and not the source as a whole. Such an
+    entry is stamped and skipped; aborting the stage on it left it at the
+    head of the next run (newest-first index, NULLS FIRST) forever, so the
+    filers behind it were never reached. 429, 5xx, network and index errors
+    stay outages."""
+    import json
+
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if isinstance(status, int):
+        return 400 <= status < 500 and status != 429
+    return isinstance(exc, json.JSONDecodeError)
 
 
 def seed_tasks_from_raw(

@@ -55,3 +55,15 @@ def test_post_fetch_queues_a_universe_symbol(client, tmp_path) -> None:
 def test_post_fetch_rejects_unknown_symbols(client, tmp_path) -> None:
     assert client.post("/api/fetch/NOPE").status_code == 404
     assert pending_requests(tmp_path) == []
+
+
+def test_a_crashed_write_partial_is_never_a_request(tmp_path) -> None:
+    """The API dies between write and rename: `.tmp-X.req` must not be read
+    as a pending request (it was re-crawled forever — clear never removes it)."""
+    from crible.ingest.requests import REQUESTS_DIR, pending_requests
+
+    directory = tmp_path / REQUESTS_DIR
+    directory.mkdir()
+    (directory / ".tmp-AIR.PA.req").write_text("AIR.PA\n1.0")
+    (directory / ".hidden.req").write_text("X\n1.0")
+    assert pending_requests(tmp_path) == []

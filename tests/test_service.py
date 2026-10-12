@@ -138,3 +138,64 @@ def test_status_reports_coverage_by_region_and_parked(service_env) -> None:
     assert coverage["europe"] == {"crawled": 2, "total": 2}
     assert coverage["us"] == {"crawled": 0, "total": 1}
     assert status["parked"] == 0
+
+
+def test_restore_counts_statement_files_only(service_env) -> None:
+    """A price-only refresh yesterday must not push a 200-day-old statement
+    crawl 89 days out: prices-daily files are not a crawl."""
+    import time as _time
+
+    from crible.ingest.queue import CrawlQueue
+    from crible.ingest.raw import write_raw_statement
+    from crible.ingest.service import restore_queue_from_raw
+
+    now = _time.time()
+    old, recent = now - 200 * 86400, now - 86400
+    frame = pd.DataFrame({"period": ["2025"], "TotalRevenue": [1.0]})
+    write_raw_statement(
+        service_env,
+        symbol="A",
+        provider="yfinance",
+        statement_type="income",
+        freq="annual",
+        frame=frame,
+        fetched_at=old,
+    )
+    write_raw_statement(
+        service_env,
+        symbol="A",
+        provider="yfinance",
+        statement_type="prices",
+        freq="daily",
+        frame=pd.DataFrame({"Close": [1.0]}),
+        fetched_at=recent,
+    )
+    write_raw_statement(
+        service_env,
+        symbol="P",
+        provider="yfinance",
+        statement_type="prices",
+        freq="daily",
+        frame=pd.DataFrame({"Close": [1.0]}),
+        fetched_at=recent,
+    )
+    # a crashed write's partial never counts either
+    partial = (
+        service_env
+        / "raw"
+        / "provider=yfinance"
+        / "symbol=A"
+        / f".tmp-income-annual-{int(now * 1000):015d}.parquet"
+    )
+    partial.write_bytes(b"")
+
+    _seed_universe(["A", "P"])
+    con = duckdb.connect(str(config.database_path()))
+    try:
+        CrawlQueue(con)
+        assert restore_queue_from_raw(con, service_env) == 1
+        rows = dict(con.execute("SELECT symbol, last_crawled_at FROM crawl_tasks").fetchall())
+    finally:
+        con.close()
+    assert rows["A"] == pytest.approx(old, abs=1)
+    assert rows["P"] is None

@@ -83,10 +83,19 @@ def fetch_if_stale(
     if path.exists() and (now() - float(meta.get("fetched_at", float("-inf"))) < max_age_seconds):
         return MirrorResult(path=path, source="cached")
 
-    if http is None:
+    owned = http is None
+    if owned:
         import httpx
 
         http = httpx.Client(timeout=120, follow_redirects=True)
+    try:
+        return _refresh(path, meta_path, meta, source, name, url, http, headers, now, chunk, max_bytes)
+    finally:
+        if owned:
+            http.close()
+
+
+def _refresh(path, meta_path, meta, source, name, url, http, headers, now, chunk, max_bytes) -> MirrorResult:
 
     request_headers = dict(headers or {})
     if meta.get("etag") and path.exists():

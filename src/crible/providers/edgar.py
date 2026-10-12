@@ -321,6 +321,7 @@ class EdgarClient:
     def __init__(self, http=None, user_agent: str | None = None) -> None:
         from crible import config
 
+        self._owned = http is None
         if http is None:
             import httpx
 
@@ -355,9 +356,19 @@ class EdgarClient:
         dest = Path(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
         tmp = dest.with_suffix(".zip.tmp")
-        with self._http.stream("GET", COMPANYFACTS_BULK_URL, headers=self._headers) as response:
-            response.raise_for_status()
-            with open(tmp, "wb") as out:
-                for chunk in response.iter_bytes(1 << 20):
-                    out.write(chunk)
-        tmp.rename(dest)
+        try:
+            with self._http.stream("GET", COMPANYFACTS_BULK_URL, headers=self._headers) as response:
+                response.raise_for_status()
+                with open(tmp, "wb") as out:
+                    for chunk in response.iter_bytes(1 << 20):
+                        out.write(chunk)
+            tmp.rename(dest)
+        except BaseException:
+            tmp.unlink(missing_ok=True)  # never leave ~1.4 GB of partial behind
+            raise
+
+    def close(self) -> None:
+        """Close the HTTP client this instance created (an injected one is the
+        caller's to close)."""
+        if self._owned:
+            self._http.close()

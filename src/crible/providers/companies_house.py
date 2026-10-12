@@ -74,6 +74,16 @@ class _IxbrlParser(HTMLParser):
     }
     _CTX_TAGS = {"xbrli:context", "context"}
     _FACT_TAGS = {"ix:nonfraction", "nonfraction"}
+    # a context carrying a segment/scenario member is dimensional (company-only
+    # vs group, an equity component…) — never the whole-entity figure
+    _DIMENSION_TAGS = {
+        "xbrli:segment",
+        "segment",
+        "xbrli:scenario",
+        "scenario",
+        "xbrldi:explicitmember",
+        "xbrldi:typedmember",
+    }
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -90,6 +100,8 @@ class _IxbrlParser(HTMLParser):
             self._ctx_id = a.get("id")
             if self._ctx_id is not None:
                 self.contexts.setdefault(self._ctx_id, {})
+        elif tag in self._DIMENSION_TAGS and self._ctx_id is not None:
+            self.contexts[self._ctx_id]["dimensional"] = "1"
         elif tag in self._DATE_TAGS:
             self._field = self._DATE_TAGS[tag]
             self._buf = []
@@ -141,7 +153,7 @@ def _value(fact: dict) -> float | None:
 def _period(ctx: dict | None, statement: str) -> str | None:
     """Context → fiscal year, enforcing statement/period-kind consistency and
     the full-year guard for durations."""
-    if not ctx:
+    if not ctx or ctx.get("dimensional"):
         return None
     instant = ctx.get("instant")
     if statement == "balance":
@@ -222,14 +234,22 @@ def _company_number(filename: str) -> str | None:
     return None
 
 
+def _filing_date(filename: str) -> str:
+    stem = filename.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    last = stem.split("_")[-1]
+    return last if re.fullmatch(r"(19|20)\d{6}", last) else ""
+
+
 def iter_accounts(
     zip_path: Path | str, company_numbers: set[str]
 ) -> Iterator[tuple[str, dict[tuple[str, str], pd.DataFrame]]]:
     """Yield (company_number, frames) for wanted companies in an Accounts Data
-    Product ZIP. A broken file is skipped, never fatal."""
+    Product ZIP, newest filing first (the trailing YYYYMMDD of the name) — a
+    company can file several accounts in one product. A broken file is
+    skipped, never fatal."""
     wanted = {n.zfill(8) for n in company_numbers}
     with zipfile.ZipFile(zip_path) as archive:
-        for name in archive.namelist():
+        for name in sorted(archive.namelist(), key=_filing_date, reverse=True):
             if not name.lower().endswith((".html", ".xhtml", ".htm")):
                 continue
             number = _company_number(name)

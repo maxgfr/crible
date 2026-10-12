@@ -17,7 +17,7 @@ import logging
 import zipfile
 from collections import defaultdict
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterator
 
 import pandas as pd
 
@@ -173,10 +173,6 @@ FSDS_INDEX = "https://www.sec.gov/files/dera/data/financial-statement-data-sets"
 def quarter_url(year: int, quarter: int) -> str:
     """The public download URL for one quarterly FSDS archive."""
     return f"{FSDS_INDEX}/{year}q{quarter}.zip"
-
-
-def resolve_quarters(quarters: Iterable[tuple[int, int]]) -> list[str]:
-    return [quarter_url(y, q) for y, q in quarters]
 
 
 def recent_quarters(n: int, today=None) -> list[tuple[int, int]]:

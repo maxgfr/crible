@@ -139,3 +139,27 @@ def test_mirror_aborts_a_response_over_the_size_ceiling(tmp_path) -> None:
         if (tmp_path / "mirror" / "edgar").exists()
         else True
     )
+
+
+def test_mirror_closes_the_client_it_creates(tmp_path, monkeypatch) -> None:
+    import httpx
+
+    from crible.ingest.mirror import fetch_if_stale
+
+    closed = []
+
+    class Client:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def stream(self, method, url, headers=None):
+            raise httpx.ConnectError("offline")
+
+        def close(self) -> None:
+            closed.append(True)
+
+    monkeypatch.setattr(httpx, "Client", Client)
+    (tmp_path / "mirror" / "x").mkdir(parents=True)
+    (tmp_path / "mirror" / "x" / "a.zip").write_bytes(b"last-good")
+    fetch_if_stale(tmp_path, "x", "a.zip", "https://example.invalid/a.zip", max_age_seconds=0)
+    assert closed == [True]

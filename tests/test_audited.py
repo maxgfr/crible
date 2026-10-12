@@ -1,31 +1,14 @@
-"""The AuditedBulkProvider seam (F4) — the shared contract every audited source
-(EDGAR, ESEF, and the later sources FSDS/Companies House/CVM/TWSE) implements:
-resolve the universe to source ids, fetch canonical frames, write them as
-provider-tagged raw that outranks the scraped base at reconciliation.
+"""The shared audited-layer helpers (F4) every audited source (EDGAR, ESEF,
+FSDS, Companies House, CVM, TWSE) funnels through: merge per-source frames,
+write them as provider-tagged raw that outranks the scraped base at
+reconciliation.
 """
 
 from __future__ import annotations
 
 import pandas as pd
 
-from crible.providers.audited import (
-    AuditedBulkProvider,
-    merge_audited,
-    write_audited_frames,
-)
-
-
-def test_audited_bulk_provider_protocol_is_satisfiable() -> None:
-    class Dummy:
-        id = "dummy"
-
-        def resolve(self, companies):
-            return ({c["symbol"]: c["symbol"] for c in companies}, [])
-
-        def fetch(self, source_id):
-            return {}
-
-    assert isinstance(Dummy(), AuditedBulkProvider)
+from crible.providers.audited import merge_audited, write_audited_frames
 
 
 def test_merge_audited_prefers_primary_and_backfills_from_fallback() -> None:

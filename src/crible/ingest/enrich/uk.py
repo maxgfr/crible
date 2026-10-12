@@ -38,8 +38,9 @@ def run_companies_house(
     {symbol: company_number}; when omitted it is read from
     data/uk-company-numbers.csv. Assumed-risk redistribution (no licence
     stated) — kept out of the fully-free dataset tier."""
+    from crible.compute.snapshot import latest_raw_frames
     from crible.ingest.mirror import fetch_if_stale
-    from crible.providers.audited import write_audited_frames
+    from crible.providers.audited import merge_audited, write_audited_frames
     from crible.providers.companies_house import iter_accounts
 
     data = config.data_dir()
@@ -60,14 +61,26 @@ def run_companies_house(
         outcome["outage"] = str(exc)
         log.warning("companies-house: %s", exc)
         return outcome
-    fetched_at = time.time()
+    # every filing of a company merges into ONE write (newest filing wins its
+    # years — iter_accounts yields newest first); same-stamp writes used to
+    # overwrite each other
+    accumulated: dict[str, dict] = {}
     for number, frames in iter_accounts(result.path, set(by_number)):
+        accumulated[number] = merge_audited(accumulated[number], frames) if number in accumulated else frames
+    fetched_at = time.time()
+    for number, frames in accumulated.items():
+        symbol = by_number[number]
+        # the product is monthly: filings that left it stay in the raw layer
+        merged = merge_audited(frames, latest_raw_frames(data, symbol, provider="companies-house"))
         write_audited_frames(
             data,
-            symbol=by_number[number],
+            symbol=symbol,
             provider_id="companies-house",
-            frames=frames,
+            frames={
+                k: f.sort_values("period", kind="stable").reset_index(drop=True) for k, f in merged.items()
+            },
             fetched_at=fetched_at,
+            skip_identical=True,
         )
         outcome["enriched"] += 1
     log.info("companies-house: enriched %d UK listings", outcome["enriched"])

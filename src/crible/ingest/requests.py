@@ -21,6 +21,13 @@ def _directory(data_dir: Path | str) -> Path:
     return Path(data_dir) / REQUESTS_DIR
 
 
+def _request_files(directory: Path) -> list[Path]:
+    """Committed request files only: pathlib's glob matches dotfiles, and a
+    `.tmp-X.req` left by a crash between write and rename would otherwise be
+    re-crawled forever (clear_request only ever removes `X.req`)."""
+    return [p for p in directory.glob("*.req") if not p.name.startswith(".")]
+
+
 def request_fetch(data_dir: Path | str, symbol: str) -> bool:
     """Drop (or refresh) one symbol's request file. False when the pending
     queue is full — the caller reports 'try later', nothing breaks."""
@@ -28,7 +35,7 @@ def request_fetch(data_dir: Path | str, symbol: str) -> bool:
     directory.mkdir(parents=True, exist_ok=True)
     safe = symbol.replace("/", "_")
     path = directory / f"{safe}.req"
-    if not path.exists() and len(list(directory.glob("*.req"))) >= MAX_PENDING:
+    if not path.exists() and len(_request_files(directory)) >= MAX_PENDING:
         return False
     tmp = directory / f".tmp-{safe}.req"
     tmp.write_text(f"{symbol}\n{time.time()}")
@@ -43,7 +50,7 @@ def pending_requests(data_dir: Path | str) -> list[str]:
     if not directory.exists():
         return []
     entries: list[tuple[float, str]] = []
-    for path in directory.glob("*.req"):
+    for path in _request_files(directory):
         try:
             lines = path.read_text().splitlines()
             symbol = lines[0].strip()

@@ -234,3 +234,110 @@ def test_run_fsds_writes_edgar_fsds_raw(tmp_path, monkeypatch) -> None:
     assert list(tmp_path.glob("raw/provider=edgar-fsds/symbol=AAPL/*.parquet"))
     # and the mirror kept the archive for offline reuse
     assert (tmp_path / "mirror" / "edgar-fsds" / "2024q1.zip").exists()
+
+
+def _fsds_zip(fiscal_ends: list[str], cik: str = "1652044", revenue0: float = 100.0) -> bytes:
+    import io
+
+    sub = _tsv(
+        [
+            ["adsh", "cik", "name", "form", "period", "fy", "fp"],
+            [
+                f"0000000000-{fiscal_ends[0][2:4]}-000001",
+                cik,
+                "ALPHABET",
+                "10-K",
+                fiscal_ends[0],
+                fiscal_ends[0][:4],
+                "FY",
+            ],
+        ]
+    )
+    rows = [["adsh", "tag", "version", "coreg", "ddate", "qtrs", "uom", "value", "footnote"]]
+    for i, end in enumerate(fiscal_ends):
+        rows.append(
+            [
+                f"0000000000-{fiscal_ends[0][2:4]}-000001",
+                "Revenues",
+                "us-gaap/2024",
+                "",
+                end,
+                "4",
+                "USD",
+                str(revenue0 + i),
+                "",
+            ]
+        )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr("sub.txt", sub)
+        archive.writestr("num.txt", _tsv(rows))
+    return buf.getvalue()
+
+
+class _QuarterHttp:
+    """One archive per quarter URL."""
+
+    def __init__(self, bodies: dict[str, bytes]) -> None:
+        self.bodies = bodies
+
+    def stream(self, method, url, headers=None):
+        name = url.rsplit("/", 1)[-1].removesuffix(".zip").removesuffix("_notes")
+        return _ZipResp(self.bodies[name])
+
+
+def _us_universe(tmp_path, symbols: list[str]) -> None:
+    import duckdb
+    import pandas as pd
+
+    from crible.universe import bootstrap_universe
+
+    con = duckdb.connect(str(tmp_path / "crible.duckdb"))
+    bootstrap_universe(
+        con,
+        pd.DataFrame(
+            {
+                "symbol": symbols,
+                "name": symbols,
+                "country": ["United States"] * len(symbols),
+                "sector": ["Tech"] * len(symbols),
+                "industry": ["X"] * len(symbols),
+                "exchange": ["NMS"] * len(symbols),
+                "currency": ["USD"] * len(symbols),
+            }
+        ),
+    )
+    con.close()
+
+
+def test_run_fsds_accumulates_history_across_quarters_and_share_classes(tmp_path, monkeypatch) -> None:
+    """Two archives → 2021-2023 all present (the later write used to replace
+    the earlier one), and GOOG + GOOGL (one CIK) both get the data."""
+    from crible.compute.snapshot import latest_raw_frames
+    from crible.ingest.enrichment import run_fsds
+    from crible.providers.edgar_fsds import quarter_url
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    _us_universe(tmp_path, ["GOOG", "GOOGL"])
+    bodies = {
+        quarter_url(2024, 1).rsplit("/", 1)[-1].removesuffix(".zip"): _fsds_zip(
+            ["20231231", "20221231"], revenue0=300.0
+        ),
+        quarter_url(2023, 1).rsplit("/", 1)[-1].removesuffix(".zip"): _fsds_zip(
+            ["20221231", "20211231"], revenue0=200.0
+        ),
+    }
+    run_fsds(
+        [(2024, 1), (2023, 1)], ticker_map={"GOOG": 1652044, "GOOGL": 1652044}, http=_QuarterHttp(bodies)
+    )
+
+    for symbol in ("GOOG", "GOOGL"):
+        income = latest_raw_frames(tmp_path, symbol, provider="edgar-fsds")[("income", "annual")]
+        revenue = income.set_index("period")["TotalRevenue"]
+        assert sorted(revenue.index) == ["2021-12-31", "2022-12-31", "2023-12-31"], symbol
+        assert revenue["2022-12-31"] == 301.0  # the newer archive wins its periods
+
+    # a later run on the old quarter alone keeps what the raw layer already has
+    run_fsds([(2023, 1)], ticker_map={"GOOG": 1652044}, http=_QuarterHttp(bodies))
+    income = latest_raw_frames(tmp_path, "GOOG", provider="edgar-fsds")[("income", "annual")]
+    assert "2023-12-31" in set(income["period"])

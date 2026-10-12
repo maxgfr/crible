@@ -12,6 +12,7 @@ from crible.ingest.enrich._base import (
     _connect,
     config,
     ensure_esef_schema,
+    entry_error,
     log,
     seed_tasks_from_raw,
     update_heartbeat,
@@ -106,7 +107,8 @@ def _write_history_frames(data, symbol: str, frames: dict, fetched_at: float, hi
             frame=frame.assign(_history_depth=depth),
             fetched_at=fetched_at,
             skip_identical=True,
-            compare_meta=("_history_depth",),
+            # a newly recorded reporting currency re-stamps an unchanged filing once
+            compare_meta=("_history_depth", "_currency"),
         )
     return depth
 
@@ -126,6 +128,7 @@ def run_esef_cycle(
     from crible.providers.gleif import load_mapping, resolve_leis
 
     data = config.data_dir()
+    _created: list = []  # clients made here are closed here
     outcome: dict = {"enriched": [], "unmatched": 0, "outage": None, "skipped": None}
 
     if mapping is None:
@@ -170,6 +173,7 @@ def run_esef_cycle(
             from crible.providers.esef import EsefClient
 
             client = EsefClient()
+            _created.append(client)
         from crible.providers.esef import fetch_history_frames
 
         for symbol, lei in due:
@@ -197,12 +201,21 @@ def run_esef_cycle(
                         lei,
                     )
             except Exception as exc:  # noqa: BLE001 — outage: record, resume next cycle
+                if entry_error(exc):
+                    # this filer's filing is gone or broken: stamp it, go on
+                    log.warning("esef: skipping %s (LEI %s): %s", symbol, lei, exc)
+                    con.execute(
+                        "UPDATE esef_tasks SET last_fetched_at = ? WHERE symbol = ?", [time.time(), symbol]
+                    )
+                    continue
                 outcome["outage"] = f"{symbol}: {exc}"
                 log.warning("esef: outage on %s: %s — resuming next cycle", symbol, exc)
                 break
         return outcome
     finally:
         con.close()
+        for owned in _created:
+            owned.close()
 
 
 def _esef_due(con: duckdb.DuckDBPyConnection, symbol: str, cutoff: float, history: int) -> bool:
@@ -235,6 +248,7 @@ def run_esef_sweep(
     from crible.providers.gleif import load_mapping
 
     data = config.data_dir()
+    _created: list = []  # clients made here are closed here
     outcome: dict = {
         "enriched": [],
         "skipped_unknown": 0,
@@ -268,6 +282,7 @@ def run_esef_sweep(
         from crible.providers.esef import EsefClient
 
         client = EsefClient()
+        _created.append(client)
 
     con = _connect()
     try:
@@ -340,6 +355,18 @@ def run_esef_sweep(
                         xbrl = client.fetch_xbrl_json(filing)
                         frames = facts_to_frames(xbrl) if xbrl else {}
                 except Exception as exc:  # noqa: BLE001
+                    if entry_error(exc):
+                        # a dead or broken filing: stamp its listings so the
+                        # next run walks past it instead of stalling on it
+                        log.warning("esef sweep: skipping %s: %s", lei, exc)
+                        stamp = time.time()
+                        for symbol in due:
+                            con.execute(
+                                "INSERT INTO esef_tasks (symbol, lei, last_fetched_at) VALUES (?, ?, ?)"
+                                " ON CONFLICT (symbol) DO UPDATE SET last_fetched_at = excluded.last_fetched_at",
+                                [symbol, lei, stamp],
+                            )
+                        continue
                     outcome["outage"] = f"{lei}: {exc}"
                     log.warning("esef sweep: outage on %s: %s — resuming next run", lei, exc)
                     return outcome
@@ -369,3 +396,5 @@ def run_esef_sweep(
         return outcome
     finally:
         con.close()
+        for owned in _created:
+            owned.close()

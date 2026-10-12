@@ -71,6 +71,36 @@ def fetch_rates(data_dir: Path | str, http=None, max_age_seconds: float = 24 * 3
     return {k: float(v) for k, v in payload.get("rates", {}).items()}
 
 
+# quotes in a minor unit: (major currency, minor units per major)
+MINOR_UNITS = {
+    "GBp": ("GBP", 100),
+    "GBX": ("GBP", 100),
+    "ZAc": ("ZAR", 100),
+    "ZAC": ("ZAR", 100),
+    "ILA": ("ILS", 100),
+}
+
+
+def price_factor(quote: str | None, reporting: str | None, rates: dict[str, float] | None) -> float | None:
+    """Multiplier taking a price quoted in ``quote`` into the ``reporting``
+    currency the statements are in (pence → pounds, EUR → USD via the ECB
+    cross rate). 1.0 when the reporting currency is unknown (nothing to
+    detect); None when a conversion is needed and no rate exists — a
+    mixed-currency multiple is worse than none."""
+    if not quote or not reporting:
+        return 1.0
+    major, minor = MINOR_UNITS.get(quote, (quote, 1))
+    if major == reporting:
+        return 1.0 / minor
+    if not rates:
+        return None
+    per_eur_quote = 1.0 if major == "EUR" else rates.get(major)
+    per_eur_reporting = 1.0 if reporting == "EUR" else rates.get(reporting)
+    if not per_eur_quote or not per_eur_reporting:
+        return None
+    return per_eur_reporting / (per_eur_quote * minor)
+
+
 def load_rates(data_dir: Path | str) -> dict[str, float] | None:
     """Read the mirrored ECB rates for the offline/compute path, or None."""
     path = _mirror_file(data_dir)
@@ -86,7 +116,8 @@ def attach_fx(
     snapshot: pd.DataFrame, data_dir: Path | str | None, rates: dict[str, float] | None = None
 ) -> pd.DataFrame:
     """Add ``<field>_eur`` companions for the absolute FX_FIELDS present in the
-    snapshot, using the row's listing currency and the ECB rates. A no-op when
+    snapshot, using the row's reporting currency (listing currency when the
+    statements' one is unknown) and the ECB rates. A no-op when
     rates are unavailable — the snapshot ships unchanged rather than imputing."""
     if rates is None:
         rates = load_rates(data_dir) if data_dir is not None else None
@@ -105,12 +136,17 @@ def attach_fx(
         )
     else:
         latest = set(snapshot.index)
+    # the statements' currency when known (an ESEF filer reporting in USD
+    # while quoted in EUR), the listing currency otherwise
+    currency = snapshot["currency"]
+    if "reporting_currency" in snapshot.columns:
+        currency = snapshot["reporting_currency"].fillna(currency)
     additions: dict[str, list] = {}
     for field in FX_FIELDS:
         if field in snapshot.columns:
             additions[f"{field}_eur"] = [
                 to_eur(v, c, rates) if idx in latest else None
-                for idx, v, c in zip(snapshot.index, snapshot[field], snapshot["currency"])
+                for idx, v, c in zip(snapshot.index, snapshot[field], currency)
             ]
     if not additions:
         return snapshot

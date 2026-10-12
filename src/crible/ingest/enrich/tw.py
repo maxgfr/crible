@@ -61,8 +61,9 @@ def run_twse(limit: int = 0, http=None, time_budget_seconds: float | None = None
     update_heartbeat(twse_resolved=len(codes), twse_unmatched=outcome["unmatched"])
 
     fetched_at = time.time()
+    written = 0  # the limit counts real writes: unchanged codes must not eat it forever
     for code in codes:
-        if outcome["enriched"] >= limit:
+        if written >= limit:
             outcome["stopped"] = "limit"
             break
         if out_of_time():
@@ -78,13 +79,15 @@ def run_twse(limit: int = 0, http=None, time_budget_seconds: float | None = None
             for key, frame in existing.items()
         }
         merged = merge_audited(fresh, existing)  # new period wins, history backfills
-        write_audited_frames(
-            data,
-            symbol=symbol,
-            provider_id="twse",
-            frames=merged,
-            fetched_at=fetched_at,
-            skip_identical=True,
+        written += bool(
+            write_audited_frames(
+                data,
+                symbol=symbol,
+                provider_id="twse",
+                frames=merged,
+                fetched_at=fetched_at,
+                skip_identical=True,
+            )
         )
         outcome["enriched"] += 1
     log.info("twse: enriched %d TW listings (%d codes matched)", outcome["enriched"], len(codes))

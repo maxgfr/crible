@@ -109,7 +109,8 @@ def load_previous_caps(data_dir: Path | str) -> pd.DataFrame | None:
 
 def snapshot_caps(data_dir: Path | str) -> pd.DataFrame | None:
     """Latest computed market_cap per symbol from the published snapshot
-    (price × shares, listing currency) — the second cap source."""
+    (price × shares, in the statements' reporting currency when the snapshot
+    knows it, else the listing currency) — the second cap source."""
     path = Path(data_dir) / "snapshot" / "snapshot.parquet"
     if not path.exists():
         return None
@@ -117,6 +118,11 @@ def snapshot_caps(data_dir: Path | str) -> pd.DataFrame | None:
         table = pd.read_parquet(path, columns=["symbol", "period", "market_cap", "currency", "price_asof"])
     except Exception:  # noqa: BLE001 — an old snapshot without the columns
         return None
+    try:
+        reporting = pd.read_parquet(path, columns=["reporting_currency"])["reporting_currency"]
+        table["currency"] = reporting.fillna(table["currency"])
+    except Exception:  # noqa: BLE001 — a pre-schema-9 snapshot: listing currency it is
+        pass
     table = table[table["market_cap"].notna()]
     if not len(table):
         return None

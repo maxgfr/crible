@@ -171,6 +171,8 @@ def bootstrap_sample() -> list[str]:
 
 def prioritize_sample(con: duckdb.DuckDBPyConnection, symbols: list[str]) -> None:
     """Front-load the bootstrap sample: highest priority, due immediately."""
+    if not symbols:  # CRIBLE_BOOTSTRAP_SAMPLE="," — `IN ()` is a syntax error
+        return
     con.execute(
         "UPDATE crawl_tasks SET priority = -1, next_due = 0 WHERE symbol IN "
         f"({', '.join('?' for _ in symbols)})",
@@ -314,7 +316,8 @@ def _top10k_stats(con: duckdb.DuckDBPyConnection, data_dir) -> dict:
         "price_fresh_7d": covered_groups(fresh),
         "crawled_listings": int(crawled),
         "unranked_mega_large": int(members.loc[members["cap_rank_global"].isna(), "company_group"].nunique()),
-        "cap_stale_30d": int((group_asof.astype(str) < stale_cutoff).sum()),
+        # a group that never had a cap date is stale too (NaN compared as "nan")
+        "cap_stale_30d": int((group_asof.isna() | (group_asof.astype(str) < stale_cutoff)).sum()),
         "census_asof": str(census_asof) if pd.notna(census_asof) else None,
     }
     for key in ("fundamentals_covered", "priced", "price_fresh_7d"):
@@ -400,6 +403,11 @@ def _queue_stats(con: duckdb.DuckDBPyConnection) -> dict:
     return stats
 
 
+# raw statement types that mark a statement CRAWL (prices-daily is the daily
+# price refresh, not a crawl; meta-none is the crawler's empty-symbol marker)
+CRAWL_STATEMENT_TYPES = ("income", "balance", "cashflow", "meta")
+
+
 def restore_queue_from_raw(con: duckdb.DuckDBPyConnection, data_dir) -> int:
     """Rebuild crawl freshness from the raw layer's filename stamps.
 
@@ -407,31 +415,51 @@ def restore_queue_from_raw(con: duckdb.DuckDBPyConnection, data_dir) -> int:
     parquet layer travels in the published dataset. Without this, every night
     re-crawls the same queue head instead of advancing (the coverage
     plateau observed at ~145 symbols). Raw filenames carry fetched_at as a
-    zero-padded ms stamp, so the queue state is recoverable exactly.
+    zero-padded ms stamp, so the queue state is recoverable exactly. Only
+    statement files count: a price-only refresh yesterday is not a crawl.
     """
     from pathlib import Path
 
+    import pandas as pd
+
     from crible.ingest.queue import QUARTER_SECONDS
+    from crible.ingest.raw import iter_raw_files
 
     root = Path(data_dir) / "raw" / "provider=yfinance"
-    restored = 0
+    rows = []
     for directory in root.glob("symbol=*"):
         stamps = []
-        for file in directory.glob("*.parquet"):
+        for file in iter_raw_files(directory):
+            kind, _, stamp = file.stem.partition("-")
+            if kind not in CRAWL_STATEMENT_TYPES:
+                continue
             try:
-                stamps.append(int(file.stem.rsplit("-", 1)[1]) / 1000.0)
+                stamps.append(int(stamp.rsplit("-", 1)[1]) / 1000.0)
             except (IndexError, ValueError):
                 continue
-        if not stamps:
-            continue
-        crawled_at = max(stamps)
+        if stamps:
+            rows.append((directory.name.split("=", 1)[1], max(stamps)))
+    if not rows:
+        return 0
+    # one batched UPDATE (a row-by-row loop cost ~15 s at 20k symbols)
+    con.register("restored_stamps", pd.DataFrame(rows, columns=["symbol", "crawled_at"]))
+    try:
         con.execute(
-            "UPDATE crawl_tasks SET last_crawled_at = ?, next_due = ?"
-            " WHERE symbol = ? AND (last_crawled_at IS NULL OR last_crawled_at < ?)",
-            [crawled_at, crawled_at + QUARTER_SECONDS, directory.name.split("=", 1)[1], crawled_at],
+            """
+            UPDATE crawl_tasks
+            SET last_crawled_at = r.crawled_at, next_due = r.crawled_at + ?
+            FROM restored_stamps r
+            WHERE crawl_tasks.symbol = r.symbol
+              -- the 1 s slack absorbs the ms-truncated file stamp, so the
+              -- crawl that wrote the file still re-applies its next_due over
+              -- the sample's due-now reset (prioritize_sample)
+              AND (crawl_tasks.last_crawled_at IS NULL OR crawl_tasks.last_crawled_at <= r.crawled_at + 1)
+            """,
+            [QUARTER_SECONDS],
         )
-        restored += 1
-    return restored
+    finally:
+        con.unregister("restored_stamps")
+    return len(rows)
 
 
 def run_bootstrap() -> BootstrapReport:
@@ -503,7 +531,7 @@ def run_once(limit: int = 50, budget=None, provider=None, symbols: list[str] | N
     budget_state = config.data_dir() / "budget-state.json"
     if budget is None:
         # standalone invocations minutes apart must share ONE rolling hour
-        budget = load_bucket(budget_state)
+        budget = load_bucket(budget_state, capacity=config.budget_per_hour())
     con = _connect()
     try:
         crawler = _make_crawler(con, provider=provider, budget=budget)
@@ -716,7 +744,9 @@ def run_refresh(
         from crible.ingest.budget import load_bucket, save_bucket
 
         budget_state = data / "budget-state.json"
-        crawler = _make_crawler(con, provider=provider, budget=load_bucket(budget_state))
+        crawler = _make_crawler(
+            con, provider=provider, budget=load_bucket(budget_state, capacity=config.budget_per_hour())
+        )
         prioritize_sample(con, bootstrap_sample())
         # AFTER prioritizing: fresh raw wins over the sample's due-now reset,
         # so the nightly advances into new symbols instead of re-crawling
@@ -727,10 +757,16 @@ def run_refresh(
         export_universe_parquet(con, data)
 
         fetched = failed = 0
+        # the crawler's own clock is wall time: it never sleeps (budget wait,
+        # 429 backoff) past the crawl deadline into the compute reserve
+        crawler.deadline = time.time() + (deadline - time.monotonic())
         while time.monotonic() < deadline:
             outcome = crawler.run_cycle(limit=cycle_limit)
             fetched += len(outcome.fetched)
             failed += len(outcome.failed)
+            if outcome.aborted:
+                result["crawl_stopped"] = outcome.aborted
+                break
             if not outcome.fetched and not outcome.failed:
                 break  # nothing due — the queue is drained for this run
         result["fetched"] = fetched

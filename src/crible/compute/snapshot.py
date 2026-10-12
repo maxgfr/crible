@@ -30,6 +30,7 @@ from crible.compute.ratios import RATIO_DENYLIST, compute_ratios, price_dependen
 from crible.compute.scores import all_scores
 from crible.ingest.raw import iter_raw_files
 from crible.providers.audited import merge_audited
+from crible.providers.fx import load_rates, price_factor
 
 SNAPSHOT_NAME = "snapshot.parquet"
 
@@ -65,10 +66,15 @@ def build_symbol_snapshot(
     audited_frames: dict[tuple[str, str], pd.DataFrame] | None = None,
     price_quote: tuple[float, str] | None = None,
     quote_features: dict | None = None,
+    currency: tuple[str | None, str | None, dict | None] | None = None,
 ) -> pd.DataFrame:
     """One symbol's rows: merged canonical fields → price → per-period blocks
     → latest-row overlays (momentum, TTM) → provenance. ±inf never leaves:
-    a filter would match it while every reader shows null."""
+    a filter would match it while every reader shows null.
+
+    ``currency`` = (quote currency, reporting currency, ECB rates): the price
+    is expressed in the currency the statements are in before any multiple
+    (pence → pounds, a EUR quote of a USD filer → USD); no rate → no price."""
     canonical, audited_fields = _merge_audited(build_canonical(frames), audited_frames, symbol)
     if canonical.empty:
         return pd.DataFrame()
@@ -78,10 +84,16 @@ def build_symbol_snapshot(
         price, price_asof, features = _resolve_price(frames, price_quote, quote_features, canonical.index)
     elif quote_features is not None:
         features = _fill_features(features, quote_features)
+    reporting = currency[1] if currency else None
+    if price is not None and currency:
+        factor = price_factor(*currency)
+        # an all-NaN price keeps the price-ratio columns, empty
+        price = price * factor if factor is not None else pd.Series(float("nan"), index=price.index)
 
     out = _period_blocks(canonical, price)
     _overlay_latest(out, canonical, price, price_asof, features, frames, audited_frames)
     out = _provenance(out, symbol, canonical, audited_fields, provider, price_asof, computed_at)
+    out["reporting_currency"] = reporting
     return out.replace([np.inf, -np.inf], np.nan)
 
 
@@ -292,6 +304,31 @@ def _frames_provider(frames: dict[tuple[str, str], pd.DataFrame], default: str) 
     return default
 
 
+def _listing_currencies(data_dir: Path | str) -> dict[str, str]:
+    """symbol → the currency the listing is quoted in (universe.parquet)."""
+    path = Path(data_dir) / "universe.parquet"
+    if not path.exists():
+        return {}
+    import pyarrow.parquet as pq
+
+    if "currency" not in pq.ParquetFile(path).schema_arrow.names:
+        return {}
+    universe = pd.read_parquet(path, columns=["symbol", "currency"]).dropna()
+    return dict(zip(universe["symbol"].astype(str), universe["currency"].astype(str), strict=True))
+
+
+def _reporting_currency(audited: dict[tuple[str, str], pd.DataFrame]) -> str | None:
+    """The statements' currency when an audited source records it (ESEF's
+    ``_currency``) — None when no source says, and nothing is converted."""
+    for key in (("income", "annual"), ("balance", "annual"), ("cashflow", "annual")):
+        frame = audited.get(key)
+        if frame is not None and "_currency" in frame.columns:
+            known = frame["_currency"].dropna()
+            if len(known):
+                return str(known.iloc[-1])
+    return None
+
+
 def _price_quotes(data_dir: Path | str) -> dict[str, dict]:
     """symbol → {close, price_asof, <momentum features>} from the imported
     dump distillate (load_prices_latest backfills feature columns missing
@@ -324,6 +361,8 @@ def build_symbol_rows(data_dir: Path | str, symbols: list[str]) -> pd.DataFrame:
     expensive part — the seam incremental compute recomputes for changed symbols
     only."""
     quotes = _price_quotes(data_dir)
+    quote_currencies = _listing_currencies(data_dir)
+    rates = load_rates(data_dir)
     parts = []
     for symbol in symbols:
         scraped = latest_raw_frames(data_dir, symbol, provider="yfinance")
@@ -362,6 +401,7 @@ def build_symbol_rows(data_dir: Path | str, symbols: list[str]) -> pd.DataFrame:
             audited_frames=audited or None,
             price_quote=(quote["close"], quote["price_asof"]) if quote else None,
             quote_features=quote,
+            currency=(quote_currencies.get(symbol), _reporting_currency(audited), rates),
         )
         if not part.empty:
             parts.append(part)
@@ -403,7 +443,8 @@ BASE_SCHEMA_NAME = "base-schema.json"
 # 7: 3-year CAGR columns (revenue_cagr_3y, net_income_cagr_3y)
 # 8: short_term_debt canonical field + audited total_debt derivation
 # 9: audit fixes — shares_outstanding_end, guarded multiples, gap-aware YoY,
-#    in-house Piotroski, telescoped Dechow, fake ratios denied (ROIC & co)
+#    in-house Piotroski, telescoped Dechow, fake ratios denied (ROIC & co),
+#    reporting_currency (price converted into the statements' currency)
 ENGINE_SCHEMA_VERSION = 9
 
 

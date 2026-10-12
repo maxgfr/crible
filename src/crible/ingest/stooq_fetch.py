@@ -164,11 +164,15 @@ class StooqDownloader:
                 raise StooqError(f"stooq refused {dataset!r} (not a zip): {body!r}")
             out.parent.mkdir(parents=True, exist_ok=True)
             tmp = out.with_suffix(out.suffix + ".tmp")
-            with open(tmp, "wb") as handle:
-                handle.write(first)
-                for chunk in chunks:
-                    handle.write(chunk)
-            tmp.rename(out)
+            try:
+                with open(tmp, "wb") as handle:
+                    handle.write(first)
+                    for chunk in chunks:
+                        handle.write(chunk)
+                tmp.rename(out)
+            except BaseException:
+                tmp.unlink(missing_ok=True)  # a dropped stream leaves no partial archive
+                raise
         log.info("stooq: downloaded %s -> %s (%d bytes)", dataset, out, out.stat().st_size)
         return out
 

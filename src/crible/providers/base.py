@@ -33,7 +33,6 @@ class FetchResult:
     provider: str
     statements: Sequence[StatementPayload]
     prices: pd.DataFrame | None = None
-    requests_used: int = 1
 
 
 @runtime_checkable

@@ -1292,3 +1292,37 @@ def test_incremental_watermark_is_the_compute_start(tmp_path, monkeypatch) -> No
     again = snap.publish_incremental(tmp_path)
     assert again is not None
     assert again.set_index("symbol").loc["BBB", "revenue"] == 300.0
+
+
+def test_fr003_price_is_converted_into_the_reporting_currency() -> None:
+    """MT.AS quotes in EUR but files in USD: the multiples use the price in
+    USD (ECB cross rate), and a pence quote (GBp) is a hundredth of a pound."""
+    frames = {(s, "annual"): income_frame(rows, ["2023", "2024", "2025"]) for s, rows in IMPROVING.items()}
+    frames[("income", "annual")]["BasicAverageShares"] = [10.0, 10.0, 10.0]
+    rates = {"USD": 1.10, "GBP": 0.85}
+
+    same = build_symbol_snapshot("X", frames, computed_at=1.0, price_quote=(20.0, "2026-01-02")).iloc[-1]
+    usd = build_symbol_snapshot(
+        "MT.AS",
+        frames,
+        computed_at=1.0,
+        price_quote=(20.0, "2026-01-02"),
+        currency=("EUR", "USD", rates),
+    ).iloc[-1]
+    assert usd["reporting_currency"] == "USD"
+    assert usd["price_to_earnings_ratio"] == pytest.approx(same["price_to_earnings_ratio"] * 1.10)
+
+    pence = build_symbol_snapshot(
+        "VOD.L",
+        frames,
+        computed_at=1.0,
+        price_quote=(2000.0, "2026-01-02"),
+        currency=("GBp", "GBP", rates),
+    ).iloc[-1]
+    assert pence["price_to_earnings_ratio"] == pytest.approx(same["price_to_earnings_ratio"])
+
+    unknown = build_symbol_snapshot(
+        "Z", frames, computed_at=1.0, price_quote=(20.0, "2026-01-02"), currency=("EUR", "XYZ", rates)
+    ).iloc[-1]
+    assert pd.isna(unknown["price_to_earnings_ratio"])  # no rate → no mixed-currency multiple
+    assert pd.notna(unknown["net_profit_margin"])  # price-free ratios are unaffected

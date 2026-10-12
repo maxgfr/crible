@@ -523,3 +523,24 @@ def test_top10k_stats_without_snapshot_omits_completeness(tmp_path) -> None:
     )
     block = _top10k_stats(con, tmp_path)["coverage_top10k"]
     assert "fundamentals_completeness_pct" not in block
+
+
+def test_snapshot_caps_are_read_in_the_reporting_currency(tmp_path) -> None:
+    """market_cap is priced in the statements' currency (schema 9): a USD
+    filer quoted in EUR must be converted from USD, not from EUR."""
+    from crible.universe_caps import snapshot_caps
+
+    (tmp_path / "snapshot").mkdir()
+    pd.DataFrame(
+        {
+            "symbol": ["MT.AS", "AIR.PA"],
+            "period": ["2024", "2024"],
+            "market_cap": [30e9, 100e9],
+            "currency": ["EUR", "EUR"],
+            "reporting_currency": ["USD", None],
+            "price_asof": ["2026-01-02", "2026-01-02"],
+        }
+    ).to_parquet(tmp_path / "snapshot" / "snapshot.parquet")
+    caps = snapshot_caps(tmp_path).set_index("symbol")
+    assert caps.loc["MT.AS", "snap_currency"] == "USD"
+    assert caps.loc["AIR.PA", "snap_currency"] == "EUR"

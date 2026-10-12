@@ -122,3 +122,45 @@ def test_run_companies_house_writes_uk_raw(tmp_path, monkeypatch) -> None:
 
     assert outcome["enriched"] == 1
     assert list(tmp_path.glob("raw/provider=companies-house/symbol=ULVR.L/*.parquet"))
+
+
+DIMENSIONAL = IXBRL.replace(
+    "</ix:resources>",
+    """<xbrli:context id="D2023-parent">
+    <xbrli:entity><xbrli:segment><xbrldi:explicitMember dimension="bus:EntityDimension">bus:ParentMember</xbrldi:explicitMember></xbrli:segment></xbrli:entity>
+    <xbrli:period><xbrli:startDate>2023-01-01</xbrli:startDate><xbrli:endDate>2023-12-31</xbrli:endDate></xbrli:period>
+  </xbrli:context></ix:resources>""",
+).replace(
+    "<body>",
+    """<body><p>Parent turnover <ix:nonFraction name="core:TurnoverRevenue" contextRef="D2023-parent"
+   unitRef="GBP" decimals="0">99</ix:nonFraction></p>""",
+)
+
+
+def test_parse_ixbrl_drops_dimensional_contexts() -> None:
+    """A segment (company-only, an equity component…) never stands in for
+    the whole-group figure — listed first here, it used to win."""
+    income = parse_ixbrl(DIMENSIONAL)[("income", "annual")].set_index("period")
+    assert income.loc["2023", "TotalRevenue"] == 1_500_000.0
+
+
+def test_run_companies_house_merges_every_filing_and_skips_identical(tmp_path, monkeypatch) -> None:
+    """Two filings for one company in a ZIP shared one stamp — the second
+    overwrote the first. They now merge (newest filing wins its years), and
+    an unchanged re-run writes nothing new."""
+    from crible.compute.snapshot import latest_raw_frames
+    from crible.ingest.enrichment import run_companies_house
+
+    older = IXBRL.replace("2023", "2022").replace("1,500,000", "1,100,000")
+    zip_path = tmp_path / "accounts.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr("Prod1_0001_01234567_20240301.html", IXBRL)
+        archive.writestr("Prod1_0002_01234567_20230301.html", older)
+    http = _ZipHttp(zip_path.read_bytes())
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path / "data"))
+    run_companies_house(mapping={"X.L": "01234567"}, url="https://example.invalid/a.zip", http=http)
+    income = latest_raw_frames(tmp_path / "data", "X.L", provider="companies-house")[("income", "annual")]
+    assert sorted(income["period"]) == ["2022", "2023"]
+    files = sorted((tmp_path / "data").glob("raw/provider=companies-house/**/*.parquet"))
+    run_companies_house(mapping={"X.L": "01234567"}, url="https://example.invalid/a.zip", http=http)
+    assert sorted((tmp_path / "data").glob("raw/provider=companies-house/**/*.parquet")) == files
