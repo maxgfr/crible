@@ -28,7 +28,7 @@ from crible.compute.ranks import attach_ranks
 from crible.compute.ttm import TTM_COLUMNS, select_ttm, ttm_ratios
 from crible.compute.ratios import RATIO_DENYLIST, compute_ratios, price_dependent_ratio_columns
 from crible.compute.scores import all_scores
-from crible.ingest.raw import iter_raw_files
+from crible.ingest.raw import RawInventory, iter_raw_files
 from crible.providers.audited import merge_audited
 from crible.providers.fx import load_rates, price_factor
 
@@ -246,9 +246,13 @@ def _provenance(
 
 
 def latest_raw_frames(
-    data_dir: Path | str, symbol: str, provider: str = "*"
+    data_dir: Path | str, symbol: str, provider: str = "*", inventory: RawInventory | None = None
 ) -> dict[tuple[str, str], pd.DataFrame]:
-    """Pick the newest raw Parquet per (statement_type, freq) for a symbol."""
+    """Pick the newest raw Parquet per (statement_type, freq) for a symbol —
+    from ``inventory`` when given (one scan for the whole build), else by
+    walking that symbol's directories."""
+    if inventory is not None and provider != "*":
+        return {key: pd.read_parquet(path) for key, path in inventory.files(provider, symbol).items()}
     safe_symbol = symbol.replace("/", "_")
     frames: dict[tuple[str, str], pd.DataFrame] = {}
     root = Path(data_dir) / "raw"
@@ -259,10 +263,9 @@ def latest_raw_frames(
     return frames
 
 
-def crawled_symbols(data_dir: Path | str) -> list[str]:
-    root = Path(data_dir) / "raw"
-    symbols = {d.name.split("=", 1)[1] for d in root.glob("provider=*/symbol=*") if d.is_dir()}
-    return sorted(symbols)
+def crawled_symbols(data_dir: Path | str, inventory: RawInventory | None = None) -> list[str]:
+    inventory = inventory if inventory is not None else RawInventory.scan(data_dir)
+    return sorted(inventory.symbols())
 
 
 UNIVERSE_COLUMNS = [
@@ -355,7 +358,16 @@ def _price_quotes(data_dir: Path | str) -> dict[str, dict]:
     return quotes
 
 
-def build_symbol_rows(data_dir: Path | str, symbols: list[str]) -> pd.DataFrame:
+# the audited layer, merge order IS precedence: US companyfacts wins recent
+# periods and FSDS backfills the deep history; ESEF (EU) and Companies House
+# (UK) don't overlap it; regions don't overlap — relative order between BR/TW
+# is inert
+AUDITED_PRECEDENCE = ("edgar", "edgar-fsds", "esef", "companies-house", "cvm", "twse")
+
+
+def build_symbol_rows(
+    data_dir: Path | str, symbols: list[str], inventory: RawInventory | None = None
+) -> pd.DataFrame:
     """The per-symbol stage: canonical fields + ratios + scores + price for each
     symbol, BEFORE the cross-sectional finalize (universe/FX/ranks). This is the
     expensive part — the seam incremental compute recomputes for changed symbols
@@ -363,29 +375,27 @@ def build_symbol_rows(data_dir: Path | str, symbols: list[str]) -> pd.DataFrame:
     quotes = _price_quotes(data_dir)
     quote_currencies = _listing_currencies(data_dir)
     rates = load_rates(data_dir)
+    # ONE scan of the raw layer for the whole build (it used to be 8 globs
+    # per symbol — the dominant cost at 20k symbols)
+    inventory = inventory if inventory is not None else RawInventory.scan(data_dir)
     parts = []
     for symbol in symbols:
-        scraped = latest_raw_frames(data_dir, symbol, provider="yfinance")
+        scraped = latest_raw_frames(data_dir, symbol, provider="yfinance", inventory=inventory)
         scraped_provider = "yfinance"
         if not any(key[0] in ("income", "balance", "cashflow") for key in scraped):
             # last-resort fallback: defeatbeta statements (Yahoo-derived dump,
             # only imported for symbols no other source serves). Crawled
             # yfinance frames — including prices-daily — keep their keys.
-            fallback = latest_raw_frames(data_dir, symbol, provider="defeatbeta")
+            fallback = latest_raw_frames(data_dir, symbol, provider="defeatbeta", inventory=inventory)
             if fallback:
                 scraped = {**fallback, **scraped}
                 scraped_provider = "defeatbeta"
-        # the audited layer, per region (a listing realistically has one): US
-        # companyfacts wins recent periods and FSDS backfills the deep history;
-        # ESEF (EU) and Companies House (UK) don't overlap it.
+        # the audited layer, per region (a listing realistically has one)
         audited = merge_audited(
-            latest_raw_frames(data_dir, symbol, provider="edgar"),
-            latest_raw_frames(data_dir, symbol, provider="edgar-fsds"),
-            latest_raw_frames(data_dir, symbol, provider="esef"),
-            latest_raw_frames(data_dir, symbol, provider="companies-house"),
-            # regions don't overlap — relative order between BR/TW is inert
-            latest_raw_frames(data_dir, symbol, provider="cvm"),
-            latest_raw_frames(data_dir, symbol, provider="twse"),
+            *(
+                latest_raw_frames(data_dir, symbol, provider=audited_provider, inventory=inventory)
+                for audited_provider in AUDITED_PRECEDENCE
+            )
         )
         if not scraped and not audited:
             continue
@@ -448,21 +458,6 @@ BASE_SCHEMA_NAME = "base-schema.json"
 ENGINE_SCHEMA_VERSION = 9
 
 
-def _newest_raw_stamp(data_dir: Path | str, symbol: str) -> float:
-    """The newest raw fetched-at stamp (ms → s) across all providers for a
-    symbol — the change signal for incremental compute."""
-    root = Path(data_dir) / "raw"
-    safe = symbol.replace("/", "_")
-    newest = 0.0
-    for directory in root.glob(f"provider=*/symbol={safe}"):
-        for file in iter_raw_files(directory):
-            try:
-                newest = max(newest, int(file.stem.rsplit("-", 1)[1]) / 1000.0)
-            except (IndexError, ValueError):
-                continue
-    return newest
-
-
 def publish_incremental(data_dir: Path | str) -> pd.DataFrame | None:
     """Recompute only the symbols whose raw changed since the last build, reuse
     the cached per-symbol rows for the rest, re-finalize over everything and
@@ -496,11 +491,12 @@ def _incremental_rows(data_dir: Path) -> tuple[pd.DataFrame, bool] | None:
     """(pre-finalize rows, whether the base cache must be rewritten), or None
     when the published snapshot is already current."""
     base_path = data_dir / "snapshot" / BASE_NAME
-    symbols = crawled_symbols(data_dir)
+    inventory = RawInventory.scan(data_dir)
+    symbols = crawled_symbols(data_dir, inventory=inventory)
     # no cache, or a cache built by a different engine schema (the nightly
     # restores base.parquet from the last release) → full rebuild
     if not base_path.exists() or _cached_schema_version(data_dir) != ENGINE_SCHEMA_VERSION:
-        return build_symbol_rows(data_dir, symbols), True
+        return build_symbol_rows(data_dir, symbols, inventory=inventory), True
 
     watermark = _base_watermark(data_dir)
     # a refreshed price distillate changes the price_quote / return_6m baked into
@@ -510,7 +506,7 @@ def _incremental_rows(data_dir: Path) -> tuple[pd.DataFrame, bool] | None:
     if price_file.exists() and price_file.stat().st_mtime > watermark:
         dirty = list(symbols)
     else:
-        dirty = [s for s in symbols if _newest_raw_stamp(data_dir, s) > watermark]
+        dirty = [s for s in symbols if inventory.newest_stamp(s) > watermark]
     # the base cache may predate the schema (the nightly restores it from the
     # last release): scrub retired columns so kept rows can't resurrect them
     prev = _scrub_retired_columns(pd.read_parquet(base_path))
@@ -523,7 +519,7 @@ def _incremental_rows(data_dir: Path) -> tuple[pd.DataFrame, bool] | None:
         return (prev, False) if _snapshot_stale(data_dir) else None
 
     kept = prev[prev["symbol"].isin(set(symbols) - set(dirty))] if "symbol" in prev.columns else prev
-    fresh = build_symbol_rows(data_dir, dirty) if dirty else pd.DataFrame()
+    fresh = build_symbol_rows(data_dir, dirty, inventory=inventory) if dirty else pd.DataFrame()
     rows = pd.concat([kept, fresh], ignore_index=True) if not fresh.empty else kept.reset_index(drop=True)
     return rows, True
 

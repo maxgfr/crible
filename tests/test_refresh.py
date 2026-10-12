@@ -361,3 +361,42 @@ def test_cap_stale_counts_groups_that_never_had_a_cap(tmp_path) -> None:
         " t(symbol, company_group, cap_rank_global, cap_asof, cap_source, top10k)"
     )
     assert _top10k_stats(con, tmp_path)["coverage_top10k"]["cap_stale_30d"] == 2
+
+
+def test_refresh_heartbeat_follows_compute_and_reports_real_statuses(tmp_path, monkeypatch) -> None:
+    """The heartbeat is written AFTER the publish (coverage describes the
+    dataset just shipped) and names each provider's real outcome — an
+    EDGAR outage is not « healthy »."""
+    import json
+
+    from crible.ingest.service import run_refresh
+
+    from tests.test_fr001_universe import fixture_frame
+
+    class DownDirectory:
+        def company_tickers(self):
+            raise ConnectionError("www.sec.gov unreachable")
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    run_refresh(
+        deadline_seconds=60,
+        fetch_universe=fixture_frame,
+        provider=FakeYfProvider(),
+        price_provider=FakePriceProvider(),
+        edgar_client=DownDirectory(),
+    )
+    heartbeat = json.loads((tmp_path / "status.json").read_text())
+    assert heartbeat["providers"]["edgar"] == "outage"
+    assert heartbeat["providers"]["yfinance"] == "healthy"
+    snapshot = tmp_path / "snapshot" / "snapshot.parquet"
+    assert heartbeat["ts"] >= snapshot.stat().st_mtime
+
+
+def test_bootstrap_exports_the_universe_for_every_reader(tmp_path, monkeypatch) -> None:
+    from crible.ingest.service import run_bootstrap
+
+    from tests.test_fr001_universe import fixture_frame
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    run_bootstrap(fetch=fixture_frame)
+    assert (tmp_path / "universe.parquet").exists()

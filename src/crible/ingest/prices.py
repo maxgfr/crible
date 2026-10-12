@@ -96,7 +96,7 @@ class PriceRefresher:
         return outcome
 
 
-def price_gap_symbols(data_dir: Path | str, limit: int | None = None) -> list[str]:
+def price_gap_symbols(data_dir: Path | str, limit: int | None = None, inventory=None) -> list[str]:
     """Audited-but-never-priced symbols — the top-up set for leftover budget.
 
     A symbol is a price gap when the raw layer holds fundamentals for it
@@ -107,18 +107,13 @@ def price_gap_symbols(data_dir: Path | str, limit: int | None = None) -> list[st
     companies with audited ESEF statements that Stooq's bulk dumps (no
     French dump exists) and the budget-bound crawl never reach.
     """
-    root = Path(data_dir) / "raw"
-    with_fundamentals: set[str] = set()
-    with_raw_prices: set[str] = set()
-    for symbol_dir in root.glob("provider=*/symbol=*"):
-        if not symbol_dir.is_dir():
-            continue
-        symbol = symbol_dir.name.split("=", 1)[1]
-        for file in symbol_dir.iterdir():
-            if file.name.startswith("prices-"):
-                with_raw_prices.add(symbol)
-            else:
-                with_fundamentals.add(symbol)
+    from crible.ingest.raw import RawInventory
+
+    inventory = inventory if inventory is not None else RawInventory.scan(data_dir)
+    # statements only: a crawler meta-none marker (dead ticker) or a crashed
+    # write's dotfile is no fundamentals worth a daily price request
+    with_fundamentals = inventory.statement_symbols()
+    with_raw_prices = inventory.priced_symbols()
 
     dumped: set[str] = set()
     latest = Path(data_dir) / "prices-latest.parquet"

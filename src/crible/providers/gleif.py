@@ -41,18 +41,22 @@ def fetch_gleif(data_dir: Path | str, http=None, max_age_seconds: float = 7 * 24
     return result.path
 
 
-def _parse_isin_lei(text_stream) -> dict[str, str]:
+def _parse_isin_lei(text_stream, prefixes: frozenset[str] | None = None) -> dict[str, str]:
     mapping: dict[str, str] = {}
     for row in csv.DictReader(text_stream):
         lower = {k.lower(): v for k, v in row.items() if k}
         isin, lei = lower.get("isin"), lower.get("lei")
         if isin and lei:
-            mapping[isin.strip()] = lei.strip()
+            isin = isin.strip()
+            if prefixes is None or isin[:2] in prefixes:
+                mapping[isin] = lei.strip()
     return mapping
 
 
-def load_isin_lei_map(path: Path | str) -> dict[str, str]:
-    """Parse a GLEIF relationship file (CSV or zipped CSV) into {ISIN: LEI}.
+def load_isin_lei_map(path: Path | str, prefixes: frozenset[str] | None = None) -> dict[str, str]:
+    """Parse a GLEIF relationship file (CSV or zipped CSV) into {ISIN: LEI},
+    keeping only ISINs whose country prefix is in ``prefixes`` when given (the
+    ~7M-row file is mostly ISINs no European listing will ever ask for).
 
     Streams the CSV row by row — the file is ~1 GB decompressed, so reading it
     whole into memory OOMs a small self-hosted host (F11). Decoded utf-8-sig so a
@@ -64,16 +68,24 @@ def load_isin_lei_map(path: Path | str) -> dict[str, str]:
         with zipfile.ZipFile(path) as archive:
             inner = next(n for n in archive.namelist() if n.lower().endswith(".csv"))
             with archive.open(inner) as raw:
-                mapping = _parse_isin_lei(io.TextIOWrapper(raw, encoding="utf-8-sig", errors="replace"))
+                mapping = _parse_isin_lei(
+                    io.TextIOWrapper(raw, encoding="utf-8-sig", errors="replace"), prefixes
+                )
     else:
         with open(path, encoding="utf-8-sig", errors="replace") as handle:
-            mapping = _parse_isin_lei(handle)
+            mapping = _parse_isin_lei(handle, prefixes)
     log.info("gleif: loaded %d ISIN→LEI relationships", len(mapping))
     return mapping
 
 
+# the ingest loop asks for the mapping every tick: parse once per file version
+# (path, mtime, size) and prefix set — one entry, the previous one released
+_cache: dict[tuple, dict[str, str]] = {}
+
+
 def load_mapping(
     data_dir: Path | str,
+    prefixes: frozenset[str] | None = None,
 ) -> tuple[dict[str, str] | None, str | None, str | None]:
     """Locate and parse the local GLEIF ISIN→LEI file under ``data_dir``.
 
@@ -81,7 +93,8 @@ def load_mapping(
     mapping on success, a skip reason when no file exists yet (the cycle idles
     politely), or an outage when a present file is unreadable (resume next run).
     Single source of truth for the two enrichment cycles that used to inline
-    this block (F4 de-dup)."""
+    this block (F4 de-dup). Cached per file version: the long-lived loop no
+    longer re-parses ~1 GB of CSV every minute."""
     data_dir = Path(data_dir)
     # legacy operator-provided locations first, then the auto-fetched mirror
     candidates = (
@@ -98,7 +111,12 @@ def load_mapping(
             None,
         )
     try:
-        return load_isin_lei_map(mapping_file), None, None
+        stat = mapping_file.stat()
+        key = (str(mapping_file), stat.st_mtime_ns, stat.st_size, prefixes)
+        if key not in _cache:
+            _cache.clear()
+            _cache[key] = load_isin_lei_map(mapping_file, prefixes)
+        return _cache[key], None, None
     except Exception as exc:  # noqa: BLE001 — a present-but-unreadable file is an outage
         return None, None, f"gleif mapping unreadable: {exc}"
 

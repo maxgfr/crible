@@ -25,7 +25,7 @@ import pandas as pd
 from crible.compute.canonical import FIELD_CANDIDATES
 from crible.compute.momentum import momentum_features
 from crible.ingest.price_import import ImportReport, _merge_and_publish, universe_symbols
-from crible.ingest.raw import iter_raw_files, write_raw_statement
+from crible.ingest.raw import write_raw_statement
 from crible.price_series import SERIES_WINDOW_DAYS, write_series
 
 log = logging.getLogger("crible.ingest.defeatbeta")
@@ -105,8 +105,16 @@ def import_defeatbeta(data_dir: Path | str, tables: dict[str, str] | None = None
     """
     tables = tables if tables is not None else DB_TABLES
     known = universe_symbols(data_dir)
+    window = f"report_date >= strftime(current_date - INTERVAL {SERIES_WINDOW_DAYS} DAY, '%Y-%m-%d')"
     con = _connect(tables["prices"])
     try:
+        # the universe filter runs IN DuckDB: ~12k dump symbols never reach
+        # pandas just to be dropped (only their symbol column is counted)
+        con.register("known_symbols", pd.DataFrame({"symbol": sorted(known)}, dtype="string"))
+        total_symbols = con.execute(
+            f"SELECT count(DISTINCT symbol) FROM read_parquet(?) WHERE close IS NOT NULL AND close > 0 AND {window}",
+            [tables["prices"]],
+        ).fetchone()[0]
         series = con.execute(
             f"""
             SELECT symbol, CAST(report_date AS DATE) AS date,
@@ -114,8 +122,8 @@ def import_defeatbeta(data_dir: Path | str, tables: dict[str, str] | None = None
                    CAST(low AS DOUBLE) AS low, CAST(close AS DOUBLE) AS close,
                    CAST(NULL AS DOUBLE) AS adj_close, CAST(volume AS DOUBLE) AS volume
             FROM read_parquet(?)
-            WHERE close IS NOT NULL AND close > 0
-              AND report_date >= strftime(current_date - INTERVAL {SERIES_WINDOW_DAYS} DAY, '%Y-%m-%d')
+            WHERE close IS NOT NULL AND close > 0 AND {window}
+              AND symbol IN (SELECT symbol FROM known_symbols)
             """,
             [tables["prices"]],
         ).fetchdf()
@@ -123,11 +131,8 @@ def import_defeatbeta(data_dir: Path | str, tables: dict[str, str] | None = None
         con.close()
 
     now = time.time()
-    total_symbols = series["symbol"].nunique()
     records: list[dict] = []
     for symbol, group in series.groupby("symbol", sort=False):
-        if symbol not in known:
-            continue
         features = momentum_features(group["date"], group["close"])
         if features is None:
             continue
@@ -136,7 +141,6 @@ def import_defeatbeta(data_dir: Path | str, tables: dict[str, str] | None = None
     skipped = total_symbols - len(fresh)
     if not fresh.empty:
         _merge_and_publish(data_dir, fresh)
-    series = series[series["symbol"].isin(known)]
     if len(series):
         write_series(data_dir, "defeatbeta", series.assign(source="defeatbeta"))
     _import_events(data_dir, tables, known)
@@ -144,18 +148,14 @@ def import_defeatbeta(data_dir: Path | str, tables: dict[str, str] | None = None
     return ImportReport(source="defeatbeta", imported=len(fresh), skipped_unknown=skipped)
 
 
-def statement_served_symbols(data_dir: Path | str, exclude: tuple[str, ...] = ()) -> set[str]:
+def statement_served_symbols(data_dir: Path | str, exclude: tuple[str, ...] = (), inventory=None) -> set[str]:
     """Symbols with STATEMENT raw files from any provider not in ``exclude``.
-    A dir holding only crawled ``prices-daily`` files does not count."""
-    root = Path(data_dir) / "raw"
-    served: set[str] = set()
-    for directory in root.glob("provider=*/symbol=*"):
-        provider = directory.parent.name.split("=", 1)[1]
-        if provider in exclude:
-            continue
-        if any(f.stem.split("-", 1)[0] in _STATEMENT_KEYS for f in iter_raw_files(directory)):
-            served.add(directory.name.split("=", 1)[1])
-    return served
+    A dir holding only crawled ``prices-daily`` files does not count. Pass a
+    ``RawInventory`` to answer from an existing scan."""
+    from crible.ingest.raw import RawInventory
+
+    inventory = inventory if inventory is not None else RawInventory.scan(data_dir)
+    return inventory.statement_symbols(exclude=exclude)
 
 
 def fundamentals_gap_symbols(data_dir: Path | str) -> list[str]:

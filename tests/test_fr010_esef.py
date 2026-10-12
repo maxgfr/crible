@@ -1273,3 +1273,22 @@ def test_fr010_recording_the_currency_restamps_an_unchanged_filing(tmp_path) -> 
     files = sorted(tmp_path.glob("raw/provider=esef/symbol=MT.AS/income-annual-*.parquet"))
     assert len(files) == 2
     assert set(pd.read_parquet(files[-1])["_currency"]) == {"USD"}
+
+
+def test_fr010_the_esef_cycles_parse_gleif_down_to_european_prefixes(tmp_path, monkeypatch) -> None:
+    from crible.ingest.service import run_esef_cycle
+    from crible.providers import gleif
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+    (tmp_path / "isin-lei.csv").write_text(
+        "LEI,ISIN\nLEIABN0000000000001X,NL0011540547\nLEIUS00000000000001X,US0378331005\n"
+    )
+    seen = {}
+    original = gleif.load_isin_lei_map
+    monkeypatch.setattr(
+        gleif,
+        "load_isin_lei_map",
+        lambda p, prefixes=None: (seen.setdefault("p", prefixes), original(p, prefixes))[1],
+    )
+    run_esef_cycle(limit=0)
+    assert seen["p"] is not None and "NL" in seen["p"] and "US" not in seen["p"]

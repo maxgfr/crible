@@ -787,3 +787,38 @@ def test_fr016_a_dropped_bulk_download_leaves_no_partial(tmp_path) -> None:
     with pytest.raises(ConnectionError):
         EdgarClient(http=Http(), user_agent="test").download_bulk(tmp_path / "companyfacts.zip")
     assert list(tmp_path.iterdir()) == []
+
+
+def test_fr016_the_ticker_directory_is_mirrored_daily(tmp_path) -> None:
+    """The loop asks for company_tickers.json every cycle: one download a day."""
+    import json
+
+    class Response:
+        status_code = 200
+        headers = {}
+
+        def raise_for_status(self):
+            pass
+
+        def iter_bytes(self, chunk_size=0):
+            yield json.dumps({"0": {"ticker": "AAPL", "cik_str": 320193}}).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    class Http:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def stream(self, method, url, headers=None):
+            self.calls += 1
+            return Response()
+
+    http = Http()
+    client = EdgarClient(http=http, user_agent="test", cache_dir=tmp_path)
+    assert client.company_tickers() == {"AAPL": 320193}
+    assert client.company_tickers() == {"AAPL": 320193}
+    assert http.calls == 1

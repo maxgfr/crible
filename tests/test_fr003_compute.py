@@ -710,9 +710,9 @@ def test_incremental_compute_recomputes_only_dirty_symbols(tmp_path, monkeypatch
     calls: list[list[str]] = []
     original = snap.build_symbol_rows
 
-    def spy(data_dir, symbols):
+    def spy(data_dir, symbols, **kwargs):
         calls.append(list(symbols))
-        return original(data_dir, symbols)
+        return original(data_dir, symbols, **kwargs)
 
     monkeypatch.setattr(snap, "build_symbol_rows", spy)
 
@@ -764,7 +764,9 @@ def test_incremental_full_rebuild_on_engine_schema_bump(tmp_path, monkeypatch) -
 
     calls: list[list[str]] = []
     original = snap.build_symbol_rows
-    monkeypatch.setattr(snap, "build_symbol_rows", lambda d, s: (calls.append(list(s)), original(d, s))[1])
+    monkeypatch.setattr(
+        snap, "build_symbol_rows", lambda d, s, **kw: (calls.append(list(s)), original(d, s, **kw))[1]
+    )
 
     # same engine version, nothing changed → no per-symbol work at all
     assert snap.publish_incremental(tmp_path) is None
@@ -805,7 +807,9 @@ def test_incremental_compute_rebuilds_all_when_the_price_distillate_refreshes(tm
 
     calls: list[list[str]] = []
     original = snap.build_symbol_rows
-    monkeypatch.setattr(snap, "build_symbol_rows", lambda d, s: (calls.append(list(s)), original(d, s))[1])
+    monkeypatch.setattr(
+        snap, "build_symbol_rows", lambda d, s, **kw: (calls.append(list(s)), original(d, s, **kw))[1]
+    )
 
     # a fresh price distillate lands after the base (the shape _price_quotes reads)
     time.sleep(0.02)
@@ -1254,7 +1258,9 @@ def test_incremental_refinalizes_when_the_universe_changes(tmp_path, monkeypatch
 
     calls: list[list[str]] = []
     original = snap.build_symbol_rows
-    monkeypatch.setattr(snap, "build_symbol_rows", lambda d, s: (calls.append(list(s)), original(d, s))[1])
+    monkeypatch.setattr(
+        snap, "build_symbol_rows", lambda d, s, **kw: (calls.append(list(s)), original(d, s, **kw))[1]
+    )
     refreshed = snap.publish_incremental(tmp_path)
     assert calls == []  # finalize only
     assert refreshed is not None
@@ -1272,8 +1278,8 @@ def test_incremental_watermark_is_the_compute_start(tmp_path, monkeypatch) -> No
     _two_symbol_raw(tmp_path)
     original = snap.build_symbol_rows
 
-    def slow_rows(data_dir, symbols):
-        rows = original(data_dir, symbols)
+    def slow_rows(data_dir, symbols, **kwargs):
+        rows = original(data_dir, symbols, **kwargs)
         write_raw_statement(
             tmp_path,
             symbol="BBB",

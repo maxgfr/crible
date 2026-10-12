@@ -7,9 +7,14 @@ snapshot can be recomputed from.
 
 from __future__ import annotations
 
+import os
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
+
+# statement types that carry fundamentals (prices-* are bars, meta-* markers)
+STATEMENT_TYPES = ("income", "balance", "cashflow")
 
 
 def iter_raw_files(directory: Path) -> list[Path]:
@@ -64,7 +69,7 @@ def write_raw_statement(
     ``skip_identical`` is for the re-fetch-everything providers (EDGAR bulk,
     FSDS, ESEF): when the newest committed version already holds byte-equal
     data, return it untouched instead of re-stamping. That keeps
-    ``_newest_raw_stamp`` stable for unchanged issuers, so incremental
+    the inventory's newest stamp stable for unchanged issuers, so incremental
     compute stays O(actually-changed) and the published tarball stops
     churning. A dtype round-trip mismatch simply falls through to a write —
     safe, never lossy.
@@ -100,3 +105,89 @@ def write_raw_statement(
     out.to_parquet(tmp, index=False)
     tmp.rename(final)
     return final
+
+
+@dataclass
+class RawInventory:
+    """ONE pass over the raw layer: (provider, symbol) → newest file per
+    (statement_type, freq), with its fetched-at stamp. Every reader that used
+    to glob the tree on its own (served/priced/gap symbols, the queue
+    restore, the enrichment re-seed, the snapshot's 8 globs per symbol)
+    asks this instead — the tree is walked once per stage, not once per
+    question. Symbols are the directory names (``/`` stored as ``_``)."""
+
+    # (provider, symbol) → (statement_type, freq) → (stamp seconds, path)
+    entries: dict[tuple[str, str], dict[tuple[str, str], tuple[float, Path]]] = field(default_factory=dict)
+
+    @classmethod
+    def scan(cls, data_dir: Path | str) -> RawInventory:
+        inventory = cls()
+        root = Path(data_dir) / "raw"
+        if not root.is_dir():
+            return inventory
+        with os.scandir(root) as providers:
+            for provider_entry in providers:
+                if not provider_entry.is_dir() or not provider_entry.name.startswith("provider="):
+                    continue
+                provider = provider_entry.name.split("=", 1)[1]
+                with os.scandir(provider_entry.path) as symbols:
+                    for symbol_entry in symbols:
+                        if symbol_entry.is_dir() and symbol_entry.name.startswith("symbol="):
+                            inventory._scan_symbol(provider, symbol_entry)
+        return inventory
+
+    def _scan_symbol(self, provider: str, symbol_entry: os.DirEntry) -> None:
+        newest: dict[tuple[str, str], tuple[float, Path]] = {}
+        with os.scandir(symbol_entry.path) as files:
+            for file in files:
+                name = file.name
+                if name.startswith(".") or not name.endswith(".parquet"):
+                    continue  # the .tmp-* partial of a crashed write
+                parts = name[: -len(".parquet")].split("-", 2)
+                if len(parts) != 3:
+                    continue
+                statement_type, freq, stamp = parts
+                try:
+                    seconds = int(stamp) / 1000.0
+                except ValueError:
+                    continue
+                key = (statement_type, freq)
+                if key not in newest or seconds >= newest[key][0]:
+                    newest[key] = (seconds, Path(file.path))
+        if newest:
+            self.entries[(provider, symbol_entry.name.split("=", 1)[1])] = newest
+
+    def symbols(self, provider: str | None = None) -> set[str]:
+        return {s for p, s in self.entries if provider is None or p == provider}
+
+    def files(self, provider: str, symbol: str) -> dict[tuple[str, str], Path]:
+        """The newest raw file per (statement_type, freq) for one listing."""
+        found = self.entries.get((provider, symbol.replace("/", "_")), {})
+        return {key: path for key, (_, path) in found.items()}
+
+    def newest_stamp(
+        self, symbol: str, types: tuple[str, ...] | None = None, provider: str | None = None
+    ) -> float:
+        """Newest fetched-at (seconds) for a symbol across providers (or one),
+        optionally restricted to statement types; 0.0 when none."""
+        safe = symbol.replace("/", "_")
+        best = 0.0
+        for (p, s), found in self.entries.items():
+            if s != safe or (provider is not None and p != provider):
+                continue
+            for (statement_type, _), (seconds, _) in found.items():
+                if types is None or statement_type in types:
+                    best = max(best, seconds)
+        return best
+
+    def statement_symbols(self, exclude: tuple[str, ...] = ()) -> set[str]:
+        """Symbols with fundamentals from any provider not in ``exclude``."""
+        return {
+            s
+            for (p, s), found in self.entries.items()
+            if p not in exclude and any(t in STATEMENT_TYPES for t, _ in found)
+        }
+
+    def priced_symbols(self) -> set[str]:
+        """Symbols with raw price bars from any provider."""
+        return {s for (_, s), found in self.entries.items() if any(t == "prices" for t, _ in found)}

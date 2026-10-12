@@ -12,6 +12,8 @@ from __future__ import annotations
 import logging
 import os
 import time
+from dataclasses import dataclass
+from typing import Callable
 
 import duckdb
 
@@ -185,6 +187,7 @@ def defer_covered_symbols(
     data_dir,
     now: float | None = None,
     defer_seconds: float = 30 * 86400,
+    inventory=None,
 ) -> int:
     """Push never-crawled symbols already served by the dumps to the back of
     the marathon queue: bars from ANY imported series store (defeatbeta,
@@ -215,7 +218,7 @@ def defer_covered_symbols(
         priced |= set(pd.read_parquet(store, columns=["symbol"])["symbol"].unique())
     if not priced:
         return 0
-    covered = sorted(priced & statement_served_symbols(data_dir))
+    covered = sorted(priced & statement_served_symbols(data_dir, inventory=inventory))
     if not covered:
         return 0
     frame = pd.DataFrame({"symbol": covered})
@@ -249,7 +252,7 @@ COMPLETENESS_COLUMNS = (
 )
 
 
-def _top10k_stats(con: duckdb.DuckDBPyConnection, data_dir) -> dict:
+def _top10k_stats(con: duckdb.DuckDBPyConnection, data_dir, inventory=None) -> dict:
     """``coverage_top10k`` — group-level coverage of the top-10k slice (a
     COMPANY counts as covered when any of its listings is served). Source-
     agnostic by construction: fundamentals via statement_served_symbols
@@ -280,13 +283,13 @@ def _top10k_stats(con: duckdb.DuckDBPyConnection, data_dir) -> dict:
     def covered_groups(symbols: set[str]) -> int:
         return int(sum(1 for listed in groups if listed & symbols))
 
-    fundamentals = statement_served_symbols(data_dir)
-    audited = statement_served_symbols(data_dir, exclude=("yfinance", "defeatbeta"))
+    from crible.ingest.raw import RawInventory
 
-    raw_priced: set[str] = set()
-    for symbol_dir in (Path(data_dir) / "raw").glob("provider=*/symbol=*"):
-        if any(f.name.startswith("prices-") for f in symbol_dir.iterdir()):
-            raw_priced.add(symbol_dir.name.split("=", 1)[1])
+    # ONE raw scan answers all three questions
+    inventory = inventory if inventory is not None else RawInventory.scan(data_dir)
+    fundamentals = statement_served_symbols(data_dir, inventory=inventory)
+    audited = statement_served_symbols(data_dir, exclude=("yfinance", "defeatbeta"), inventory=inventory)
+    raw_priced = inventory.priced_symbols()
     dumped: set[str] = set()
     fresh: set[str] = set()
     latest = Path(data_dir) / "prices-latest.parquet"
@@ -408,7 +411,7 @@ def _queue_stats(con: duckdb.DuckDBPyConnection) -> dict:
 CRAWL_STATEMENT_TYPES = ("income", "balance", "cashflow", "meta")
 
 
-def restore_queue_from_raw(con: duckdb.DuckDBPyConnection, data_dir) -> int:
+def restore_queue_from_raw(con: duckdb.DuckDBPyConnection, data_dir, inventory=None) -> int:
     """Rebuild crawl freshness from the raw layer's filename stamps.
 
     A nightly Actions run starts from a fresh operational DB — only the raw
@@ -418,27 +421,17 @@ def restore_queue_from_raw(con: duckdb.DuckDBPyConnection, data_dir) -> int:
     zero-padded ms stamp, so the queue state is recoverable exactly. Only
     statement files count: a price-only refresh yesterday is not a crawl.
     """
-    from pathlib import Path
-
     import pandas as pd
 
     from crible.ingest.queue import QUARTER_SECONDS
-    from crible.ingest.raw import iter_raw_files
+    from crible.ingest.raw import RawInventory
 
-    root = Path(data_dir) / "raw" / "provider=yfinance"
+    inventory = inventory if inventory is not None else RawInventory.scan(data_dir)
     rows = []
-    for directory in root.glob("symbol=*"):
-        stamps = []
-        for file in iter_raw_files(directory):
-            kind, _, stamp = file.stem.partition("-")
-            if kind not in CRAWL_STATEMENT_TYPES:
-                continue
-            try:
-                stamps.append(int(stamp.rsplit("-", 1)[1]) / 1000.0)
-            except (IndexError, ValueError):
-                continue
-        if stamps:
-            rows.append((directory.name.split("=", 1)[1], max(stamps)))
+    for symbol in inventory.symbols("yfinance"):
+        crawled_at = inventory.newest_stamp(symbol, types=CRAWL_STATEMENT_TYPES, provider="yfinance")
+        if crawled_at:
+            rows.append((symbol, crawled_at))
     if not rows:
         return 0
     # one batched UPDATE (a row-by-row loop cost ~15 s at 20k symbols)
@@ -462,18 +455,49 @@ def restore_queue_from_raw(con: duckdb.DuckDBPyConnection, data_dir) -> int:
     return len(rows)
 
 
-def run_bootstrap() -> BootstrapReport:
+def sync_universe(
+    con: duckdb.DuckDBPyConnection,
+    data,
+    *,
+    fetch=None,
+    parquet_fallback: bool = True,
+    export: bool = True,
+) -> dict:
+    """THE universe sync every entry point shares (bootstrap, nightly refresh,
+    the loop's weekly refresh): FinanceDatabase upsert (falling back to the
+    last-good universe.parquet when the source is down) → cap census (BEFORE
+    the queue seeds: it writes crawl_priority, and BEFORE the export
+    overwrites the carryover source) → queue seed → universe.parquet export,
+    so every reader (snapshot metadata, search, imports, the cap carryover)
+    sees the refreshed universe, not the first boot's."""
+    from crible.universe import export_universe_parquet, fetch_financedatabase, restore_universe_from_parquet
     from crible.universe_caps import apply_cap_census
 
+    out: dict = {"universe_restored": False}
+    try:
+        out["report"] = refresh_universe(con, fetch=fetch or fetch_financedatabase)
+        out["universe_loaded"] = out["report"].loaded
+    except UniverseSourceError:
+        if not parquet_fallback or not (data / "universe.parquet").exists():
+            raise
+        log.warning("universe source down — restoring last-good universe.parquet")
+        out["universe_loaded"] = restore_universe_from_parquet(con, data / "universe.parquet")
+        out["universe_restored"] = True
+    census = apply_cap_census(con, data)
+    if census is not None:
+        out["top10k_members"] = census.member_groups
+    CrawlQueue(con).seed_from_universe()
+    if export:
+        export_universe_parquet(con, data)
+    return out
+
+
+def run_bootstrap(fetch=None) -> BootstrapReport:
     con = _connect()
     try:
-        report = refresh_universe(con)
-        # BEFORE the queue seeds: the census override writes crawl_priority
-        apply_cap_census(con, config.data_dir())
-        queue = CrawlQueue(con)
-        queue.seed_from_universe()
+        synced = sync_universe(con, config.data_dir(), fetch=fetch, parquet_fallback=False)
         prioritize_sample(con, bootstrap_sample())
-        return report
+        return synced["report"]
     finally:
         con.close()
 
@@ -489,22 +513,109 @@ def maybe_refresh_universe(
     fetch=None,
     interval: float = UNIVERSE_REFRESH_SECONDS,
 ) -> float:
-    """Re-fetch the universe (idempotent upsert) and re-seed the queue at most
-    once per ``interval``; returns the timestamp to record. The self-hosted
-    loop only bootstrapped once (F5), so new listings and delistings froze
-    forever. A source outage is logged and retried next interval, never fatal."""
+    """Re-sync the universe at most once per ``interval``; returns the
+    timestamp to record. A source outage is logged and retried next
+    interval, never fatal."""
     if now - last_refresh < interval:
         return last_refresh
-    from crible.universe_caps import apply_cap_census
-
     try:
-        refresh_universe(con, fetch=fetch) if fetch else refresh_universe(con)
-        apply_cap_census(con, config.data_dir())
-        CrawlQueue(con).seed_from_universe()
+        sync_universe(con, config.data_dir(), fetch=fetch)
         log.info("universe refreshed (periodic)")
     except UniverseSourceError as exc:
         log.warning("periodic universe refresh skipped: %s", exc)
     return now
+
+
+def _stage(result: dict, key: str, fn, *args, **kwargs):
+    """The one guarded stage runner: ``result[key]`` gets the stage's outcome,
+    or ``{"outage": …}`` — a stage never kills the run (or the loop)."""
+    try:
+        result[key] = fn(*args, **kwargs)
+    except Exception as exc:  # noqa: BLE001 — enrichment/reference data never kills the caller
+        log.warning("%s failed: %s", key, exc)
+        result[key] = {"outage": str(exc)}
+    return result[key]
+
+
+def _heal_gleif(data) -> str:
+    """Self-heal the audited-EU layer: pull the GLEIF ISIN→LEI file into the
+    mirror unless the operator supplied their own; fetch_if_stale only
+    re-downloads a stale (weekly) copy, so GLEIF stays fresh (F9)."""
+    from crible.providers.gleif import fetch_gleif
+
+    if (data / "isin-lei.csv").exists() or (data / "isin-lei.zip").exists():
+        return "operator file"
+    return str(fetch_gleif(data))
+
+
+def _heal_fx(data) -> int:
+    """Mirror the ECB daily rates so the snapshot gets *_eur companions."""
+    from crible.providers.fx import fetch_rates
+
+    return len(fetch_rates(data) or {})
+
+
+def _self_heal_reference_data(data, *, gleif: bool = True, fx: bool = True) -> dict:
+    out: dict = {}
+    if gleif:
+        _stage(out, "gleif", _heal_gleif, data)
+    if fx:
+        _stage(out, "fx", _heal_fx, data)
+    return out
+
+
+# result key → provider id shown in the heartbeat
+_STAGE_PROVIDERS = {
+    "esef": "esef",
+    "edgar_bulk": "edgar",
+    "edgar": "edgar",
+    "fsds": "edgar-fsds",
+    "companies_house": "companies-house",
+    "cvm": "cvm",
+    "twse": "twse",
+    "gleif": "gleif",
+    "fx": "fx",
+}
+
+
+def _provider_statuses(
+    result: dict, crawl_provider: str | None = None, crawl_stopped: str | None = None
+) -> dict:
+    """The REAL per-provider status of a run (it was hard-coded "healthy")."""
+    statuses: dict[str, str] = {}
+    if crawl_provider:
+        statuses[crawl_provider] = "rate-limited" if crawl_stopped == "rate-limited" else "healthy"
+    for key, provider in _STAGE_PROVIDERS.items():
+        if key not in result:
+            continue
+        stage = result[key]
+        failed = isinstance(stage, dict) and bool(stage.get("outage"))
+        if statuses.get(provider) != "outage":
+            statuses[provider] = "outage" if failed else "healthy"
+    return statuses
+
+
+def _publish_heartbeat(data, budget: TokenBucket, *, providers: dict, **fields) -> None:
+    """status.json AFTER compute, from a fresh connection: the coverage
+    numbers (crawled, fundamentals/priced/completeness) describe the dataset
+    that was just published, not the previous night's."""
+    from crible.ingest.state import read_heartbeat
+
+    con = _connect()
+    try:
+        stats = _queue_stats(con)
+        stats.update(_top10k_stats(con, data))
+    finally:
+        con.close()
+    merged = {**(read_heartbeat().get("providers") or {}), **providers}
+    update_heartbeat(
+        requests_last_hour=budget.used_in_window(),
+        budget_per_hour=budget.capacity,
+        providers=merged,
+        **stats,
+        **fields,
+        ts=time.time(),
+    )
 
 
 def _make_crawler(con: duckdb.DuckDBPyConnection, provider=None, budget=None) -> Crawler:
@@ -542,11 +653,15 @@ def run_once(limit: int = 50, budget=None, provider=None, symbols: list[str] | N
         else:
             outcome = crawler.run_cycle(limit=limit)
         save_bucket(crawler.budget, budget_state)
+        from crible.ingest.state import read_heartbeat
+
+        providers = read_heartbeat().get("providers") or {}
+        providers[crawler.provider.id] = "rate-limited" if outcome.aborted == "rate-limited" else "healthy"
         update_heartbeat(
             requests_last_hour=crawler.budget.used_in_window(),
             budget_per_hour=crawler.budget.capacity,
             last_cycle={"fetched": len(outcome.fetched), "failed": len(outcome.failed)},
-            providers={crawler.provider.id: "healthy"},
+            providers=providers,
             **_queue_stats(con),
             ts=time.time(),
         )
@@ -662,11 +777,12 @@ def run_refresh(
 ) -> dict:
     """One bounded, resumable refresh pass — the nightly dataset run.
 
-    Bootstrap (falling back to the last-good universe.parquet when
-    FinanceDatabase is down) → prioritized crawl on ONE shared token bucket
-    until the queue drains or the deadline passes (repeated ``ingest --once``
-    calls would each get a fresh bucket and bust the hourly budget) → ESEF +
-    EDGAR enrichment → price refresh → prune the raw layer → compute + publish.
+    Reference data (GLEIF, FX) → universe sync (falling back to the
+    last-good universe.parquet when FinanceDatabase is down) → prioritized
+    crawl on ONE shared token bucket until the queue drains or the deadline
+    passes (repeated ``ingest --once`` calls would each get a fresh bucket and
+    bust the hourly budget) → audited enrichment stages → price refresh →
+    prune the raw layer → compute + publish → heartbeat.
 
     ``deadline_seconds`` bounds the CRAWL loop only (historical semantics).
     ``max_seconds`` is the WHOLE-RUN wall-clock guard: the crawl and every
@@ -675,12 +791,8 @@ def run_refresh(
     always get their reserve — a slow night ships a partial-but-published
     dataset instead of being killed by the CI job timeout with nothing.
     """
-    from crible.ingest.raw import prune_raw
-    from crible.universe import (
-        export_universe_parquet,
-        fetch_financedatabase,
-        restore_universe_from_parquet,
-    )
+    from crible.ingest.budget import load_bucket, save_bucket
+    from crible.ingest.raw import RawInventory, prune_raw
 
     started = time.monotonic()
     hard_deadline = started + max_seconds if max_seconds else None
@@ -695,178 +807,182 @@ def run_refresh(
         return max(0.0, (hard_deadline - ENRICH_RESERVE_SECONDS) - time.monotonic())
 
     data = config.data_dir()
-    result: dict = {"universe_restored": False}
+    result: dict = _self_heal_reference_data(data, gleif=fetch_gleif, fx=fetch_fx)
 
-    if fetch_gleif:
-        # self-heal the audited-EU layer: pull the GLEIF ISIN→LEI file into the
-        # mirror. Skip only if the operator supplied their own file; otherwise
-        # fetch every run — fetch_if_stale re-downloads only when the mirror copy
-        # is stale (weekly), so GLEIF stays FRESH instead of freezing after the
-        # first fetch (F9). Best-effort — a failure just leaves ESEF idle.
-        from crible.providers.gleif import fetch_gleif as _fetch_gleif
-
-        legacy = (data / "isin-lei.csv").exists() or (data / "isin-lei.zip").exists()
-        if not legacy:
-            try:
-                _fetch_gleif(data)
-            except Exception as exc:  # noqa: BLE001 — never kills the refresh
-                log.warning("gleif fetch failed: %s — ESEF may stay idle this run", exc)
-
-    if fetch_fx:
-        # mirror the ECB daily rates so the snapshot gets *_eur companions
-        from crible.providers.fx import fetch_rates
-
-        try:
-            fetch_rates(data)
-        except Exception as exc:  # noqa: BLE001 — never kills the refresh
-            log.warning("fx rates fetch failed: %s — *_eur columns stay NULL this run", exc)
-
+    budget_state = data / "budget-state.json"
     con = _connect()
     try:
-        try:
-            report = refresh_universe(con, fetch=fetch_universe or fetch_financedatabase)
-            result["universe_loaded"] = report.loaded
-        except UniverseSourceError:
-            if not (data / "universe.parquet").exists():
-                raise
-            log.warning("universe source down — restoring last-good universe.parquet")
-            result["universe_loaded"] = restore_universe_from_parquet(con, data / "universe.parquet")
-            result["universe_restored"] = True
-        # BEFORE the crawler seeds the queue AND before export_universe_parquet
-        # overwrites the carryover source: top10k primaries take the head
-        from crible.universe_caps import apply_cap_census
-
-        census_report = apply_cap_census(con, data)
-        if census_report is not None:
-            result["top10k_members"] = census_report.member_groups
+        synced = sync_universe(con, data, fetch=fetch_universe)
+        result.update({k: v for k, v in synced.items() if k != "report"})
         # resume the rolling budget window where the previous run left it —
         # chained CI runs must never double-spend the hour (NFR-007)
-        from crible.ingest.budget import load_bucket, save_bucket
-
-        budget_state = data / "budget-state.json"
         crawler = _make_crawler(
             con, provider=provider, budget=load_bucket(budget_state, capacity=config.budget_per_hour())
         )
         prioritize_sample(con, bootstrap_sample())
+        # ONE raw scan for the queue restore and the deferral
+        inventory = RawInventory.scan(data)
         # AFTER prioritizing: fresh raw wins over the sample's due-now reset,
         # so the nightly advances into new symbols instead of re-crawling
-        result["queue_restored"] = restore_queue_from_raw(con, data)
+        result["queue_restored"] = restore_queue_from_raw(con, data, inventory=inventory)
         # AFTER the restore: dump-covered symbols leave the marathon head —
         # their Yahoo budget flows to the regions defeatbeta can't price
-        result["deferred_covered"] = defer_covered_symbols(con, data)
-        export_universe_parquet(con, data)
-
-        fetched = failed = 0
-        # the crawler's own clock is wall time: it never sleeps (budget wait,
-        # 429 backoff) past the crawl deadline into the compute reserve
-        crawler.deadline = time.time() + (deadline - time.monotonic())
-        while time.monotonic() < deadline:
-            outcome = crawler.run_cycle(limit=cycle_limit)
-            fetched += len(outcome.fetched)
-            failed += len(outcome.failed)
-            if outcome.aborted:
-                result["crawl_stopped"] = outcome.aborted
-                break
-            if not outcome.fetched and not outcome.failed:
-                break  # nothing due — the queue is drained for this run
-        result["fetched"] = fetched
-        result["failed"] = failed
+        result["deferred_covered"] = defer_covered_symbols(con, data, inventory=inventory)
+        result.update(_crawl_until(crawler, deadline, cycle_limit))
         save_bucket(crawler.budget, budget_state)  # crash-safe: enrichment may die
-        stats = _queue_stats(con)
-        stats.update(_top10k_stats(con, data))
     finally:
         con.close()
 
-    try:
-        # index sweep, not per-LEI polling: every request lands on a real
-        # filing, so the nightly covers actual EU filers at full speed
-        esef_kwargs = {} if esef_refresh_seconds is None else {"refresh_seconds": esef_refresh_seconds}
-        result["esef"] = run_esef_sweep(
-            limit=esef_limit,
-            time_budget_seconds=stage_budget(),
-            history=esef_history,
-            **esef_kwargs,
-        )
-    except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
-        log.warning("esef sweep failed: %s", exc)
-        result["esef"] = {"outage": str(exc)}
-    try:
-        if edgar_bulk:
-            # the bulk sweep marks every issuer fetched, so the per-CIK
-            # cycle below finds nothing due — no double work
-            result["edgar_bulk"] = run_edgar_bulk(client=edgar_client, time_budget_seconds=stage_budget())
-        result["edgar"] = run_edgar_cycle(limit=edgar_limit, client=edgar_client)
-    except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
-        log.warning("edgar cycle failed: %s", exc)
-        result["edgar"] = {"outage": str(exc)}
+    # index sweep, not per-LEI polling: every request lands on a real filing
+    esef_kwargs = {} if esef_refresh_seconds is None else {"refresh_seconds": esef_refresh_seconds}
+    _stage(
+        result,
+        "esef",
+        run_esef_sweep,
+        limit=esef_limit,
+        time_budget_seconds=stage_budget(),
+        history=esef_history,
+        **esef_kwargs,
+    )
+    if edgar_bulk:
+        # the bulk sweep marks every issuer fetched, so the per-CIK cycle
+        # below finds nothing due — no double work
+        _stage(result, "edgar_bulk", run_edgar_bulk, client=edgar_client, time_budget_seconds=stage_budget())
+    _stage(result, "edgar", run_edgar_cycle, limit=edgar_limit, client=edgar_client)
     if fsds_quarters > 0:
-        try:
-            from crible.providers.edgar_fsds import recent_quarters
+        from crible.providers.edgar_fsds import recent_quarters
 
-            result["fsds"] = run_fsds(
-                recent_quarters(fsds_quarters),
-                client=edgar_client,
-                time_budget_seconds=stage_budget(),
-            )
-        except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
-            log.warning("fsds cycle failed: %s", exc)
-            result["fsds"] = {"outage": str(exc)}
+        _stage(
+            result,
+            "fsds",
+            run_fsds,
+            recent_quarters(fsds_quarters),
+            client=edgar_client,
+            time_budget_seconds=stage_budget(),
+        )
     if companies_house_url:
         # UK non-listed backfill — needs the operator CSV (self-skips without)
-        try:
-            result["companies_house"] = run_companies_house(url=companies_house_url)
-        except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
-            log.warning("companies-house cycle failed: %s", exc)
-            result["companies_house"] = {"outage": str(exc)}
+        _stage(result, "companies_house", run_companies_house, url=companies_house_url)
     if cvm_limit > 0:
         # audited Brazil — keyless yearly ZIPs, fully-free (ODbL)
-        try:
-            result["cvm"] = run_cvm(limit=cvm_limit, time_budget_seconds=stage_budget())
-        except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
-            log.warning("cvm cycle failed: %s", exc)
-            result["cvm"] = {"outage": str(exc)}
+        _stage(result, "cvm", run_cvm, limit=cvm_limit, time_budget_seconds=stage_budget())
     if twse_limit > 0:
         # audited Taiwan — keyless snapshot JSONs, forward accumulation
-        try:
-            result["twse"] = run_twse(limit=twse_limit, time_budget_seconds=stage_budget())
-        except Exception as exc:  # noqa: BLE001 — enrichment never kills the refresh
-            log.warning("twse cycle failed: %s", exc)
-            result["twse"] = {"outage": str(exc)}
+        _stage(result, "twse", run_twse, limit=twse_limit, time_budget_seconds=stage_budget())
     budget_left = stage_budget()
     if budget_left is not None and budget_left <= 0:
         # inside the compute reserve — prices are an enrichment, never a gate
         result["prices"] = {"skipped": "time budget"}
     else:
-        try:
-            result["prices"] = run_price_refresh(crawler.budget, provider=price_provider)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("price refresh failed: %s", exc)
-            result["prices"] = {"error": str(exc)}
+        _stage(result, "prices", run_price_refresh, crawler.budget, provider=price_provider)
         save_bucket(crawler.budget, budget_state)  # prices spend the window too
 
     result["pruned"] = prune_raw(data)
     result["snapshot_rows"] = run_compute()
     result["took_seconds"] = round(time.monotonic() - started, 1)
-    update_heartbeat(
+    _publish_heartbeat(
+        data,
+        crawler.budget,
+        providers=_provider_statuses(result, crawler.provider.id, result.get("crawl_stopped")),
         last_refresh={
             k: result[k]
             for k in ("fetched", "failed", "pruned", "snapshot_rows", "universe_restored", "took_seconds")
         },
-        requests_last_hour=crawler.budget.used_in_window(),
-        budget_per_hour=crawler.budget.capacity,
-        last_cycle={"fetched": fetched, "failed": failed},
-        providers={crawler.provider.id: "healthy"},
-        **stats,
-        ts=time.time(),
+        last_cycle={"fetched": result["fetched"], "failed": result["failed"]},
     )
     return result
 
 
+def _crawl_until(crawler: Crawler, deadline: float, cycle_limit: int) -> dict:
+    """Crawl cycles until the queue drains, the (monotonic) ``deadline``
+    passes, or the crawler stops itself (deadline inside a sleep, 429
+    breaker). The crawler's own clock is wall time: it never sleeps (budget
+    wait, backoff) past the deadline into the compute reserve."""
+    crawler.deadline = time.time() + (deadline - time.monotonic())
+    out: dict = {"fetched": 0, "failed": 0}
+    while time.monotonic() < deadline:
+        outcome = crawler.run_cycle(limit=cycle_limit)
+        out["fetched"] += len(outcome.fetched)
+        out["failed"] += len(outcome.failed)
+        if outcome.aborted:
+            out["crawl_stopped"] = outcome.aborted
+            break
+        if not outcome.fetched and not outcome.failed:
+            break  # nothing due — the queue is drained for this run
+    return out
+
+
+# ------------------------------------------------------------------ the loop
+
+
+@dataclass
+class LoopTask:
+    """One periodic job of the long-lived loop: runs when ``interval``
+    seconds passed since ``last`` (−inf = due on the first tick)."""
+
+    name: str
+    interval: float
+    run: Callable[[], object]
+    last: float = float("-inf")
+
+
+class Scheduler:
+    """Runs the due LoopTasks, each guarded: a task that raises is recorded
+    as an outage and retried at its next interval — it never stops the
+    others, nor the loop."""
+
+    def __init__(self, tasks: list[LoopTask], clock: Callable[[], float] = time.time) -> None:
+        self.tasks = tasks
+        self.clock = clock
+
+    def run_due(self) -> dict:
+        now = self.clock()
+        outcome: dict = {}
+        for task in self.tasks:
+            if now - task.last < task.interval:
+                continue
+            task.last = now
+            _stage(outcome, task.name, task.run)
+        return outcome
+
+
+def _serve_fetch_requests(data, budget, provider) -> list[str]:
+    """On-demand fetches (the API drops request files — ADR-0003 keeps the
+    API a reader): crawl them budget-charged and clear them."""
+    from crible.ingest.requests import clear_request, pending_requests
+
+    try:
+        requested = pending_requests(data)
+    except Exception:  # noqa: BLE001 — a corrupt request never kills the loop
+        return []
+    batch = requested[:20]
+    if batch:
+        targeted = run_once(symbols=batch, budget=budget, provider=provider)
+        for symbol in batch:
+            clear_request(data, symbol)
+        log.info("on-demand fetch %s: +%d/-%d", batch, len(targeted.fetched), len(targeted.failed))
+    return batch
+
+
 def run_loop(
-    cycle_limit: int = 40, compute_every_seconds: float = 1800.0
-) -> None:  # pragma: no cover — long-lived loop
-    # cycle_limit × ~7 requests must stay under the hourly budget so a cycle
-    # never stalls mid-way on the token bucket before its compute runs
+    cycle_limit: int = 40,
+    compute_every_seconds: float = 1800.0,
+    *,
+    max_ticks: int | None = None,
+    clock: Callable[[], float] = time.time,
+    sleep: Callable[[float], None] = time.sleep,
+    provider=None,
+    price_provider=None,
+    fetch_universe=None,
+) -> None:
+    """The `ingest --loop` service: per tick, serve on-demand fetches, crawl
+    one cycle, run the periodic tasks that are due (the same stages as
+    run_refresh), compute when something changed, publish the heartbeat.
+    ``max_ticks``/``clock``/``sleep`` exist for the offline tests."""
+    from crible.ingest.budget import load_bucket, save_bucket
+    from crible.ingest.raw import prune_raw
+
+    data = config.data_dir()
     con = _connect()
     has_universe = con.execute(
         "SELECT count(*) FROM information_schema.tables WHERE table_name = 'companies'"
@@ -874,123 +990,89 @@ def run_loop(
     con.close()
     if not has_universe:
         log.info("first boot — bootstrapping universe")
-        run_bootstrap()
+        run_bootstrap(fetch=fetch_universe)
 
-    first_cycle = not (config.data_dir() / "snapshot").exists()
-    last_compute = 0.0
-    last_price_refresh = 0.0
-    last_universe_refresh = time.time()  # just bootstrapped — next refresh in a week
-    last_gleif = 0.0  # fetch on the first cycle so ESEF is not idle out-of-the-box
-    last_fx = 0.0  # fetch on the first cycle so the snapshot gets *_eur columns
-    last_edgar_bulk = 0.0
     # ONE long-lived bucket shared by the crawl and the price refresh — both
-    # hit Yahoo, so NFR-007 (330 req/h) is a single rolling window, not one per
-    # cycle. Rebuilding it each cycle (the F1 bug) reset the window every few
-    # seconds and busted the budget. Mirrors run_refresh's shared bucket.
-    budget = TokenBucket(capacity=config.budget_per_hour(), window_seconds=3600)
-    provider = YFinanceProvider()
-    while True:
-        # on-demand fetches (the API drops request files — ADR-0003 keeps the
-        # API a reader): crawl them FIRST, budget-charged, and compute right
-        # away so the user's drawer fills within a couple of minutes
-        from crible.ingest.requests import clear_request, pending_requests
+    # hit Yahoo, so NFR-007 is a single rolling window — resumed from the
+    # saved state so a restart never double-spends the hour
+    budget_state = data / "budget-state.json"
+    budget = load_bucket(budget_state, capacity=config.budget_per_hour())
+    provider = provider if provider is not None else YFinanceProvider()
 
-        try:
-            requested = pending_requests(config.data_dir())
-        except Exception:  # noqa: BLE001 — a corrupt request never kills the loop
-            requested = []
+    def with_connection(fn):
+        def run():
+            con = _connect()
+            try:
+                return fn(con)
+            finally:
+                con.close()
+
+        return run
+
+    def prices() -> dict:
+        out = run_price_refresh(budget, provider=price_provider)
+        save_bucket(budget, budget_state)
+        return out
+
+    now = clock()
+    tasks = [
+        LoopTask("gleif", 7 * 86400, lambda: _heal_gleif(data)),
+        LoopTask("fx", 20 * 3600, lambda: _heal_fx(data)),
+        LoopTask("prices", 20 * 3600, prices),
+        # just bootstrapped (or long-lived DB) — the next universe refresh a week out
+        LoopTask(
+            "universe",
+            UNIVERSE_REFRESH_SECONDS,
+            with_connection(lambda con: sync_universe(con, data, fetch=fetch_universe)),
+            last=now,
+        ),
+        LoopTask("prune", 86400, lambda: prune_raw(data)),
+        LoopTask("defer", 86400, with_connection(lambda con: defer_covered_symbols(con, data))),
+        # audited enrichment, throttled (each reads its whole task table)
+        LoopTask("esef", 3600, lambda: run_esef_cycle()),
+        LoopTask("edgar", 3600, lambda: run_edgar_cycle()),
+    ]
+    if os.environ.get("CRIBLE_EDGAR_BULK"):
+        # whole-US audited coverage via the companyfacts bulk (~1.4 GB), weekly —
+        # opt-in for hosts that can spare the bandwidth
+        tasks.append(LoopTask("edgar_bulk", 7 * 86400, lambda: run_edgar_bulk()))
+    scheduler = Scheduler(tasks, clock=clock)
+
+    first_cycle = not (data / "snapshot").exists()
+    last_compute = float("-inf")
+    statuses: dict = {}
+    tick = 0
+    while max_ticks is None or tick < max_ticks:
+        tick += 1
+        requested = _serve_fetch_requests(data, budget, provider)
         if requested:
-            batch = requested[:20]
-            targeted = run_once(symbols=batch, budget=budget, provider=provider)
-            for symbol in batch:
-                clear_request(config.data_dir(), symbol)
-            log.info(
-                "on-demand fetch %s: +%d/-%d",
-                batch,
-                len(targeted.fetched),
-                len(targeted.failed),
-            )
-            run_compute()
-            last_compute = time.time()
-
+            # compute right away: the user's drawer fills within minutes, not
+            # after a whole budget-bound crawl cycle and the periodic tasks
+            _stage({}, "compute", run_compute)
+            last_compute = clock()
         # first boot: crawl exactly the bootstrap sample, then publish
         # immediately — a first screen must return rows within hours (FR-008)
         limit = max(10, len(bootstrap_sample())) if first_cycle else cycle_limit
-        outcome = run_once(limit=limit, budget=budget, provider=provider)
         first_cycle = False
-        now = time.time()
+        crawl: dict = {}
+        _stage(crawl, "crawl", run_once, limit=limit, budget=budget, provider=provider)
+        outcome = crawl["crawl"] if isinstance(crawl["crawl"], CrawlOutcome) else CrawlOutcome()
 
-        # FR-011: daily priority-tier price refresh (shares the request budget)
-        if now - last_price_refresh >= 20 * 3600:
-            try:
-                log.info("price refresh: %s", run_price_refresh(budget))
-            except Exception as exc:  # noqa: BLE001 — never kills the loop
-                log.warning("price refresh failed: %s", exc)
-            last_price_refresh = now
+        ran = scheduler.run_due()
+        for name, stage in ran.items():
+            if stage:
+                log.info("loop %s: %s", name, stage)
+        statuses.update(_provider_statuses({**ran, **crawl}, provider.id, outcome.aborted))
 
-        # F5: keep the universe current — new listings / delistings otherwise
-        # freeze at first boot (the self-hosted loop never re-fetched it)
-        con = _connect()
-        try:
-            last_universe_refresh = maybe_refresh_universe(con, last_universe_refresh, now)
-        except Exception as exc:  # noqa: BLE001 — never kills the loop
-            log.warning("universe refresh failed: %s", exc)
-        finally:
-            con.close()
-
-        # F6: self-heal the audited-EU layer for the self-hosted `ingest --loop`
-        # deployment — download the GLEIF ISIN→LEI file (weekly) if we have none,
-        # so ESEF is not idle out-of-the-box exactly as `crible refresh` does
-        if now - last_gleif >= 7 * 24 * 3600:
-            try:
-                from crible.providers.gleif import fetch_gleif
-
-                data = config.data_dir()
-                legacy = (data / "isin-lei.csv").exists() or (data / "isin-lei.zip").exists()
-                if not legacy:
-                    fetch_gleif(data)  # mirror re-downloads only when stale (weekly)
-            except Exception as exc:  # noqa: BLE001 — never kills the loop
-                log.warning("gleif self-heal failed: %s", exc)
-            last_gleif = now
-
-        # F8: mirror the ECB rates (daily) so the snapshot gets *_eur columns
-        if now - last_fx >= 20 * 3600:
-            try:
-                from crible.providers.fx import fetch_rates
-
-                fetch_rates(config.data_dir())
-            except Exception as exc:  # noqa: BLE001 — never kills the loop
-                log.warning("fx rates fetch failed: %s", exc)
-            last_fx = now
-
-        # optional: whole-US audited coverage fast via the companyfacts bulk
-        # (~1.4 GB) weekly, instead of the per-CIK trickle — opt-in for hosts
-        # that can spare the bandwidth (CRIBLE_EDGAR_BULK=1)
-        if os.environ.get("CRIBLE_EDGAR_BULK") and now - last_edgar_bulk >= 7 * 24 * 3600:
-            try:
-                log.info("edgar bulk: %s", run_edgar_bulk())
-            except Exception as exc:  # noqa: BLE001 — never kills the loop
-                log.warning("edgar bulk failed: %s", exc)
-            last_edgar_bulk = now
-
-        # FR-010: audited ESEF enrichment (keyless; idle without a GLEIF file)
-        try:
-            esef = run_esef_cycle()
-            if esef["enriched"] or esef["outage"]:
-                log.info("esef cycle: %s", esef)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("esef cycle failed: %s", exc)
-
-        # FR-016: audited EDGAR enrichment (keyless; own SEC fair-access pace)
-        try:
-            edgar = run_edgar_cycle()
-            if edgar["enriched"] or edgar["outage"]:
-                log.info("edgar cycle: %s", edgar)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("edgar cycle failed: %s", exc)
-
+        now = clock()
         if outcome.fetched or now - last_compute >= compute_every_seconds:
-            run_compute()
+            _stage(ran, "compute", run_compute)
             last_compute = now
+            _publish_heartbeat(
+                data,
+                budget,
+                providers=statuses,
+                last_cycle={"fetched": len(outcome.fetched), "failed": len(outcome.failed)},
+            )
         if not outcome.fetched and not outcome.failed:
-            time.sleep(60)  # queue empty or nothing due — idle politely
+            sleep(60)  # queue empty or nothing due — idle politely

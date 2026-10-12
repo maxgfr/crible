@@ -26,6 +26,7 @@ from crible.ingest.budget import TokenBucket
 log = logging.getLogger("crible.providers.edgar")
 
 COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
+TICKERS_MAX_AGE = 24 * 3600
 COMPANYFACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
 # the whole US market's XBRL facts in one nightly archive (~1.4 GB) — the
 # ADR-0005 scale-up path; never committed, processed then discarded
@@ -318,9 +319,10 @@ class EdgarClient:
     paces itself with a dedicated 5 req/s bucket.
     """
 
-    def __init__(self, http=None, user_agent: str | None = None) -> None:
+    def __init__(self, http=None, user_agent: str | None = None, cache_dir=None) -> None:
         from crible import config
 
+        self._cache_dir = cache_dir
         self._owned = http is None
         if http is None:
             import httpx
@@ -338,8 +340,26 @@ class EdgarClient:
         return response.json()
 
     def company_tickers(self) -> dict[str, int]:
-        """{ticker: cik} from the SEC's directory (dash-form tickers)."""
-        payload = self._get_json(COMPANY_TICKERS_URL)
+        """{ticker: cik} from the SEC's directory (dash-form tickers). With a
+        ``cache_dir`` the directory is mirrored and re-downloaded at most
+        daily — the ingest loop asks for it every cycle."""
+        if self._cache_dir is not None:
+            import json
+
+            from crible.ingest.mirror import fetch_if_stale
+
+            mirrored = fetch_if_stale(
+                self._cache_dir,
+                "sec",
+                "company_tickers.json",
+                COMPANY_TICKERS_URL,
+                http=self._http,
+                headers=self._headers,
+                max_age_seconds=TICKERS_MAX_AGE,
+            )
+            payload = json.loads(mirrored.path.read_text())
+        else:
+            payload = self._get_json(COMPANY_TICKERS_URL)
         return {
             str(entry["ticker"]).strip().upper(): int(entry["cik_str"])
             for entry in payload.values()

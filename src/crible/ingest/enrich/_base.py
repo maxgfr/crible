@@ -94,6 +94,7 @@ def seed_tasks_from_raw(
     key_column: str,
     keys: dict,
     history_column: str | None = None,
+    inventory=None,
 ) -> int:
     """Rebuild an enrichment table's freshness from the raw layer's stamps.
 
@@ -109,26 +110,16 @@ def seed_tasks_from_raw(
     file's ``_history_depth`` column (files written before the backfill have
     no such column and seed as legacy depth 1).
     """
-    from pathlib import Path
+    from crible.ingest.raw import RawInventory
 
-    from crible.ingest.raw import iter_raw_files
-
-    root = Path(data_dir) / "raw" / f"provider={provider}"
+    inventory = inventory if inventory is not None else RawInventory.scan(data_dir)
     by_safe = {str(symbol).replace("/", "_"): symbol for symbol in keys}
     seeded = 0
-    for directory in root.glob("symbol=*"):
-        symbol = by_safe.get(directory.name.split("=", 1)[1])
-        if symbol is None:
+    for (raw_provider, safe), found in inventory.entries.items():
+        symbol = by_safe.get(safe)
+        if raw_provider != provider or symbol is None or not found:
             continue
-        stamped_files = []
-        for file in iter_raw_files(directory):
-            try:
-                stamped_files.append((int(file.stem.rsplit("-", 1)[1]) / 1000.0, file))
-            except (IndexError, ValueError):
-                continue
-        if not stamped_files:
-            continue
-        newest_stamp, newest_file = max(stamped_files, key=lambda pair: pair[0])
+        newest_stamp, newest_file = max(found.values(), key=lambda pair: pair[0])
         if history_column is None:
             con.execute(
                 f"INSERT INTO {table} (symbol, {key_column}, last_fetched_at) VALUES (?, ?, ?)"

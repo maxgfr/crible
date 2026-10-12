@@ -213,13 +213,24 @@ def import_huggingface(data_dir: Path | str, shards: list[str] | None = None) ->
         if any(str(s).startswith("http") for s in shards):
             con.execute("INSTALL httpfs; LOAD httpfs;")
         placeholders = ", ".join("?" for _ in shards)
+        window = (
+            f"close IS NOT NULL AND close > 0"
+            f" AND date >= strftime(current_date - INTERVAL {SERIES_WINDOW_DAYS} DAY, '%Y-%m-%d')"
+        )
+        # the universe filter runs IN DuckDB — the out-of-universe symbols are
+        # only counted, never pulled into pandas
+        con.register("known_symbols", pd.DataFrame({"symbol": sorted(known)}, dtype="string"))
+        total_symbols = con.execute(
+            f"SELECT count(DISTINCT symbol) FROM read_parquet([{placeholders}])"
+            f" WHERE {window} AND adj_close IS NOT NULL AND adj_close > 0",
+            list(shards),
+        ).fetchone()[0]
         series = con.execute(
             f"""
             SELECT symbol, CAST(date AS DATE) AS date,
                    open, high, low, close, adj_close, volume
             FROM read_parquet([{placeholders}])
-            WHERE close IS NOT NULL AND close > 0
-              AND date >= strftime(current_date - INTERVAL {SERIES_WINDOW_DAYS} DAY, '%Y-%m-%d')
+            WHERE {window} AND symbol IN (SELECT symbol FROM known_symbols)
             """,
             list(shards),
         ).fetchdf()
@@ -231,11 +242,8 @@ def import_huggingface(data_dir: Path | str, shards: list[str] | None = None) ->
     now = time.time()
     adjusted = series.dropna(subset=["adj_close"])
     adjusted = adjusted[adjusted["adj_close"] > 0]
-    total_symbols = adjusted["symbol"].nunique()
     records: list[dict] = []
     for symbol, group in adjusted.groupby("symbol", sort=False):
-        if symbol not in known:
-            continue
         features = momentum_features(group["date"], group["adj_close"])
         if features is None:
             continue
@@ -244,7 +252,6 @@ def import_huggingface(data_dir: Path | str, shards: list[str] | None = None) ->
     skipped = total_symbols - len(fresh)
     if not fresh.empty:
         _merge_and_publish(data_dir, fresh)
-    series = series[series["symbol"].isin(known)]
     if len(series):
         write_series(data_dir, "huggingface", series.assign(source="huggingface"))
     log.info("import-prices: %d symbols from huggingface (%d outside the universe)", len(fresh), skipped)

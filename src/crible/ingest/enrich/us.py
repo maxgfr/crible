@@ -64,7 +64,7 @@ def run_edgar_cycle(limit: int = 5, client=None, ticker_map: dict[str, int] | No
             if client is None:
                 from crible.providers.edgar import EdgarClient
 
-                client = EdgarClient()
+                client = EdgarClient(cache_dir=data)
                 _created.append(client)
             try:
                 ticker_map = client.company_tickers()
@@ -115,7 +115,7 @@ def run_edgar_cycle(limit: int = 5, client=None, ticker_map: dict[str, int] | No
         if client is None:
             from crible.providers.edgar import EdgarClient
 
-            client = EdgarClient()
+            client = EdgarClient(cache_dir=data)
             _created.append(client)
         from crible.ingest.raw import write_raw_statement
 
@@ -213,7 +213,7 @@ def run_edgar_bulk(
             if client is None:
                 from crible.providers.edgar import EdgarClient
 
-                client = EdgarClient()
+                client = EdgarClient(cache_dir=data)
                 _created.append(client)
         if ticker_map is None:
             try:
@@ -327,7 +327,7 @@ def run_fsds(
             if client is None:
                 from crible.providers.edgar import EdgarClient
 
-                client = EdgarClient()
+                client = EdgarClient(cache_dir=data)
                 _created.append(client)
             try:
                 ticker_map = client.company_tickers()

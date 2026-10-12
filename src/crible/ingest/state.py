@@ -29,14 +29,18 @@ def write_heartbeat(payload: dict) -> None:
     tmp.rename(path)
 
 
+def read_heartbeat() -> dict:
+    """The current heartbeat, {} when missing or unreadable."""
+    path = config.data_dir() / "status.json"
+    try:
+        current = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return current if isinstance(current, dict) else {}
+
+
 def update_heartbeat(**fields) -> None:
     """Merge fields into the heartbeat (read-modify-write, atomic rename)."""
-    path = config.data_dir() / "status.json"
-    current: dict = {}
-    if path.exists():
-        try:
-            current = json.loads(path.read_text())
-        except json.JSONDecodeError:
-            current = {}
+    current = read_heartbeat()
     current.update(fields)
     write_heartbeat(current)

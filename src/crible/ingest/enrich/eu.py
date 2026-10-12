@@ -24,6 +24,29 @@ ENTITY_PAGE_SIZE = 200
 MAX_ENTITY_PAGES = 100
 
 
+def _europe_isin_prefixes() -> frozenset[str] | None:
+    """The ISIN country prefixes the ESEF cycles can ever ask about — the
+    European universe's ISINs and its listing countries (the name→ISIN
+    backfill looks up rows that have no ISIN yet). None = no filter (no
+    universe yet). Parsing the ~7M-row GLEIF file down to these keeps the
+    cached mapping small."""
+    con = _connect()
+    try:
+        has = con.execute(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'companies'"
+        ).fetchone()[0]
+        if not has:
+            return None
+        rows = con.execute(
+            "SELECT DISTINCT substr(isin, 1, 2) FROM companies WHERE region = 'europe' AND isin IS NOT NULL"
+            " UNION SELECT DISTINCT country FROM companies WHERE region = 'europe' AND length(country) = 2"
+        ).fetchall()
+    finally:
+        con.close()
+    prefixes = frozenset(str(r[0]).upper() for r in rows if r[0])
+    return prefixes or None
+
+
 def _backfill_nameless_isins(con: duckdb.DuckDBPyConnection, client, mapping: dict[str, str]) -> int:
     """Name→LEI→ISIN backfill (FR-010 reach) — best-effort, never kills the
     sweep. Runs only while ISIN-less EU rows exist; conservative matching
@@ -132,7 +155,7 @@ def run_esef_cycle(
     outcome: dict = {"enriched": [], "unmatched": 0, "outage": None, "skipped": None}
 
     if mapping is None:
-        mapping, skipped, outage = load_mapping(data)
+        mapping, skipped, outage = load_mapping(data, prefixes=_europe_isin_prefixes())
         if mapping is None:
             outcome["skipped"], outcome["outage"] = skipped, outage
             if skipped:
@@ -269,7 +292,7 @@ def run_esef_sweep(
         return stage_deadline is not None and time.monotonic() >= stage_deadline
 
     if mapping is None:
-        mapping, skipped, outage = load_mapping(data)
+        mapping, skipped, outage = load_mapping(data, prefixes=_europe_isin_prefixes())
         if mapping is None:
             outcome["skipped"], outcome["outage"] = skipped, outage
             if skipped:

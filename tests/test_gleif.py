@@ -63,3 +63,25 @@ def test_fetch_gleif_populates_the_mirror_and_load_mapping_reads_it(tmp_path) ->
     assert skipped is None and outage is None
     assert mapping["FR0000121014"] == "969500A1G9QKR8Q79815"
     assert mapping["DE0007164600"] == "529900D6BF99LW9R2E68"
+
+
+def test_load_mapping_parses_once_per_file_version(tmp_path, monkeypatch) -> None:
+    import os
+
+    from crible.providers import gleif
+
+    path = tmp_path / "isin-lei.csv"
+    path.write_text("LEI,ISIN\nLEIFR0000000000001X,FR0000121014\nLEIUS0000000000001X,US0378331005\n")
+    calls = []
+    original = gleif.load_isin_lei_map
+    monkeypatch.setattr(
+        gleif, "load_isin_lei_map", lambda p, prefixes=None: (calls.append(p), original(p, prefixes))[1]
+    )
+    first, _, _ = gleif.load_mapping(tmp_path, prefixes=frozenset({"FR"}))
+    second, _, _ = gleif.load_mapping(tmp_path, prefixes=frozenset({"FR"}))
+    assert first == second == {"FR0000121014": "LEIFR0000000000001X"}  # US ISIN filtered at parse
+    assert len(calls) == 1
+    path.write_text(path.read_text() + "LEIDE0000000000001X,DE0007164600\n")
+    os.utime(path, (os.stat(path).st_atime, os.stat(path).st_mtime + 5))
+    third, _, _ = gleif.load_mapping(tmp_path, prefixes=frozenset({"FR", "DE"}))
+    assert len(calls) == 2 and "DE0007164600" in third
