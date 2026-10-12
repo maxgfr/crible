@@ -33,7 +33,6 @@ imputée** ; la colonne `missing_inputs` du snapshot nomme les champs absents.
 | `dividend_coverage` | net income / dividends | ~unbounded | higher · plus haut | `< 1` → dividend not covered |
 | `cash_conversion_cycle` | DIO + DSO − DPO (days) | ~unbounded | lower · plus bas | — |
 | `dividend_payout_ratio` | dividends / net income | ≥ 0 | context | — |
-| `return_on_invested_capital` | (NI − div) / invested capital | ~unbounded | higher · plus haut | — |
 | `rule_of_40` | revenue growth + FCF margin | ~unbounded | higher · plus haut | `>= 0.4` → passes the rule |
 | `sloan_accruals` | (NI − OCF) / avg assets | ~unbounded | lower · plus bas | — |
 | `peg_ratio` | P/E ÷ 3y EPS CAGR (%) | > 0 | lower · plus bas | `<= 1` → growth at a reasonable price |
@@ -203,8 +202,8 @@ sociétés, sinon tout le snapshot). Plus haut = meilleur ; `>= 80` est le quint
 **Formula**
 
 ```
-EPS  = net_income / shares_outstanding
-BVPS = total_equity / shares_outstanding
+EPS  = net_income / shares_outstanding            (weighted average)
+BVPS = total_equity / shares_outstanding_end      (period-end count, average as fallback)
 graham_number = √( 22.5 · EPS · BVPS )        only when EPS > 0 AND BVPS > 0, else NaN
 graham_margin_of_safety = graham_number / price − 1
 ```
@@ -358,22 +357,25 @@ entrées affichées.
 
 ---
 
-## 11. Dividend payout & ROIC — `dividend_payout_ratio`, `return_on_invested_capital`
+## 11. Dividend payout — `dividend_payout_ratio`
 
 **Formula**
 
 ```
 dividend_payout_ratio = |dividends_paid| / net_income
-return_on_invested_capital = (net_income − |dividends_paid|) / (average_total_equity + average_total_debt)
 ```
 
 **EN** — The payout ratio is the inverse view of `dividend_coverage` (a payout of 0.5 = coverage
-of 2): what share of earnings is distributed. ROIC measures what retained earnings earn on the
-capital actually invested (equity + debt, averaged).
+of 2): what share of earnings is distributed. The former `return_on_invested_capital` column is
+**no longer published** (engine schema 9): financetoolkit's formula, (NI − dividends) /
+(equity + debt), is not a return on invested capital, and a wrong ROIC is worse than none.
+`greenblatt_roc` (EBIT / invested capital) is the return-on-capital measure to screen on.
 
 **FR** — Le payout est la vue inverse de `dividend_coverage` (payout 0,5 = couverture 2) : la
-part du résultat distribuée. Le ROIC mesure ce que les bénéfices conservés rapportent sur le
-capital réellement investi (fonds propres + dette, moyennés).
+part du résultat distribuée. L'ancienne colonne `return_on_invested_capital` **n'est plus
+publiée** (schéma moteur 9) : la formule de financetoolkit, (RN − dividendes) / (capitaux
+propres + dette), n'est pas un ROIC, et un faux ROIC est pire que pas de ROIC. Pour filtrer sur
+la rentabilité du capital, utiliser `greenblatt_roc` (EBIT / capital investi).
 
 ---
 
@@ -566,9 +568,11 @@ substantial, ≥ 2.45 high** (published cutoffs). It completes the forensic fami
 (manipulation profile), Montier (red-flag count), Dechow (calibrated probability). crible ships
 **Model 1 only** — the financial-statement variant; Models 2–3 add off-balance-sheet and
 market variables (abnormal returns) that keyless data does not carry. Documented proxies:
-RSST's FIN component has no long-term-investments/preferred-stock split (neither is canonical),
-and the issuance dummy mirrors Piotroski's `fillna(0)` stance on `common_stock_issuance`
-(34.6 % populated; Dechow's variable also counts debt issuance).
+RSST = ΔWC + ΔNCO + ΔFIN telescopes to Δ(total_assets − total_liabilities − cash) / average
+total assets, which is what crible computes — the debt split and marketable securities cancel
+out, so their absence no longer nulls F. The issuance dummy reads a parsed cash-flow statement
+without a `common_stock_issuance` line as no issuance (no statement at all stays `NaN`; 34.6 %
+populated; Dechow's variable also counts debt issuance).
 
 **FR** — Dechow, Ge, Larson & Sloan (2011) ont entraîné ce modèle logistique sur les dossiers
 d'exécution AAER de la SEC. F est la probabilité modélisée de manipulation rapportée au taux de
@@ -577,17 +581,16 @@ publiés). Il complète la famille forensique : Beneish (profil de manipulation)
 (compteur de drapeaux), Dechow (probabilité calibrée). crible ne publie que le **Model 1** — la
 variante purement comptable ; les Models 2–3 ajoutent du hors-bilan et des variables de marché
 absentes des données keyless. Écarts documentés : la composante FIN du RSST n'a ni
-investissements long terme ni actions de préférence (non canoniques), et le dummy d'émission
-suit la position `fillna(0)` de Piotroski sur `common_stock_issuance` (34,6 % renseigné ; la
-variable de Dechow compte aussi les émissions de dette).
+investissements long terme ni actions de préférence (non canoniques). RSST = ΔWC + ΔNCO + ΔFIN
+se télescope en Δ(actif total − passif total − trésorerie) / actif moyen, ce que calcule crible :
+la ventilation de la dette et les titres de placement s'annulent, leur absence n'annule plus F.
+Le dummy d'émission lit un tableau de flux parsé sans ligne `common_stock_issuance` comme une
+absence d'émission (sans tableau du tout : `NaN` ; 34,6 % renseigné ; la variable de Dechow
+compte aussi les émissions de dette).
 
 > **Caveat · Nuance** — `ch_cs` needs two consecutive cash-sales figures, so a company's first
-> TWO periods never carry an F. `marketable_securities` is yfinance-only today — audited-only
-> symbols keep `dechow_f` NaN until the EDGAR concept map gains a short-term-investments entry
-> (named fast-follow). · `ch_cs` exige deux chiffres consécutifs de ventes cash : les deux
-> premières périodes d'une société ne portent jamais de F. `marketable_securities` n'existe
-> aujourd'hui que via yfinance — les titres audité-seulement gardent `dechow_f` NaN tant que le
-> mapping EDGAR n'a pas d'entrée short-term-investments (suite nommée).
+> TWO periods never carry an F. · `ch_cs` exige deux chiffres consécutifs de ventes cash : les
+> deux premières périodes d'une société ne portent jamais de F.
 
 ---
 
@@ -652,11 +655,96 @@ serait pire qu'un taux manquant).
 
 ---
 
+## 21. Engine conventions (schema 9) · Conventions du moteur (schéma 9)
+
+**EN** — Rules every column above follows since engine schema 9 (a full recompute ships them):
+
+- **Prior year means a fiscal year back.** Every year-over-year growth (`*_growth`), delta
+  (Piotroski, Beneish, Montier, Dechow, Ohlson, Mohanram) and opening/closing average compares
+  with the period ending **300–430 days** earlier (a bare-year label like `2024` reads as
+  2024-12-31). Across a gap — FSDS history ending in 2018 next to a crawl starting in 2021 — the
+  comparison is `NaN`, never a three-year jump presented as one year. The 3-year CAGR needs a
+  base ending 900–1290 days earlier.
+- **Growth needs a positive base.** `*_growth = (x − prior) / prior`, `NaN` when the prior is
+  ≤ 0: −10 → +5 is not a « −150 % » decline. Outflows reported negative (capex, dividends) grow
+  by their magnitude.
+- **No multiple over a non-positive denominator.** P/E (EPS ≤ 0), P/B, ROE, debt/equity and the
+  equity multiplier (equity ≤ 0), price/cash-flow and EV/OCF (OCF ≤ 0), price/FCF (FCF ≤ 0),
+  EV/EBIT and EV/EBITDA (≤ 0) are `NaN` — a loss-maker with negative equity no longer passes
+  `classic-value` or `quality`. `earnings_yield` keeps its sign: a loss is a negative yield that
+  ranks the company last on value. ±∞ never reaches the snapshot.
+- **Piotroski F is in-house**: each of the nine criteria is `NULL` when an input or the prior
+  year is missing (so the first period has no score), and `piotroski_f` is `NULL` unless all
+  nine are decidable. Accruals test `operating_cashflow > net_income` on the same base.
+- **Market cap uses the period-end share count** (`shares_outstanding_end`: `OrdinarySharesNumber`
+  / EDGAR `CommonStockSharesOutstanding`, the weighted average as a per-period fallback), and so
+  do EV, P/B, Graham's BVPS, NCAV/market cap and the shareholder-yield buyback term. EPS stays on
+  the weighted average.
+- **Price in the statements' currency.** When a source records the reporting currency (ESEF
+  `_currency`; the crawl's Yahoo `financialCurrency` — ArcelorMittal files in USD and quotes in
+  EUR, BREN.JK files in USD and quotes in IDR) the price is converted before any multiple, with
+  the ECB cross rate; a minor-unit quote (GBp/GBX pence, ZAc, ILA) is always taken to its major
+  unit. No rate → the price-based columns are `NaN` (`reporting_currency` records the currency
+  used). Listings crawled before this change carry no currency until their next crawl.
+- **TTM**: the source (audited 10-Q or scraped) whose last quarter is the most recent wins; a
+  window ending more than 200 days before the price date is dropped.
+- **Global peer group**: a listing whose region × sector has fewer than 5 peers is ranked (and
+  gets its Mohanram medians) against **every** latest row, not just the other leftovers.
+  `composite_rank` needs at least two pillars: a momentum-only listing (a SPAC warrant with no
+  fundamentals) no longer tops the default screen.
+- **ESEF**: the owners' share (`…AttributableToOwnersOfParent`) wins over the group total
+  including minorities, matching EDGAR/TWSE/CVM/yfinance.
+
+**FR** — Règles suivies par toutes les colonnes ci-dessus depuis le schéma moteur 9 (un
+recalcul complet les applique) :
+
+- **L'année précédente est un exercice en arrière.** Toute croissance annuelle (`*_growth`),
+  tout delta (Piotroski, Beneish, Montier, Dechow, Ohlson, Mohanram) et toute moyenne
+  ouverture/clôture compare avec la période close **300 à 430 jours** plus tôt (un libellé
+  d'année seul comme `2024` vaut 2024-12-31). En cas de trou — historique FSDS arrêté en 2018 à
+  côté d'un crawl démarrant en 2021 — la comparaison vaut `NaN`, jamais un saut de trois ans
+  présenté comme un an. Le CAGR 3 ans exige une base close 900 à 1290 jours plus tôt.
+- **Une croissance exige une base positive.** `*_growth = (x − précédent) / précédent`, `NaN`
+  quand le précédent est ≤ 0 : −10 → +5 n'est pas une baisse de « −150 % ». Les sorties de
+  trésorerie déclarées négatives (capex, dividendes) croissent en valeur absolue.
+- **Aucun multiple sur un dénominateur non positif.** P/E (BPA ≤ 0), P/B, ROE, dette/capitaux
+  propres et multiplicateur de capitaux propres (capitaux propres ≤ 0), cours/flux et VE/FTO
+  (FTO ≤ 0), cours/FCF (FCF ≤ 0), VE/EBIT et VE/EBITDA (≤ 0) valent `NaN` — une société en perte
+  à capitaux propres négatifs ne passe plus `classic-value` ni `quality`. `earnings_yield` garde
+  son signe : une perte est un rendement négatif qui classe la société dernière en value. ±∞
+  n'atteint jamais le snapshot.
+- **Piotroski F est maison** : chacun des neuf critères vaut `NULL` si une entrée ou l'année
+  précédente manque (la première période n'a donc pas de score), et `piotroski_f` vaut `NULL`
+  tant que les neuf ne sont pas décidables. Le critère accruals teste
+  `operating_cashflow > net_income` sur la même base.
+- **La capitalisation utilise le nombre d'actions de fin de période** (`shares_outstanding_end` :
+  `OrdinarySharesNumber` / EDGAR `CommonStockSharesOutstanding`, la moyenne pondérée en repli par
+  période), de même que la VE, le P/B, le BVPS de Graham, NCAV/capitalisation et le terme rachats
+  du shareholder yield. Le BPA reste sur la moyenne pondérée.
+- **Le prix dans la devise des comptes.** Quand une source enregistre la devise de reporting
+  (`_currency` ESEF ; le `financialCurrency` Yahoo du crawl — ArcelorMittal publie en USD et
+  cote en EUR, BREN.JK publie en USD et cote en IDR), le prix est converti avant tout multiple,
+  au cours croisé BCE ; une cotation en sous-unité (pence GBp/GBX, ZAc, ILA) est toujours
+  ramenée à l'unité. Sans cours, les colonnes dépendant du prix valent `NaN`
+  (`reporting_currency` indique la devise utilisée). Les valeurs crawlées avant ce changement
+  n'ont pas de devise avant leur prochain crawl.
+- **TTM** : la source (10-Q audité ou scrapé) dont le dernier trimestre est le plus récent
+  l'emporte ; une fenêtre close plus de 200 jours avant la date du prix est écartée.
+- **Groupe de pairs global** : une valeur dont le couple région × secteur compte moins de 5
+  pairs est classée (et reçoit ses médianes Mohanram) contre **toutes** les dernières lignes,
+  pas seulement les autres orphelines. `composite_rank` exige au moins deux piliers : une
+  valeur portée par le seul momentum (un warrant de SPAC sans fondamentaux) ne domine plus
+  l'écran par défaut.
+- **ESEF** : la part du groupe (`…AttributableToOwnersOfParent`) l'emporte sur le total incluant
+  les minoritaires, comme EDGAR/TWSE/CVM/yfinance.
+
+---
+
 ## See also · Voir aussi
 
 The three headline scores that predate this set are documented in the code and the main README:
 
-- **Piotroski F** (`piotroski_f`, 0–9) — nine-point fundamental strength score.
+- **Piotroski F** (`piotroski_f`, 0–9) — nine-point fundamental strength score (section 21).
 - **Altman Z** (`altman_z`) — the classic five-ratio bankruptcy Z-Score.
 - **Beneish M** (`beneish_m`) — eight-variable earnings-manipulation model (`> −1.78` flags risk).
 

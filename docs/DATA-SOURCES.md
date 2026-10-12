@@ -139,11 +139,22 @@ free full-history DUMPS do. Under ADR-0007 (decision 2026-07-13), crible now
 publishes the price **series** from these dumps too, an explicitly assumed
 redistribution risk — neither dump carries an open license. `crible
 import-prices` writes two artifacts per source: the windowed OHLCV series
-(last ~400 days) into `data/prices/<source>.parquet`, exported to the site as
+(last ~400 days) into `data/prices/<source>.parquet` (Stooq: one
+`stooq-<market>.parquet` per market, so the weekly market rotation
+accumulates instead of overwriting), exported to the site as
 `site-data/prices-*.parquet`; and the per-symbol distillate (last close,
 as-of date, trailing 6-month return) into `data/prices-latest.parquet`, which
 the snapshot still consumes as a valuation/momentum fallback when the crawl
-has no bars (staleness stays visible via `price_asof`).
+has no bars (staleness stays visible via `price_asof`). Two sources closing on
+the same date settle by source priority (the dumps before a TradingView
+snapshot).
+
+The company drawer's **live quote** chip is display-only (never a score, a
+rank or the invest signal): it asks Yahoo's public chart endpoint directly,
+then — on the hosted static site only — through the corsproxy.io / allorigins
+mirrors, which see every ticker looked up. A self-hosted API build keeps them
+off unless `VITE_LIVE_QUOTE_PROXY=1` at build time; the chip names the route
+the quote took.
 
 | Dump | Coverage | Access | Freshness | Terms |
 |---|---|---|---|---|

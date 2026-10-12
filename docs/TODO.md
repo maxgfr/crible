@@ -1,6 +1,6 @@
 # crible — TODO
 
-État : v1 zéro clé **publique, testée (227 pytest + 62 vitest), E2E réel validé**.
+État : v1 zéro clé **publique, testée (498 pytest + 206 vitest), E2E réel validé**.
 Sources bulk-first / local-first en place : universe FinanceDatabase, prix bulk
 (HuggingFace US + Stooq worldwide), fondamentaux audités SEC (companyfacts +
 FSDS), ESEF (EU), Companies House (UK), CVM (BR), TWSE (TW), FX BCE (`*_eur`).
@@ -15,26 +15,26 @@ le screener aujourd'hui — c'est de la dette de qualité et des extensions.
   résolu : la règle vit dans `compute/momentum.py` (unique implémentation),
   `ranks.price_return` et les distillats délèguent, et un golden de parité
   (`tests/test_momentum.py`) casse si un chemin diverge.
-- [ ] **Tester `compute_ratios` directement.** Le plus gros producteur de colonnes
-  est câblé par réflexion sous un `except Exception` global (`compute/ratios.py`),
-  sans test direct — un mapping cassé passe en silence. Test de caractérisation.
-  (Entamé : les alias cycle/dividendes ont des vecteurs main-calculés,
-  `tests/test_fr003_compute.py`.)
-- [ ] **Dé-dupliquer `run_loop` / `run_refresh`** (`ingest/service.py`) : l'entrypoint
-  Docker (`# pragma: no cover`) réimplémente la séquence de `run_refresh`. Extraire
-  la logique commune et la tester offline.
-- [ ] **Découper `build_symbol_snapshot`** (`compute/snapshot.py`, ~70 LOC /
-  5 responsabilités) en étapes nommées et testables.
-- [ ] **Casser le cycle d'import type-only de l'UI** (`ui/src/data/duckdb.ts` ↔
-  `static-client.ts`) — inoffensif au runtime, mais à isoler dans un module de types.
-- [ ] **Vectoriser `reconcile`** (`compute/reconcile.py`) : la double boucle `.loc`
-  cellule-par-cellule fera surface à grande échelle.
+- [x] **Tester `compute_ratios` directement.** ~~Câblé par réflexion sans test~~ —
+  résolu : l'ensemble exact des colonnes est figé (`tests/test_fr003_compute.py`),
+  chaque champ de preset est vérifié sur un snapshot réellement calculé
+  (`tests/test_fr009_presets.py`), les fonctions sautées ou qui lèvent sont
+  loguées, et les faux ratios (ROIC & co) sont en denylist.
+- [x] **Dé-dupliquer `run_loop` / `run_refresh`** — résolu : étapes partagées
+  (`sync_universe`, `_stage`, `_self_heal_reference_data`, `_publish_heartbeat`),
+  `run_loop` est un ordonnanceur sur une table de tâches, testé hors ligne
+  (`tests/test_loop.py`), sans `pragma: no cover`.
+- [x] **Découper `build_symbol_snapshot`** — résolu : `_merge_audited`,
+  `_resolve_price`, `_period_blocks`, `_overlay_latest`, `_provenance`.
+- [x] **Casser le cycle d'import type-only de l'UI** — résolu : `QueryRunner` vit
+  dans `ui/src/data/types.ts`.
+- [x] **Vectoriser `reconcile`** — résolu : version alignée, sortie identique à la
+  boucle d'origine (test de propriété, `tests/test_reconcile.py`).
 
 ## P2 — Robustesse / passage à l'échelle
 
-- [ ] **Refresh périodique de l'univers.** FinanceDatabase n'est chargé qu'au premier
-  boot ; `delisted` et nouvelles cotations ne bougent jamais. Ajouter un
-  `refresh_universe` hebdo dans la boucle (l'upsert idempotent existe déjà, FR-001).
+- [x] **Refresh périodique de l'univers.** — résolu : tâche hebdo de la boucle via
+  `sync_universe`, qui réexporte aussi `universe.parquet` pour tous les lecteurs.
 - [ ] **Query builder : round-trip texte → builder** (aujourd'hui volontairement
   one-way, le DSL reste le langage unique) et un knob de slimming régional de
   l'univers dans `export-site` si le payload publié grossit un jour.
