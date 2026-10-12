@@ -84,12 +84,17 @@ MINOR_UNITS = {
 def price_factor(quote: str | None, reporting: str | None, rates: dict[str, float] | None) -> float | None:
     """Multiplier taking a price quoted in ``quote`` into the ``reporting``
     currency the statements are in (pence → pounds, EUR → USD via the ECB
-    cross rate). 1.0 when the reporting currency is unknown (nothing to
-    detect); None when a conversion is needed and no rate exists — a
-    mixed-currency multiple is worse than none."""
-    if not quote or not reporting:
+    cross rate). With the reporting currency unknown, a minor-unit quote is
+    taken to its major unit and anything else is left as is; None when a
+    conversion is needed and no rate exists — a mixed-currency multiple is
+    worse than none."""
+    if not quote:
         return 1.0
     major, minor = MINOR_UNITS.get(quote, (quote, 1))
+    if not reporting:
+        # unknown statements' currency: a minor-unit quote (GBp) still files
+        # in its major unit far more often than not — 100× off is never right
+        return 1.0 / minor
     if major == reporting:
         return 1.0 / minor
     if not rates:

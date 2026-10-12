@@ -7,7 +7,7 @@ source, no API key. The blend is deliberately small and published:
 - quality  = mean pct(piotroski_f ↑, altman_z ↑)
 - value    = mean pct(earnings_yield ↑, price_to_book_ratio ↓)
 - momentum = pct(return_6m ↑)
-- composite = mean of the AVAILABLE pillar ranks
+- composite = mean of the AVAILABLE pillar ranks, NULL with fewer than two
 
 Peer group is region×sector when it holds at least ``MIN_PEERS`` latest rows,
 otherwise the whole snapshot — every latest row, not just the leftovers
@@ -23,6 +23,7 @@ from __future__ import annotations
 import pandas as pd
 
 MIN_PEERS = 5
+MIN_COMPOSITE_PILLARS = 2
 
 # input column → +1 (higher is better) or -1 (lower is better)
 PILLARS: dict[str, dict[str, int]] = {
@@ -84,7 +85,10 @@ def _rank_group(group: pd.DataFrame) -> pd.DataFrame:
     out = pd.DataFrame(index=group.index)
     for pillar, inputs in PILLARS.items():
         out[f"{pillar}_rank"] = _blend(group, inputs)
-    out["composite_rank"] = out[[f"{p}_rank" for p in PILLARS]].mean(axis=1)
+    # a composite needs at least TWO pillars: one strong momentum print alone
+    # (a SPAC warrant with no fundamentals) must not top the default screen
+    pillars = out[[f"{p}_rank" for p in PILLARS]]
+    out["composite_rank"] = pillars.mean(axis=1).where(pillars.notna().sum(axis=1) >= MIN_COMPOSITE_PILLARS)
     out["magic_formula_rank"] = _blend(group, MAGIC_INPUTS)
     # vectorised "quality,momentum"-style labels (a per-row .loc loop cost
     # seconds at 160k rows)

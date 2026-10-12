@@ -1,0 +1,6 @@
+{
+  "comment": "DuckDB core version bundled by @duckdb/duckdb-wasm (package.json) and the extensions the static build self-hosts — bump together (a test checks the wasm binary carries this version).",
+  "duckdb": "v1.4.3",
+  "platform": "wasm_eh",
+  "extensions": ["parquet"]
+}

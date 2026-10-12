@@ -822,3 +822,23 @@ def test_fr016_the_ticker_directory_is_mirrored_daily(tmp_path) -> None:
     assert client.company_tickers() == {"AAPL": 320193}
     assert client.company_tickers() == {"AAPL": 320193}
     assert http.calls == 1
+
+
+def test_fr016_a_refused_user_agent_falls_back_to_the_ticker_mirror() -> None:
+    """www.sec.gov 403s the default User-Agent (no contact address): EDGAR
+    was dead out of the box. The same directory is read from the mirror."""
+    import httpx
+
+    seen: list[str] = []
+
+    class Http:
+        def get(self, url, headers=None):
+            seen.append(url)
+            request = httpx.Request("GET", url)
+            if "sec.gov" in url:
+                return httpx.Response(403, request=request)
+            return httpx.Response(200, request=request, json={"0": {"ticker": "AAPL", "cik_str": 320193}})
+
+    client = EdgarClient(http=Http(), user_agent="crible-screener")
+    assert client.company_tickers() == {"AAPL": 320193}
+    assert "huggingface.co" in seen[-1]

@@ -633,7 +633,13 @@ def _make_crawler(con: duckdb.DuckDBPyConnection, provider=None, budget=None) ->
     )
 
 
-def run_once(limit: int = 50, budget=None, provider=None, symbols: list[str] | None = None) -> CrawlOutcome:
+def run_once(
+    limit: int = 50,
+    budget=None,
+    provider=None,
+    symbols: list[str] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> CrawlOutcome:
     """One crawl cycle — or, with ``symbols``, a targeted crawl of exactly
     that set (in order), bypassing the queue's priority/due-ness. The budget
     is still charged per fetch: targeting never busts the hourly cap."""
@@ -646,6 +652,7 @@ def run_once(limit: int = 50, budget=None, provider=None, symbols: list[str] | N
     con = _connect()
     try:
         crawler = _make_crawler(con, provider=provider, budget=budget)
+        crawler.should_stop = should_stop
         if symbols:
             outcome = CrawlOutcome()
             for symbol in symbols:
@@ -1042,37 +1049,99 @@ def run_loop(
     last_compute = float("-inf")
     statuses: dict = {}
     tick = 0
-    while max_ticks is None or tick < max_ticks:
-        tick += 1
-        requested = _serve_fetch_requests(data, budget, provider)
-        if requested:
-            # compute right away: the user's drawer fills within minutes, not
-            # after a whole budget-bound crawl cycle and the periodic tasks
-            _stage({}, "compute", run_compute)
-            last_compute = clock()
-        # first boot: crawl exactly the bootstrap sample, then publish
-        # immediately — a first screen must return rows within hours (FR-008)
-        limit = max(10, len(bootstrap_sample())) if first_cycle else cycle_limit
-        first_cycle = False
-        crawl: dict = {}
-        _stage(crawl, "crawl", run_once, limit=limit, budget=budget, provider=provider)
-        outcome = crawl["crawl"] if isinstance(crawl["crawl"], CrawlOutcome) else CrawlOutcome()
+    stop = _StopFlag.install()
+    try:
+        while (max_ticks is None or tick < max_ticks) and not stop.requested:
+            tick += 1
+            requested = _serve_fetch_requests(data, budget, provider)
+            if requested:
+                # compute right away: the user's drawer fills within minutes, not
+                # after a whole budget-bound crawl cycle and the periodic tasks
+                _stage({}, "compute", run_compute)
+                last_compute = clock()
+            # first boot: crawl exactly the bootstrap sample, then publish
+            # immediately — a first screen must return rows within hours (FR-008)
+            limit = max(10, len(bootstrap_sample())) if first_cycle else cycle_limit
+            first_cycle = False
+            # never more symbols than the budget affords RIGHT NOW: a cycle that
+            # waits on the token bucket starves compute, enrichment, the heartbeat
+            # and on-demand requests for up to an hour (40 × 8 > a 120/h budget)
+            cost = max(1, int(getattr(provider, "requests_per_fetch", 1)))
+            limit = min(limit, (budget.capacity - budget.used_in_window()) // cost)
+            crawl: dict = {"crawl": CrawlOutcome()}
+            if limit > 0:
+                _stage(
+                    crawl,
+                    "crawl",
+                    run_once,
+                    limit=limit,
+                    budget=budget,
+                    provider=provider,
+                    should_stop=lambda: stop.requested is not None,
+                )
+            outcome = crawl["crawl"] if isinstance(crawl["crawl"], CrawlOutcome) else CrawlOutcome()
+            if stop.requested:
+                break  # between stages: no scheduled task, no compute after a stop
 
-        ran = scheduler.run_due()
-        for name, stage in ran.items():
-            if stage:
-                log.info("loop %s: %s", name, stage)
-        statuses.update(_provider_statuses({**ran, **crawl}, provider.id, outcome.aborted))
+            ran = scheduler.run_due()
+            for name, stage in ran.items():
+                if stage:
+                    log.info("loop %s: %s", name, stage)
+            statuses.update(_provider_statuses({**ran, **crawl}, provider.id, outcome.aborted))
 
-        now = clock()
-        if outcome.fetched or now - last_compute >= compute_every_seconds:
-            _stage(ran, "compute", run_compute)
-            last_compute = now
-            _publish_heartbeat(
-                data,
-                budget,
-                providers=statuses,
-                last_cycle={"fetched": len(outcome.fetched), "failed": len(outcome.failed)},
-            )
-        if not outcome.fetched and not outcome.failed:
-            sleep(60)  # queue empty or nothing due — idle politely
+            now = clock()
+            if not stop.requested and (outcome.fetched or now - last_compute >= compute_every_seconds):
+                _stage(ran, "compute", run_compute)
+                last_compute = now
+                _publish_heartbeat(
+                    data,
+                    budget,
+                    providers=statuses,
+                    last_cycle={"fetched": len(outcome.fetched), "failed": len(outcome.failed)},
+                )
+            if not outcome.fetched and not outcome.failed:
+                # queue empty or nothing due — idle politely, in 1 s steps so a
+                # stop signal is honoured within the container's grace period
+                for _ in range(60):
+                    if stop.requested:
+                        break
+                    sleep(1)
+    finally:
+        # a stop (or Ctrl+C) never loses the rolling budget window: a restart
+        # must not double-spend the hour
+        save_bucket(budget, budget_state)
+        stop.restore()
+    if stop.requested:
+        log.info("ingest loop stopped on %s", stop.requested)
+
+
+class _StopFlag:
+    """SIGTERM ends the loop after the current symbol/stage instead of
+    killing it mid-write (PID 1 in a container ignores SIGTERM by default,
+    so `docker compose stop` used to SIGKILL it). Ctrl+C keeps its default
+    KeyboardInterrupt — the loop's finally still saves the budget."""
+
+    def __init__(self) -> None:
+        self.requested: str | None = None
+        self._previous: dict = {}
+
+    @classmethod
+    def install(cls) -> _StopFlag:
+        import signal
+        import threading
+
+        flag = cls()
+        if threading.current_thread() is threading.main_thread():
+            flag._previous[signal.SIGTERM] = signal.signal(signal.SIGTERM, flag._handle)
+        return flag
+
+    def _handle(self, signum, frame) -> None:  # noqa: ARG002 — signal API
+        import signal
+
+        self.requested = signal.Signals(signum).name
+
+    def restore(self) -> None:
+        import signal
+
+        for sig, handler in self._previous.items():
+            signal.signal(sig, handler)

@@ -1292,3 +1292,33 @@ def test_fr010_the_esef_cycles_parse_gleif_down_to_european_prefixes(tmp_path, m
     )
     run_esef_cycle(limit=0)
     assert seen["p"] is not None and "NL" in seen["p"] and "US" not in seen["p"]
+
+
+def test_fr010_cycle_fetches_once_per_filer_and_trusts_the_shipped_raw(tmp_path, monkeypatch) -> None:
+    """Two listings of one LEI → ONE filings_for_lei call (15,851 tasks for
+    4,617 LEIs were refetched per listing); a listing whose esef raw shipped
+    with the dataset is not due after a bootstrap."""
+    from crible.ingest.service import run_esef_cycle
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+    calls: list[str] = []
+
+    class Client:
+        def filings_for_lei(self, lei):
+            calls.append(lei)
+            return [{"attributes": {"json_url": "/x.json"}}]
+
+        def fetch_xbrl_json(self, filing):
+            return XBRL_JSON
+
+    # ABN.AS and AIR.PA share one filer; a third listing's raw already shipped
+    mapping = {"NL0011540547": "LEI-SHARED", "NL0000235190": "LEI-SHARED"}
+    outcome = run_esef_cycle(limit=10, client=Client(), mapping=mapping, history=1)
+    assert calls == ["LEI-SHARED"]
+    assert sorted(outcome["enriched"]) == ["ABN.AS", "AIR.PA"]
+
+    (tmp_path / "crible.duckdb").unlink()  # the bootstrap: fresh DB, restored raw
+    _seed_sweep_universe(tmp_path, monkeypatch)
+    calls.clear()
+    run_esef_cycle(limit=10, client=Client(), mapping=mapping, history=1)
+    assert calls == []

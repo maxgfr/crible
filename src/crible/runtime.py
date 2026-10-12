@@ -167,13 +167,15 @@ class Runtime:
         needle = q.strip()
         if not needle or not self.universe_path().exists():
             return []
+        # the needle is a literal substring: LIKE's own % and _ are escaped
+        pattern = "%" + needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
         con = duckdb.connect()
         try:
             rows = con.execute(
                 "SELECT symbol, name, country, sector FROM read_parquet(?)"
-                " WHERE symbol ILIKE ? OR name ILIKE ?"
+                " WHERE symbol ILIKE ? ESCAPE '\\' OR name ILIKE ? ESCAPE '\\'"
                 " ORDER BY symbol LIMIT ?",
-                [self.universe_path().as_posix(), f"%{needle}%", f"%{needle}%", limit],
+                [self.universe_path().as_posix(), pattern, pattern, limit],
             ).fetchall()
         finally:
             con.close()

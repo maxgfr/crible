@@ -185,3 +185,17 @@ def test_cli_dispatch_and_heartbeat(tmp_path, monkeypatch) -> None:
     status = json.loads((tmp_path / "status.json").read_text())
     assert status["imports"]["tradingview"]["countries_ok"] == 1
     assert status["imports"]["tradingview"]["symbols"] == 1
+
+
+def test_price_asof_is_the_last_closed_session() -> None:
+    """The nightly runs ~02:40 UTC Monday: its closes are Friday's, not
+    Monday's (the live quote never triggered, freshness was inflated)."""
+    from datetime import datetime, timezone
+
+    from crible.ingest.tradingview import _price_asof
+
+    assert _price_asof(datetime(2026, 10, 12, 2, 41, tzinfo=timezone.utc)) == "2026-10-09"  # Monday night
+    assert (
+        _price_asof(datetime(2026, 10, 13, 22, 0, tzinfo=timezone.utc)) == "2026-10-13"
+    )  # Tuesday, all closed
+    assert _price_asof(datetime(2026, 10, 11, 23, 0, tzinfo=timezone.utc)) == "2026-10-09"  # Sunday

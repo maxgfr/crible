@@ -373,7 +373,7 @@ def test_defeatbeta_gate_ignores_other_dumps(tmp_path, monkeypatch) -> None:
     hf_shard = tmp_path / "hf.parquet"
     frame = pd.read_parquet(_prices_table(tmp_path, name="src.parquet"))
     frame.assign(date=frame["report_date"], adj_close=frame["close"]).to_parquet(hf_shard, index=False)
-    monkeypatch.setattr("crible.ingest.price_import.HF_SHARDS", [str(hf_shard)])
+    monkeypatch.setattr("crible.ingest.price_import.hf_shards", lambda: [str(hf_shard)])
     monkeypatch.setattr("crible.ingest.defeatbeta.DB_TABLES", _tables(tmp_path))
 
     assert runner.invoke(app, ["import-prices", "huggingface"]).exit_code == 0

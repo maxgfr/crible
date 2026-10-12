@@ -245,3 +245,14 @@ def test_fr015_global_fallback_ranks_against_the_whole_snapshot() -> None:
     assert row["momentum_rank"] == pytest.approx(100 / 7)
     # the region×sector peers keep their own within-group percentiles
     assert ranked.loc["C5.PA", "composite_rank"] == pytest.approx(100.0)
+
+
+def test_fr015_composite_needs_two_pillars() -> None:
+    """A momentum-only listing (a SPAC warrant, no fundamentals) used to
+    score composite 100 and top the default screen."""
+    frame = latest_frame()
+    frame.loc[0, ["piotroski_f", "altman_z", "earnings_yield", "price_to_book_ratio"]] = float("nan")
+    ranked = attach_ranks(frame).set_index("symbol")
+    assert pd.notna(ranked.loc["C0.PA", "momentum_rank"])
+    assert pd.isna(ranked.loc["C0.PA", "composite_rank"])
+    assert ranked.drop(index="C0.PA")["composite_rank"].notna().all()

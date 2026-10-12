@@ -183,3 +183,27 @@ def test_bootstrap_cli_surfaces_errors(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr("crible.bootstrap.bootstrap_data", failing_bootstrap)
     result = CliRunner().invoke(app, ["bootstrap"])
     assert result.exit_code == 1
+
+
+def test_bootstrap_keeps_the_archived_mtimes(tmp_path) -> None:
+    """Extraction-time mtimes made prices-latest look newer than the base
+    cache: the first compute after a bootstrap rebuilt ~100k symbols."""
+    import io
+    import tarfile
+
+    from crible.bootstrap import _extract_data_layer
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as archive:
+        for name, mtime in (
+            ("data/snapshot/base.parquet", 2_000_000_000),
+            ("data/prices-latest.parquet", 1_900_000_000),
+        ):
+            info = tarfile.TarInfo(name)
+            info.size, info.mtime = 4, mtime
+            archive.addfile(info, io.BytesIO(b"PAR1"))
+    buf.seek(0)
+    with tarfile.open(fileobj=buf, mode="r:gz") as archive:
+        _extract_data_layer(archive, tmp_path)
+    assert (tmp_path / "prices-latest.parquet").stat().st_mtime == 1_900_000_000
+    assert (tmp_path / "snapshot" / "base.parquet").stat().st_mtime == 2_000_000_000

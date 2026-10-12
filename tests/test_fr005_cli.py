@@ -244,3 +244,20 @@ def test_fr005_type_mismatch_is_a_clean_error_not_a_traceback(tmp_path, monkeypa
     assert result.exit_code == 1
     assert "text field" in result.output
     assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def test_fr005_screen_json_format_and_unknown_formats(tmp_path, monkeypatch) -> None:
+    import json
+
+    import pandas as pd
+    from typer.testing import CliRunner
+
+    from crible.cli import app
+    from crible.compute.snapshot import publish_snapshot
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    publish_snapshot(pd.DataFrame({"symbol": ["A", "B"], "period": ["2025"] * 2, "x": [1.0, 2.0]}), tmp_path)
+    result = CliRunner().invoke(app, ["screen", "x > 1", "--format", "json"])
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {"total": 1, "rows": [{"symbol": "B", "period": "2025", "x": 2.0}]}
+    assert CliRunner().invoke(app, ["screen", "--format", "xml"]).exit_code == 1

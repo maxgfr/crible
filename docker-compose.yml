@@ -13,6 +13,10 @@ services:
     # explicit `docker compose pull`), so both services always run one image
     pull_policy: never
     command: ["crible", "ingest", "--loop"]
+    # an init as PID 1 forwards SIGTERM; the loop stops between stages and
+    # saves its budget window (it was SIGKILLed mid-write on every stop)
+    init: true
+    stop_grace_period: 1m
     volumes:
       - crible-data:/data
     environment:

@@ -63,12 +63,14 @@ def _resolve_query(query: str | None, preset: str | None) -> str:
 def screen(
     query: str = typer.Argument(None, help="Filter DSL, e.g. \"roe > 15 AND country IN ('FR','DE')\""),
     preset: str = typer.Option(None, "--preset", help="Run a named preset instead of a query"),
-    fmt: str = typer.Option("table", "--format", help="table | csv"),
+    fmt: str = typer.Option("table", "--format", help="table | csv | json"),
     sort: str = typer.Option(None, "--sort", help="e.g. -roe or country,-piotroski_f"),
     limit: int = typer.Option(50, "--limit"),
     offset: int = typer.Option(0, "--offset"),
 ) -> None:
     """Screen the snapshot with the filter DSL."""
+    if fmt not in ("table", "csv", "json"):
+        _fail(f"unknown --format {fmt!r} — table, csv or json")
     dsl = _resolve_query(query, preset)
     try:
         rows, total = Runtime.from_env().screen(dsl, sort=sort, limit=limit, offset=offset)
@@ -78,6 +80,8 @@ def screen(
         _fail(f"invalid query: {exc}")
     if fmt == "csv":
         rows.to_csv(sys.stdout, index=False)
+    elif fmt == "json":
+        typer.echo(json.dumps({"total": total, "rows": json.loads(rows.to_json(orient="records"))}))
     else:
         columns = [
             c
@@ -264,7 +268,10 @@ def import_prices(
     import time
 
     from crible import config
+    import duckdb
+
     from crible.ingest.price_import import (
+        DumpSourceError,
         import_huggingface,
         import_stooq,
         latest_import_age_days,
@@ -280,21 +287,25 @@ def import_prices(
         if age is not None and age < max_age_days:
             typer.echo(f"import is {age:.1f} days old (< {max_age_days:g}) — nothing to do")
             return
-    if source == "huggingface":
-        report = import_huggingface(data)
-    elif source == "defeatbeta":
-        from crible.ingest.defeatbeta import import_defeatbeta
+    try:
+        if source == "huggingface":
+            report = import_huggingface(data)
+        elif source == "defeatbeta":
+            from crible.ingest.defeatbeta import import_defeatbeta
 
-        report = import_defeatbeta(data)
-    elif source == "tradingview":
-        from crible.ingest.tradingview import import_tradingview
+            report = import_defeatbeta(data)
+        elif source == "tradingview":
+            from crible.ingest.tradingview import import_tradingview
 
-        report = import_tradingview(data)
-    else:
-        path = Path(source)
-        if not path.exists():
-            _fail(f"no such archive: {path} — download it manually from stooq.com/db/h/")
-        report = import_stooq(data, path)
+            report = import_tradingview(data)
+        else:
+            path = Path(source)
+            if not path.exists():
+                _fail(f"no such archive: {path} — download it manually from stooq.com/db/h/")
+            report = import_stooq(data, path)
+    except (DumpSourceError, duckdb.Error, OSError) as exc:
+        # an upstream that moved or is down is an operator message, not a traceback
+        _fail(f"{source} import failed: {exc}")
     imports = _heartbeat_section("imports")
     entry = {"symbols": report.imported, "imported_at": time.time()}
     if hasattr(report, "countries_ok"):
@@ -322,9 +333,14 @@ def import_fundamentals(
     from crible import config
     from crible.ingest.defeatbeta import import_defeatbeta_fundamentals
 
+    import duckdb
+
     if source != "defeatbeta":
         _fail("only 'defeatbeta' is supported")
-    report = import_defeatbeta_fundamentals(config.data_dir(), limit=limit or None)
+    try:
+        report = import_defeatbeta_fundamentals(config.data_dir(), limit=limit or None)
+    except (duckdb.Error, OSError) as exc:
+        _fail(f"{source} import failed: {exc}")
     typer.echo(
         f"imported statements for {report.imported} gap symbols from {report.source}"
         " — run `crible compute` to refresh ratios"

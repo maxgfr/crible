@@ -321,8 +321,9 @@ def _listing_currencies(data_dir: Path | str) -> dict[str, str]:
 
 
 def _reporting_currency(audited: dict[tuple[str, str], pd.DataFrame]) -> str | None:
-    """The statements' currency when an audited source records it (ESEF's
-    ``_currency``) — None when no source says, and nothing is converted."""
+    """The statements' currency when a source records it (ESEF's and the
+    crawl's ``_currency``) — None when no source says, and nothing is
+    converted."""
     for key in (("income", "annual"), ("balance", "annual"), ("cashflow", "annual")):
         frame = audited.get(key)
         if frame is not None and "_currency" in frame.columns:
@@ -411,7 +412,11 @@ def build_symbol_rows(
             audited_frames=audited or None,
             price_quote=(quote["close"], quote["price_asof"]) if quote else None,
             quote_features=quote,
-            currency=(quote_currencies.get(symbol), _reporting_currency(audited), rates),
+            currency=(
+                quote_currencies.get(symbol),
+                _reporting_currency(audited) or _reporting_currency(scraped),
+                rates,
+            ),
         )
         if not part.empty:
             parts.append(part)

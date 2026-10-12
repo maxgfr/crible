@@ -75,6 +75,8 @@ class Crawler:
         self.deadline = deadline
         self.stopped: str | None = None
         self._consecutive_limits = 0
+        # an external stop request (the loop's SIGTERM), checked per symbol
+        self.should_stop: Callable[[], bool] | None = None
 
     def _sleep_within_deadline(self, seconds: float) -> None:
         if self.deadline is not None and self.now() + seconds > self.deadline:
@@ -199,6 +201,8 @@ class Crawler:
         for symbol in self.queue.next_batch(self.now(), limit):
             if self.deadline is not None and self.now() >= self.deadline:
                 self.stopped = "deadline"
+            if self.should_stop is not None and self.should_stop():
+                self.stopped = "stop requested"
             if self.stopped is None and self.crawl_symbol(symbol):
                 outcome.fetched.append(symbol)
             elif self.stopped is None:

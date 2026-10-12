@@ -18,6 +18,23 @@ function sqlString(text: string): string {
   return `'${text.replaceAll("'", "''")}'`;
 }
 
+interface Queryable {
+  query(sql: string): Promise<unknown>;
+}
+
+/** The parquet extension from the site itself (the build self-hosts it,
+ * vite.config.ts), falling back to DuckDB's own host — a dev server or a
+ * build without the copy still works. */
+async function loadParquet(conn: Queryable, repository: string): Promise<void> {
+  try {
+    await conn.query(`SET custom_extension_repository = ${sqlString(repository)}`);
+    await conn.query("LOAD parquet");
+  } catch {
+    await conn.query("RESET custom_extension_repository");
+    await conn.query("LOAD parquet");
+  }
+}
+
 export async function createDuckDbRunner(
   base: string,
   priceShards: string[] = [],
@@ -39,6 +56,7 @@ export async function createDuckDbRunner(
     }
 
     const conn = await db.connect();
+    await loadParquet(conn, new URL(`${base}duckdb-ext`, document.baseURI).href);
     await conn.query("CREATE VIEW universe AS SELECT * FROM read_parquet('universe.parquet')");
     await conn.query("CREATE VIEW snapshot_all AS SELECT * FROM read_parquet('snapshot.parquet')");
     await conn.query(`

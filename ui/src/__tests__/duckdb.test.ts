@@ -76,3 +76,23 @@ describe("createDuckDbRunner", () => {
     expect(duckdbSource).not.toMatch(/duckdb-mvp|browser-mvp/);
   });
 });
+
+describe("self-hosted extensions", () => {
+  it("loads parquet from the site's own duckdb-ext folder first", async () => {
+    const { createDuckDbRunner } = await import("../data/duckdb");
+    await createDuckDbRunner("/crible/");
+    const set = state.sql.find((s) => s.startsWith("SET custom_extension_repository"));
+    expect(set).toMatch(/\/crible\/duckdb-ext'$/);
+    expect(state.sql.indexOf("LOAD parquet")).toBeGreaterThan(state.sql.indexOf(set!));
+    expect(state.sql.indexOf("LOAD parquet")).toBeLessThan(
+      state.sql.findIndex((s) => s.includes("read_parquet('snapshot.parquet')")),
+    );
+  });
+
+  it("the pinned extension version is the one the wasm bundle carries", async () => {
+    const { readFileSync } = await import("node:fs");
+    const manifest = JSON.parse(readFileSync("duckdb-extensions.json", "utf8"));
+    const wasm = readFileSync("node_modules/@duckdb/duckdb-wasm/dist/duckdb-eh.wasm");
+    expect(wasm.includes(Buffer.from(manifest.duckdb))).toBe(true);
+  });
+});

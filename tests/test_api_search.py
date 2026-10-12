@@ -53,3 +53,23 @@ def test_search_without_universe_is_empty(tmp_path, monkeypatch) -> None:
     response = TestClient(create_app()).get("/api/search", params={"q": "air"})
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_search_wildcards_are_literal(tmp_path) -> None:
+    """`_` and `%` used to match anything (20 arbitrary listings)."""
+    import pandas as pd
+
+    from crible.runtime import Runtime
+
+    pd.DataFrame(
+        {
+            "symbol": ["BRK-B", "BRKXB", "A_B"],
+            "name": ["Berkshire", "Other", "Under score"],
+            "country": ["US"] * 3,
+            "sector": ["F"] * 3,
+        }
+    ).to_parquet(tmp_path / "universe.parquet")
+    runtime = Runtime(data_dir=tmp_path)
+    assert [r["symbol"] for r in runtime.search("_")] == ["A_B"]
+    assert runtime.search("%") == []
+    assert [r["symbol"] for r in runtime.search("BRK_B")] == []

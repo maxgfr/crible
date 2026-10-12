@@ -20,7 +20,7 @@ import logging
 import random
 import time
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -280,11 +280,20 @@ def _default_fetch(country: str) -> list[dict]:
         return scan_country(country, http)
 
 
-def _price_asof() -> str:
-    """No reliable bar-time field in the scan — the run's UTC date clamped to
-    the previous weekday (a Saturday run must not out-date Friday's dumps;
-    holidays remain a documented ≤1-day imprecision)."""
-    asof = date.today()
+# by this UTC hour every exchange of the census (the Americas last) has closed
+SESSION_CLOSE_UTC_HOUR = 21
+
+
+def _price_asof(now: datetime | None = None) -> str:
+    """No reliable bar-time field in the scan — the newest weekday session
+    that has CLOSED at run time: a run before 21:00 UTC is stamped with the
+    previous weekday (the nightly runs ~02:40 UTC: its closes are the prior
+    session's, never "today"'s), weekends roll back to Friday. Holidays
+    remain a documented ≤1-day imprecision, in the conservative direction."""
+    now = now or datetime.now(timezone.utc)
+    asof = now.date()
+    if now.hour < SESSION_CLOSE_UTC_HOUR:
+        asof -= timedelta(days=1)
     while asof.weekday() >= 5:
         asof -= timedelta(days=1)
     return asof.isoformat()

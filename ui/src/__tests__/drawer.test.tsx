@@ -194,3 +194,16 @@ describe("drawer accessibility", () => {
     expect(rtl.getByTestId("background")).not.toHaveAttribute("inert");
   });
 });
+
+describe("figures currency", () => {
+  it("labels money rows with the reporting currency the engine priced them in", async () => {
+    const { figuresCurrency } = await import("../components/CompanyDrawer");
+    const detail = (reporting: string | null, listing: string) => ({
+      profile: { symbol: "X", currency: listing },
+      periods: [{ period: "2025", reporting_currency: reporting }],
+    }) as never;
+    expect(figuresCurrency(detail("USD", "EUR"))).toBe("USD"); // MT.AS
+    expect(figuresCurrency(detail(null, "GBp"))).toBe("GBP"); // pence quote → pounds
+    expect(figuresCurrency(detail(null, "EUR"))).toBe("EUR");
+  });
+});

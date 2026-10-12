@@ -203,6 +203,20 @@ function listingCurrency(detail: CompanyDetail): string | undefined {
   return undefined;
 }
 
+// minor-unit quotes: the engine prices figures in the major unit
+const MAJOR_UNIT: Record<string, string> = { GBp: "GBP", GBX: "GBP", ZAc: "ZAR", ZAC: "ZAR", ILA: "ILS" };
+
+// the currency the statements, market cap, Graham number and NCAV are in:
+// the reporting currency the engine converted the price into (an ESEF or
+// Yahoo filer reporting in USD while quoted in EUR/IDR), else the listing's
+// major unit — never the pence of a GBp quote
+export function figuresCurrency(detail: CompanyDetail): string | undefined {
+  const reporting = detail.periods[0]?.reporting_currency;
+  if (typeof reporting === "string" && reporting) return reporting;
+  const listing = listingCurrency(detail);
+  return listing ? (MAJOR_UNIT[listing] ?? listing) : undefined;
+}
+
 // the published close's as-of date on the latest period — the live-quote
 // chip's staleness input; null when the snapshot carries no price
 function priceAsof(detail: CompanyDetail): string | null {
@@ -476,9 +490,9 @@ function DrawerSections({ symbol, detail }: { symbol: string; detail: CompanyDet
   const periods = detail.periods;
   const latest = periods[0];
   const sparse = sparsePeriodFlags(periods);
-  const currency = listingCurrency(detail);
-  // money rows carry the listing currency on the LABEL — one mention per row,
-  // never per cell
+  const currency = figuresCurrency(detail);
+  // money rows carry the figures' currency on the LABEL — one mention per
+  // row, never per cell
   const money = (label: string) => (currency ? `${label} (${currency})` : label);
   const latestOnly = [latest];
   const latestLabels = [`latest — ${String(latest.period)}`];
@@ -663,7 +677,7 @@ function DrawerSections({ symbol, detail }: { symbol: string; detail: CompanyDet
                 </>
               )}
               {/* charts LAST — number tables first, every curve after them */}
-              <PriceChart symbol={symbol} currency={currency} />
+              <PriceChart symbol={symbol} currency={listingCurrency(detail)} />
               <h3 id="drawer-trends" tabIndex={-1}>Trends</h3>
               <TrendCharts periods={periods} />
               <h3>Provenance</h3>

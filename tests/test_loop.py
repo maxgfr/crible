@@ -202,3 +202,82 @@ def test_run_loop_computes_right_after_an_on_demand_fetch(loop_env, monkeypatch)
         fetch_universe=fixture_frame,
     )
     assert order[:3] == ["targeted", "compute", "cycle"]
+
+
+def test_run_loop_never_waits_on_the_budget(loop_env, monkeypatch) -> None:
+    """A 3 req/h budget: the tick crawls what it can afford and moves on to
+    compute and the heartbeat — it used to sleep in the token bucket for up
+    to an hour (40 symbols × 8 requests > the budget)."""
+    import time as _time
+
+    data, _ = loop_env
+    monkeypatch.setenv("CRIBLE_BUDGET_PER_HOUR", "3")
+    started = _time.monotonic()
+    run_loop(
+        max_ticks=2,
+        clock=FakeClock().now,
+        sleep=lambda s: None,
+        provider=FakeYfProvider(),
+        price_provider=FakePriceProvider(),
+        fetch_universe=fixture_frame,
+        cycle_limit=40,
+    )
+    assert _time.monotonic() - started < 30
+    heartbeat = json.loads((data / "status.json").read_text())
+    assert heartbeat["requests_last_hour"] <= 3
+    assert (data / "snapshot" / "snapshot.parquet").exists()
+
+
+def test_sigterm_stops_the_loop_and_saves_the_budget(loop_env) -> None:
+    import os
+    import signal
+
+    data, _ = loop_env
+
+    class StopsTheContainer(FakeYfProvider):
+        def fetch_statements(self, symbol):
+            os.kill(os.getpid(), signal.SIGTERM)
+            return super().fetch_statements(symbol)
+
+    run_loop(
+        max_ticks=None,
+        clock=FakeClock().now,
+        sleep=lambda s: None,
+        provider=StopsTheContainer(),
+        price_provider=FakePriceProvider(),
+        fetch_universe=fixture_frame,
+    )
+    state = json.loads((data / "budget-state.json").read_text())
+    assert state["stamps"]  # the window spent before the stop survives it
+    assert signal.getsignal(signal.SIGTERM) is not None
+
+
+def test_a_stop_during_the_crawl_skips_compute_and_the_rest_of_the_cycle(loop_env, monkeypatch) -> None:
+    import os
+    import signal
+
+    import crible.ingest.service as service
+
+    data, calls = loop_env
+    fetched: list[str] = []
+    computes: list[int] = []
+    monkeypatch.setattr(service, "run_compute", lambda: computes.append(1) or 0)
+
+    class StopsOnFirst(FakeYfProvider):
+        def fetch_statements(self, symbol):
+            fetched.append(symbol)
+            if len(fetched) == 1:
+                os.kill(os.getpid(), signal.SIGTERM)
+            return super().fetch_statements(symbol)
+
+    run_loop(
+        max_ticks=None,
+        clock=FakeClock().now,
+        sleep=lambda s: None,
+        provider=StopsOnFirst(),
+        price_provider=FakePriceProvider(),
+        fetch_universe=fixture_frame,
+    )
+    assert len(fetched) == 1  # the cycle stopped at the next symbol
+    assert computes == []  # no compute after the stop
+    assert "esef" not in calls  # no scheduled task either

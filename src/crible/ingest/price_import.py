@@ -40,10 +40,44 @@ log = logging.getLogger("crible.ingest.price_import")
 PRICES_LATEST = "prices-latest.parquet"
 
 HF_DATASET = "paperswithbacktest/Stocks-Daily-Price"
-HF_SHARDS = [
-    f"https://huggingface.co/datasets/{HF_DATASET}/resolve/main/data/train-0000{i}-of-00004.parquet"
-    for i in range(4)
-]
+HF_DATA = f"https://huggingface.co/datasets/{HF_DATASET}/resolve/main/data"
+# the dataset is sharded by MONTH (train-YYYY-MM.parquet, ~780 files since
+# 2026-10 — the old 4-shard layout 404s); the listing names what exists
+HF_TREE = f"https://huggingface.co/api/datasets/{HF_DATASET}/tree/main/data"
+
+
+class DumpSourceError(RuntimeError):
+    """A dump's upstream layout or availability broke — a clean CLI error."""
+
+
+def hf_shards(http=None, today=None) -> list[str]:
+    """The monthly shards covering the series window (the last ~400 days),
+    from the dataset's file listing — only months that actually exist."""
+    import re
+    from datetime import date, timedelta
+
+    today = today or date.today()
+    first = (today - timedelta(days=SERIES_WINDOW_DAYS + 31)).strftime("%Y-%m")
+    owned = http is None
+    if owned:
+        import httpx
+
+        http = httpx.Client(timeout=60, follow_redirects=True)
+    try:
+        response = http.get(HF_TREE)
+        response.raise_for_status()
+        names = [str(entry.get("path", "")).rsplit("/", 1)[-1] for entry in response.json()]
+    except Exception as exc:  # noqa: BLE001 — surfaced as one clean error
+        raise DumpSourceError(f"cannot list {HF_DATASET} shards: {exc}") from exc
+    finally:
+        if owned:
+            http.close()
+    months = sorted(m.group(1) for n in names if (m := re.fullmatch(r"train-(\d{4}-\d{2})\.parquet", n)))
+    shards = [f"{HF_DATA}/train-{month}.parquet" for month in months if month >= first]
+    if not shards:
+        raise DumpSourceError(f"no {HF_DATASET} shard covers the last {SERIES_WINDOW_DAYS} days")
+    return shards
+
 
 # Stooq exchange suffix → the universe's Yahoo-style suffix. Each entry only
 # helps if Stooq ships a bulk STOCK archive for that market AND its tickers
@@ -206,7 +240,7 @@ def import_huggingface(data_dir: Path | str, shards: list[str] | None = None) ->
     One DuckDB pass over the shards (only the series window of bars is read);
     symbols outside the universe are counted and dropped.
     """
-    shards = shards if shards is not None else HF_SHARDS
+    shards = shards if shards is not None else hf_shards()
     known = universe_symbols(data_dir)
     con = duckdb.connect()
     try:

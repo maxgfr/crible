@@ -27,8 +27,9 @@ def _normalise(frame: pd.DataFrame | None) -> pd.DataFrame | None:
 class YFinanceProvider:
     id = "yfinance"
     kind = "keyless"
-    # 3 statement types × 2 freqs + 1 history call — charged against the budget up front
-    requests_per_fetch = 7
+    # 3 statement types × 2 freqs + 1 history call + 1 profile call (the
+    # statements' currency) — charged against the budget up front
+    requests_per_fetch = 8
 
     def enabled(self, env: dict[str, str]) -> bool:
         return True
@@ -63,5 +64,21 @@ class YFinanceProvider:
                 raise RateLimitedError(str(exc)) from exc
             raise
 
-        # 3 statement types × 2 freqs + 1 history call ≈ 7 Yahoo requests
+        # the statements' currency (BREN.JK files in USD, quotes in IDR): the
+        # snapshot prices the company in it. Best effort — an unknown
+        # currency only means no conversion, never a failed fetch
+        currency = _financial_currency(ticker) if statements else None
+        if currency:
+            statements = [
+                StatementPayload(p.statement_type, p.freq, p.frame.assign(_currency=currency))
+                for p in statements
+            ]
         return FetchResult(symbol=symbol, provider=self.id, statements=statements, prices=prices)
+
+
+def _financial_currency(ticker) -> str | None:
+    try:
+        value = (ticker.get_info() or {}).get("financialCurrency")
+    except Exception:  # noqa: BLE001 — optional metadata, see the caller
+        return None
+    return str(value).strip() or None if value else None

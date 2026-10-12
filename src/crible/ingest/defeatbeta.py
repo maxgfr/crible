@@ -31,7 +31,8 @@ from crible.price_series import SERIES_WINDOW_DAYS, write_series
 log = logging.getLogger("crible.ingest.defeatbeta")
 
 DB_DATASET = "defeatbeta/yahoo-finance-data"
-DB_BASE = f"https://huggingface.co/datasets/{DB_DATASET}/resolve/main/data"
+# per-market folders since 2026-10 (data/US, data/HK); the flat data/ 404s
+DB_BASE = f"https://huggingface.co/datasets/{DB_DATASET}/resolve/main/data/US"
 DB_TABLES = {
     "prices": f"{DB_BASE}/stock_prices.parquet",
     "dividends": f"{DB_BASE}/stock_dividend_events.parquet",

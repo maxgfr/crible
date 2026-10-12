@@ -89,6 +89,10 @@ def _extract_data_layer(archive: tarfile.TarFile, dest: Path) -> int:
         target.parent.mkdir(parents=True, exist_ok=True)
         with open(target, "wb") as handle:
             shutil.copyfileobj(payload, handle)
+        # keep the archived mtime: incremental compute compares input files
+        # (prices-latest, universe, FX) with the base's build watermark, and
+        # extraction-time mtimes made the first compute a full rebuild
+        os.utime(target, (member.mtime, member.mtime))
         files += 1
     return files
 

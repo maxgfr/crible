@@ -97,3 +97,12 @@ def test_fetch_rates_mirrors_and_parses_ecb_rates(tmp_path) -> None:
     assert rates["USD"] == 1.08 and rates["GBP"] == 0.85
     # landed in the local mirror so a later run can read it offline
     assert (tmp_path / "mirror" / "fx" / "rates.json").exists()
+
+
+def test_a_pence_quote_is_priced_in_pounds_even_without_a_reporting_currency() -> None:
+    """VOD.L quotes in GBp: a P/E built on a pence price and pound earnings
+    is 100× too high."""
+    from crible.providers.fx import price_factor
+
+    assert price_factor("GBp", None, None) == 0.01
+    assert price_factor("EUR", None, None) == 1.0

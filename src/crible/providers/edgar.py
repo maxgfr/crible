@@ -26,6 +26,12 @@ from crible.ingest.budget import TokenBucket
 log = logging.getLogger("crible.providers.edgar")
 
 COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
+# the same SEC directory, republished in the defeatbeta dataset: www.sec.gov
+# 403s a User-Agent without a contact address (the default one), while
+# data.sec.gov companyfacts still answer it
+COMPANY_TICKERS_MIRROR_URL = (
+    "https://huggingface.co/datasets/defeatbeta/yahoo-finance-data/resolve/main/data/US/company_tickers.json"
+)
 TICKERS_MAX_AGE = 24 * 3600
 COMPANYFACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
 # the whole US market's XBRL facts in one nightly archive (~1.4 GB) — the
@@ -343,28 +349,43 @@ class EdgarClient:
         """{ticker: cik} from the SEC's directory (dash-form tickers). With a
         ``cache_dir`` the directory is mirrored and re-downloaded at most
         daily — the ingest loop asks for it every cycle."""
-        if self._cache_dir is not None:
-            import json
-
-            from crible.ingest.mirror import fetch_if_stale
-
-            mirrored = fetch_if_stale(
-                self._cache_dir,
-                "sec",
-                "company_tickers.json",
-                COMPANY_TICKERS_URL,
-                http=self._http,
-                headers=self._headers,
-                max_age_seconds=TICKERS_MAX_AGE,
+        try:
+            payload = self._tickers_payload(COMPANY_TICKERS_URL, self._headers)
+        except Exception as exc:  # noqa: BLE001 — classify: only a refusal falls back
+            if getattr(getattr(exc, "response", None), "status_code", None) != 403 and "403" not in str(exc):
+                raise
+            log.warning(
+                "SEC refused company_tickers.json for User-Agent %r (set CRIBLE_SEC_USER_AGENT to"
+                " 'name contact@address') — using the defeatbeta mirror of the same directory",
+                self._headers["User-Agent"],
             )
-            payload = json.loads(mirrored.path.read_text())
-        else:
-            payload = self._get_json(COMPANY_TICKERS_URL)
+            payload = self._tickers_payload(COMPANY_TICKERS_MIRROR_URL, {})
         return {
             str(entry["ticker"]).strip().upper(): int(entry["cik_str"])
             for entry in payload.values()
             if entry.get("ticker") and entry.get("cik_str") is not None
         }
+
+    def _tickers_payload(self, url: str, headers: dict) -> dict:
+        if self._cache_dir is None:
+            response = self._http.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        import json
+
+        from crible.ingest.mirror import fetch_if_stale
+
+        name = "company_tickers.json" if url == COMPANY_TICKERS_URL else "company_tickers-mirror.json"
+        mirrored = fetch_if_stale(
+            self._cache_dir,
+            "sec",
+            name,
+            url,
+            http=self._http,
+            headers=headers,
+            max_age_seconds=TICKERS_MAX_AGE,
+        )
+        return json.loads(mirrored.path.read_text())
 
     def companyfacts(self, cik: int) -> dict:
         return self._get_json(COMPANYFACTS_URL.format(cik=int(cik)))

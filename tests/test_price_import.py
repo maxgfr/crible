@@ -177,7 +177,7 @@ def test_import_prices_cli_age_gate(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
     _universe(tmp_path)
     shard = _shard(tmp_path)
-    monkeypatch.setattr("crible.ingest.price_import.HF_SHARDS", [shard])
+    monkeypatch.setattr("crible.ingest.price_import.hf_shards", lambda: [shard])
 
     first = runner.invoke(app, ["import-prices", "huggingface"])
     assert first.exit_code == 0, first.output
@@ -371,3 +371,54 @@ def test_a_same_date_quote_tie_is_settled_by_source_priority(tmp_path) -> None:
     _merge_and_publish(tmp_path, pd.DataFrame([{**row, "close": 10.0, "source": "stooq"}]))
     _merge_and_publish(tmp_path, pd.DataFrame([{**row, "close": 11.0, "source": "tradingview"}]))
     assert load_prices_latest(tmp_path).set_index("symbol").loc["AAPL", "close"] == 10.0
+
+
+def test_hf_shards_follow_the_monthly_layout() -> None:
+    """The dataset moved to train-YYYY-MM.parquet: the window's months are
+    read from the listing (the old 4-shard names 404)."""
+    from datetime import date
+
+    from crible.ingest.price_import import hf_shards
+
+    class Http:
+        def get(self, url):
+            class Response:
+                def raise_for_status(self):
+                    pass
+
+                def json(self):
+                    return [
+                        {"path": f"data/train-{y}-{m:02d}.parquet"}
+                        for y in (2024, 2025, 2026)
+                        for m in range(1, 13)
+                        if (y, m) <= (2026, 9)
+                    ] + [{"path": "data/README.md"}]
+
+            return Response()
+
+    shards = hf_shards(http=Http(), today=date(2026, 10, 12))
+    assert shards[0].endswith("train-2025-08.parquet")
+    assert shards[-1].endswith("train-2026-09.parquet")
+    assert len(shards) == 14
+
+
+def test_a_moved_dump_is_a_clean_cli_error(tmp_path, monkeypatch) -> None:
+    from crible.ingest.price_import import DumpSourceError
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    _universe(tmp_path)
+
+    def moved():
+        raise DumpSourceError("cannot list shards: 404")
+
+    monkeypatch.setattr("crible.ingest.price_import.hf_shards", moved)
+    result = runner.invoke(app, ["import-prices", "huggingface"])
+    assert result.exit_code == 1
+    assert "huggingface import failed" in result.output
+    assert not isinstance(result.exception, DumpSourceError)
+
+
+def test_defeatbeta_reads_the_us_folder() -> None:
+    from crible.ingest.defeatbeta import DB_TABLES
+
+    assert all("/resolve/main/data/US/" in url for url in DB_TABLES.values())

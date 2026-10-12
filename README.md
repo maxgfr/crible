@@ -190,14 +190,15 @@ lives in [`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md).
 
 `composite_rank` (0-100) blends three percentile pillars, each ranked within the
 company's peer group (region×sector when it holds ≥ 5 companies, otherwise the
-whole snapshot — the group is named in `rank_peer_group`):
+whole snapshot, every latest row — the group is named in `rank_peer_group`):
 
 - **quality** = mean pct(`piotroski_f` ↑, `altman_z` ↑)
 - **value** = mean pct(`earnings_yield` ↑, `price_to_book_ratio` ↓)
 - **momentum** = pct(`return_6m` ↑, trailing 6-month price return)
 
 A pillar with any missing input stays **NULL — never imputed** — and the omission
-is recorded in `rank_missing_pillars`; the composite blends the available pillars.
+is recorded in `rank_missing_pillars`; the composite blends the available pillars and
+needs at least two of them (a momentum-only listing has no composite).
 Unlike proprietary StockRanks, every rank decomposes in the company drawer down
 to its component values. Ranks are computed at snapshot build time: after
 upgrading, run `crible compute` (or wait for the next crawl cycle) to get the

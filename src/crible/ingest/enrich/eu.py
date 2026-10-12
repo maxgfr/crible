@@ -182,14 +182,30 @@ def run_esef_cycle(
                 "INSERT INTO esef_tasks (symbol, lei) VALUES (?, ?) ON CONFLICT (symbol) DO NOTHING",
                 [symbol, lei],
             )
+        # a fresh operational DB (after `crible bootstrap`, every CI run) must
+        # not re-download every filing the published raw layer already holds
+        seed_tasks_from_raw(
+            con,
+            data,
+            provider="esef",
+            table="esef_tasks",
+            key_column="lei",
+            keys=resolved,
+            history_column="history_depth",
+        )
         # a filer is due on staleness OR when a deeper backfill is requested
         due = con.execute(
             "SELECT symbol, lei FROM esef_tasks WHERE last_fetched_at IS NULL"
             " OR last_fetched_at < ? OR coalesce(history_depth, 1) < ?"
-            " ORDER BY last_fetched_at NULLS FIRST LIMIT ?",
-            [time.time() - ESEF_REFRESH_SECONDS, history, limit],
+            " ORDER BY last_fetched_at NULLS FIRST, symbol",
+            [time.time() - ESEF_REFRESH_SECONDS, history],
         ).fetchall()
-        if not due:
+        # ONE fetch per filer: every listing sharing its LEI (dual listings,
+        # certificates) gets the same frames — it used to refetch per listing
+        by_lei: dict[str, list[str]] = {}
+        for symbol, lei in due:
+            by_lei.setdefault(lei, []).append(symbol)
+        if not by_lei:
             return outcome
 
         if client is None:
@@ -199,40 +215,38 @@ def run_esef_cycle(
             _created.append(client)
         from crible.providers.esef import fetch_history_frames
 
-        for symbol, lei in due:
+        def stamp(symbols: list[str], fetched_at: float, depth: int | None = None) -> None:
+            for symbol in symbols:
+                con.execute(
+                    "UPDATE esef_tasks SET last_fetched_at = ?, history_depth = coalesce(?, history_depth)"
+                    " WHERE symbol = ?",
+                    [fetched_at, depth, symbol],
+                )
+
+        for lei, symbols in list(by_lei.items())[:limit]:
             try:
                 filings = client.filings_for_lei(lei)
                 if not filings:
-                    con.execute(
-                        "UPDATE esef_tasks SET last_fetched_at = ?, history_depth = ? WHERE symbol = ?",
-                        [time.time(), history, symbol],
-                    )
+                    stamp(symbols, time.time(), history)
                     continue
                 frames = fetch_history_frames(client, filings, history)
                 fetched_at = time.time()
-                depth = _write_history_frames(data, symbol, frames, fetched_at, history)
-                con.execute(
-                    "UPDATE esef_tasks SET last_fetched_at = ?, history_depth = ? WHERE symbol = ?",
-                    [fetched_at, depth, symbol],
-                )
+                for symbol in symbols:
+                    depth = _write_history_frames(data, symbol, frames, fetched_at, history)
+                    stamp([symbol], fetched_at, depth)
                 if frames:
-                    outcome["enriched"].append(symbol)
+                    outcome["enriched"].extend(symbols)
                     log.info(
-                        "esef: enriched %s (%d statement frame(s)) from filing of LEI %s",
-                        symbol,
-                        len(frames),
-                        lei,
+                        "esef: enriched %s (%d statement frame(s)) from LEI %s", symbols, len(frames), lei
                     )
             except Exception as exc:  # noqa: BLE001 — outage: record, resume next cycle
                 if entry_error(exc):
                     # this filer's filing is gone or broken: stamp it, go on
-                    log.warning("esef: skipping %s (LEI %s): %s", symbol, lei, exc)
-                    con.execute(
-                        "UPDATE esef_tasks SET last_fetched_at = ? WHERE symbol = ?", [time.time(), symbol]
-                    )
+                    log.warning("esef: skipping %s (LEI %s): %s", symbols, lei, exc)
+                    stamp(symbols, time.time())
                     continue
-                outcome["outage"] = f"{symbol}: {exc}"
-                log.warning("esef: outage on %s: %s — resuming next cycle", symbol, exc)
+                outcome["outage"] = f"{symbols[0]}: {exc}"
+                log.warning("esef: outage on %s: %s — resuming next cycle", symbols, exc)
                 break
         return outcome
     finally:
