@@ -14,7 +14,9 @@ def run_twse(limit: int = 0, http=None, time_budget_seconds: float | None = None
     store — snapshot endpoints forget history, the raw layer must not), and
     write provider='twse' raw with skip_identical so a no-new-period run
     re-stamps nothing. ``limit <= 0`` is a pure no-op."""
-    outcome: dict = {"enriched": 0, "unmatched": 0, "outage": None, "skipped": None}
+    # enriched = listings whose audited figures are current; written = raw
+    # files actually (re)written this run — the limit counts those
+    outcome: dict = {"enriched": 0, "written": 0, "unmatched": 0, "outage": None, "skipped": None}
     if limit <= 0:
         outcome["skipped"] = "limit 0"
         return outcome
@@ -90,5 +92,6 @@ def run_twse(limit: int = 0, http=None, time_budget_seconds: float | None = None
             )
         )
         outcome["enriched"] += 1
+    outcome["written"] = written
     log.info("twse: enriched %d TW listings (%d codes matched)", outcome["enriched"], len(codes))
     return outcome

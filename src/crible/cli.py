@@ -65,8 +65,8 @@ def screen(
     preset: str = typer.Option(None, "--preset", help="Run a named preset instead of a query"),
     fmt: str = typer.Option("table", "--format", help="table | csv | json"),
     sort: str = typer.Option(None, "--sort", help="e.g. -roe or country,-piotroski_f"),
-    limit: int = typer.Option(50, "--limit"),
-    offset: int = typer.Option(0, "--offset"),
+    limit: int = typer.Option(50, "--limit", min=0, help="Rows to print (0 = count only)"),
+    offset: int = typer.Option(0, "--offset", min=0),
 ) -> None:
     """Screen the snapshot with the filter DSL."""
     if fmt not in ("table", "csv", "json"):
@@ -97,7 +97,8 @@ def screen(
             )
             if c in rows.columns
         ]
-        typer.echo(rows[columns].to_string(index=False) if columns else rows.to_string(index=False))
+        if not rows.empty:  # --limit 0 is a count: no pandas "Empty DataFrame" banner
+            typer.echo(rows[columns].to_string(index=False) if columns else rows.to_string(index=False))
         typer.echo(f"({len(rows)} of {total} matching rows)")
 
 
@@ -158,7 +159,9 @@ def status() -> None:
 # files only crible writes mark a directory as a crible dataset — the guard
 # keeps a mistyped --data-dir from deleting an arbitrary folder (a bare raw/ or
 # snapshot/ folder is too common a name to count)
-_DATASET_MARKERS = ("universe.parquet", "crible.duckdb", "raw/provider=*")
+# a raw layout counts only with a listing in it: an empty raw/provider=x/
+# (one mkdir) was enough to delete a directory full of foreign files
+_DATASET_MARKERS = ("universe.parquet", "crible.duckdb", "raw/provider=*/symbol=*")
 
 
 def _is_dataset(target: Path) -> bool:
@@ -248,6 +251,15 @@ def bootstrap(
     except BootstrapError as exc:
         _fail(str(exc))
     typer.echo(f"bootstrapped {report.files} files from the {report.source} into {config.data_dir()}")
+    # the release carries no reference data: without the ECB rates and the
+    # filers' statement currencies a local compute drops every *_eur column
+    # and prices ADRs in the wrong currency. Best effort, like the loop's
+    from crible.ingest.service import _self_heal_reference_data
+
+    healed = _self_heal_reference_data(config.data_dir(), gleif=False)
+    missing = [name for name, stage in healed.items() if isinstance(stage, dict) and "outage" in stage]
+    if missing:
+        typer.echo(f"warning: reference data unavailable ({', '.join(missing)}) — compute later retries")
     typer.echo('next: crible screen "piotroski_f >= 7" — or docker compose up to keep the data fresh')
 
 

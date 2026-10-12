@@ -49,3 +49,19 @@ def test_inventory_answers_from_one_scan(tmp_path) -> None:
 
 def test_inventory_of_a_missing_raw_layer_is_empty(tmp_path) -> None:
     assert RawInventory.scan(tmp_path).symbols() == set()
+
+
+def test_newest_stamp_is_not_a_scan_per_call() -> None:
+    """Asked once per symbol per compute: a scan of every entry each time
+    was O(N²) — 45 s of a 49 s no-op compute at 27k symbols."""
+    import time
+    from pathlib import Path
+
+    inventory = RawInventory()
+    for i in range(30_000):
+        inventory.entries[("yfinance", f"S{i}")] = {("income", "annual"): (float(i), Path("x"))}
+    started = time.perf_counter()
+    for i in range(30_000):
+        inventory.newest_stamp(f"S{i}")
+    assert time.perf_counter() - started < 1.0
+    assert inventory.newest_stamp("S42") == 42.0 and inventory.newest_stamp("missing") == 0.0

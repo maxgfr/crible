@@ -182,9 +182,11 @@ class Crawler:
                 frame=result.prices,
                 fetched_at=fetched_at,
             )
-        if not result.statements and not priced:
-            # a delisted / empty ticker: the marker carries the crawl stamp
-            # through the published raw layer (the queue DB does not travel)
+        if not result.statements:
+            # a delisted / empty / price-only ticker: the marker carries the
+            # crawl stamp through the published raw layer (the queue DB does
+            # not travel) — a price file alone is not a crawl, so without it
+            # ENB-PFA.TO was re-crawled every night for 0 statements
             statement_type, freq = EMPTY_MARKER
             write_raw_statement(
                 self.data_dir,

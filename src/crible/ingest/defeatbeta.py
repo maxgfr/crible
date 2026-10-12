@@ -183,8 +183,6 @@ def import_defeatbeta_fundamentals(
     ``skip_identical`` keeps incremental compute O(actually-changed)."""
     url = table if table is not None else DB_TABLES["statements"]
     gap = symbols if symbols is not None else fundamentals_gap_symbols(data_dir)
-    if limit:
-        gap = gap[:limit]
     if not gap:
         log.info("import-fundamentals: no gap symbols — every listing is already served")
         return ImportReport(source="defeatbeta", imported=0, skipped_unknown=0)
@@ -208,6 +206,12 @@ def import_defeatbeta_fundamentals(
         ).fetchdf()
     finally:
         con.close()
+    if limit:
+        # the first N gap symbols the dump SERVES: the gap is universe-wide and
+        # sorted, the dump US-only — `--limit 20` took 20 .SZ listings and
+        # imported nothing
+        keep = set(sorted(long["symbol"].unique())[:limit])
+        long = long[long["symbol"].isin(keep)]
 
     now = time.time()
     written: set[str] = set()

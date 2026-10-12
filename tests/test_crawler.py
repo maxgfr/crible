@@ -184,3 +184,21 @@ def test_an_empty_symbol_leaves_a_marker_the_restore_reads(tmp_path) -> None:
     assert restore_queue_from_raw(fresh.con, tmp_path) == 1
     last = fresh.con.execute("SELECT last_crawled_at FROM crawl_tasks").fetchone()[0]
     assert last == pytest.approx(clock.t)
+
+
+def test_a_price_only_symbol_leaves_the_marker_too(tmp_path) -> None:
+    """ENB-PFA.TO: Yahoo returns bars but no statements. The price file alone
+    is not a crawl, so without the marker it was re-crawled every night."""
+    from crible.ingest.service import restore_queue_from_raw
+
+    class PricesOnly(_Provider):
+        def fetch_statements(self, symbol):
+            bars = pd.DataFrame({"Date": ["2026-10-09"], "Close": [21.4]})
+            return FetchResult(symbol=symbol, provider=self.id, statements=[], prices=bars)
+
+    clock = _Clock()
+    assert _crawler(tmp_path, _queue(["ENB-PFA.TO"]), PricesOnly(), clock).crawl_symbol("ENB-PFA.TO")
+    fresh = _queue(["ENB-PFA.TO"])
+    assert restore_queue_from_raw(fresh.con, tmp_path) == 1
+    next_due = fresh.con.execute("SELECT next_due FROM crawl_tasks").fetchone()[0]
+    assert next_due > clock.t  # not due again tonight

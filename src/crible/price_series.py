@@ -87,7 +87,10 @@ def _load_yf_series(data_dir: Path | str, symbol: str | None = None) -> pd.DataF
         directories = root.glob("symbol=*")
     else:
         exact = root / f"symbol={symbol.replace('/', '_')}"
-        directories = [exact] if exact.parent == root and exact.is_dir() else []
+        try:
+            directories = [exact] if exact.parent == root and exact.is_dir() else []
+        except OSError:  # a 255-char symbol: ENAMETOOLONG is a miss, not a 500
+            directories = []
     parts = []
     for directory in directories:
         # zero-padded ms stamps make lexical order chronological

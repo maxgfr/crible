@@ -784,9 +784,10 @@ def test_incremental_full_rebuild_on_engine_schema_bump(tmp_path, monkeypatch) -
     assert calls == []
 
 
-def test_incremental_compute_rebuilds_all_when_the_price_distillate_refreshes(tmp_path, monkeypatch) -> None:
-    """F8 — a refreshed prices-latest.parquet changes every symbol's baked-in
-    price_quote, so incremental must rebuild all rows, not serve stale prices."""
+def test_incremental_compute_rebuilds_the_symbols_whose_quote_moved(tmp_path, monkeypatch) -> None:
+    """F8 — a refreshed prices-latest.parquet changes the baked-in price_quote
+    of the symbols it moved: those rebuild (never stale prices), the others
+    don't (a 14-symbol Stooq import used to cost a 36 min full rebuild)."""
     import time
 
     import crible.compute.snapshot as snap
@@ -818,7 +819,36 @@ def test_incremental_compute_rebuilds_all_when_the_price_distillate_refreshes(tm
     ).to_parquet(tmp_path / "prices-latest.parquet", index=False)
 
     snap.publish_incremental(tmp_path)
-    assert calls and sorted(calls[0]) == ["AAA", "BBB"]  # ALL symbols rebuilt, not none
+    assert calls == [["AAA"]]  # the newly quoted symbol, not none, not all
+
+    calls.clear()
+    time.sleep(0.02)
+    pd.DataFrame(
+        {
+            "symbol": ["AAA", "BBB"],
+            "close": [10.0, 5.0],
+            "price_asof": ["2024-12-31"] * 2,
+            "return_6m": [0.1, 0.2],
+        }
+    ).to_parquet(tmp_path / "prices-latest.parquet", index=False)
+    published = snap.publish_incremental(tmp_path)
+    assert calls == [["BBB"]]  # AAA's quote row is unchanged
+    assert published.set_index("symbol").loc["BBB", "return_6m"] == 0.2
+
+    # a base from before the record (no base-quotes.parquet): all rebuild
+    calls.clear()
+    (tmp_path / "snapshot" / "base-quotes.parquet").unlink()
+    time.sleep(0.02)
+    pd.DataFrame(
+        {
+            "symbol": ["AAA", "BBB"],
+            "close": [11.0, 5.0],
+            "price_asof": ["2025-01-02"] * 2,
+            "return_6m": [0.1, 0.2],
+        }
+    ).to_parquet(tmp_path / "prices-latest.parquet", index=False)
+    snap.publish_incremental(tmp_path)
+    assert calls and sorted(calls[0]) == ["AAA", "BBB"]
 
 
 def test_fr003_freshest_price_asof_wins_between_bars_and_quote() -> None:
@@ -1380,6 +1410,29 @@ def test_roic_undefined_on_a_pretax_loss_or_negative_capital() -> None:
     assert compute_extras(canonical)["roic"].isna().all()
 
 
+def test_roic_undefined_when_cash_nearly_cancels_the_capital() -> None:
+    """000858.SZ: cash ≈ equity + debt left a residue of capital and a ROIC
+    of 1,219× (banks likewise) — under a tenth of total assets is no base."""
+    canonical = _new_indicators_canonical()
+    canonical["total_equity"] = 100.0
+    canonical["total_debt"] = 0.0
+    canonical["cash_and_equivalents"] = 99.9
+    canonical["earnings_before_interest_and_taxes"] = 10.0
+    assert compute_extras(canonical)["roic"].isna().all()
+
+
+def test_share_issuance_undefined_across_a_unit_change_or_split() -> None:
+    """A count reported in units one year and thousands the next (1e6 → 1e9)
+    read +99,900 % issuance; a 1:10 reverse split read a 90 % buyback."""
+    canonical = _new_indicators_canonical()
+    canonical["shares_outstanding"] = float("nan")
+    canonical["shares_outstanding_end"] = [1e6, 1e9, 1e9, 1e8, 1.02e8]
+    out = compute_extras(canonical)
+    assert pd.isna(out.loc["2022", "net_share_issuance"])  # ×1000
+    assert pd.isna(out.loc["2024", "net_share_issuance"])  # ÷10
+    assert out.loc["2025", "net_share_issuance"] == pytest.approx(0.02)
+
+
 def test_gross_profitability_share_issuance_and_fcf_consistency() -> None:
     out = compute_extras(_new_indicators_canonical())
     assert out.loc["2025", "gross_profitability"] == pytest.approx(0.34)
@@ -1532,6 +1585,26 @@ def test_warrants_units_and_rights_are_not_companies() -> None:
         "SNOW",
     }
     assert derivative_listings(universe) == {"TNONW", "ACAHU", "ACAHW", "ACAHR"}
+
+
+def test_a_warrant_outside_the_universe_is_not_built(tmp_path) -> None:
+    """DAVEW: the SEC directory maps it to DAVE's CIK, so it has raw
+    statements without being in the universe — P/E 0.07, rank #3."""
+    from crible.compute.snapshot import build_snapshot
+    from crible.ingest.raw import write_raw_statement
+
+    pd.DataFrame({"symbol": ["DAVE"], "currency": ["USD"]}).to_parquet(tmp_path / "universe.parquet")
+    for symbol in ("DAVE", "DAVEW"):
+        write_raw_statement(
+            tmp_path,
+            symbol=symbol,
+            provider="edgar",
+            statement_type="income",
+            freq="annual",
+            frame=pd.DataFrame({"period": ["2025-12-31"], "TotalRevenue": [554e6]}),
+            fetched_at=1000.0,
+        )
+    assert set(build_snapshot(tmp_path)["symbol"]) == {"DAVE"}
 
 
 def test_adrs_are_priced_in_their_statements_currency(tmp_path) -> None:

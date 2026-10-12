@@ -158,13 +158,23 @@ export function QueryBar({ value, onChange, onRun, running, error, inputRef, fie
           {running ? "Running…" : "Screen"}
         </button>
       </div>
-      {error && (
-        <div className="error-banner" role="alert">
-          {error.error}
-          {error.position !== null && <span> (at position {error.position})</span>}
-          {error.hint && <div>hint: {error.hint}</div>}
-        </div>
-      )}
+      {error && <ErrorBanner error={error} />}
+    </div>
+  );
+}
+
+/** The DSL message already carries "at position N" and " — <hint>" for most
+ *  errors (DslError joins them): strip the hint off the message to show it on
+ *  its own line, and add the position only when the message lacks it. */
+function ErrorBanner({ error }: { error: DslErrorDetail }) {
+  const suffix = error.hint ? ` — ${error.hint}` : "";
+  const message = suffix && error.error.endsWith(suffix) ? error.error.slice(0, -suffix.length) : error.error;
+  const positioned = error.position === null || message.includes(`at position ${error.position}`);
+  return (
+    <div className="error-banner" role="alert">
+      {message}
+      {!positioned && <span> (at position {error.position})</span>}
+      {error.hint && <div>hint: {error.hint}</div>}
     </div>
   );
 }

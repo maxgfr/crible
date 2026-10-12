@@ -46,8 +46,10 @@ def screen(query: str = "", sort: str | None = None, limit: int = 50, offset: in
     (capped at 200) starting at `offset`, plus the total match count — page
     with offset += limit while offset < total.
     """
-    limit = max(1, min(int(limit), MAX_LIMIT))
-    offset = max(0, int(offset))
+    if int(limit) < 1 or int(offset) < 0:
+        raise ValueError(f"limit must be ≥ 1 (≤ {MAX_LIMIT}) and offset ≥ 0")
+    limit = min(int(limit), MAX_LIMIT)
+    offset = int(offset)
     try:
         rows, total = _runtime().screen(query, sort=sort, limit=limit, offset=offset)
     except DslError as exc:

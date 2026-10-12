@@ -660,9 +660,10 @@ serait pire qu'un taux manquant).
 
 ---
 
-## 21. Engine conventions (schema 9) · Conventions du moteur (schéma 9)
+## 21. Engine conventions (schema 10) · Conventions du moteur (schéma 10)
 
-**EN** — Rules every column above follows since engine schema 9 (a full recompute ships them):
+**EN** — Rules every column above follows since engine schema 9, completed in 10 (a full
+recompute ships them):
 
 - **Prior year means a fiscal year back.** Every year-over-year growth (`*_growth`), delta
   (Piotroski, Beneish, Montier, Dechow, Ohlson, Mohanram) and opening/closing average compares
@@ -686,7 +687,9 @@ serait pire qu'un taux manquant).
   when the two are more than 2× apart, i.e. in different share units, as Yahoo's BRK-B), and so
   do EV, P/B, Graham's BVPS, NCAV/market cap and the shareholder-yield buyback term. EPS stays on
   the weighted average. London, Johannesburg and Tel Aviv listings in GBP/ZAR/ILS are priced in
-  pence/cents/agorot by every price source and converted accordingly.
+  pence/cents/agorot by every price source and converted accordingly; the crawl records the
+  currency Yahoo actually quotes in, which wins over the listed one (CCEP.L is listed in EUR, the
+  currency it reports in, and trades in pence).
 - **Price in the statements' currency.** When a source records the reporting currency (ESEF
   `_currency`; the crawl's Yahoo `financialCurrency` — ArcelorMittal files in USD and quotes in
   EUR, BREN.JK files in USD and quotes in IDR) the price is converted before any multiple, with
@@ -706,7 +709,8 @@ serait pire qu'un taux manquant).
   stands alone instead of being merged cell by cell. US listings take their statements'
   currency from the SEC directory mirror (TM files in JPY, TSM in TWD, BABA in CNY).
 - **Warrants, units and rights** (a listed US base symbol + W/WS/WT/U/UN/R/RT) get no snapshot
-  row: Yahoo serves them the company's statements, and ratios on their price are noise.
+  row: Yahoo serves them the company's statements, and ratios on their price are noise. The SEC
+  directory maps some to the parent's CIK (DAVEW): EDGAR does not serve them either.
 - **Global peer group**: a listing whose region × sector has fewer than 5 peers is ranked (and
   gets its Mohanram medians) against **every** latest row, not just the other leftovers.
   `composite_rank` needs at least two pillars: a momentum-only listing (a SPAC warrant with no
@@ -714,8 +718,8 @@ serait pire qu'un taux manquant).
 - **ESEF**: the owners' share (`…AttributableToOwnersOfParent`) wins over the group total
   including minorities, matching EDGAR/TWSE/CVM/yfinance.
 
-**FR** — Règles suivies par toutes les colonnes ci-dessus depuis le schéma moteur 9 (un
-recalcul complet les applique) :
+**FR** — Règles suivies par toutes les colonnes ci-dessus depuis le schéma moteur 9, complétées
+en 10 (un recalcul complet les applique) :
 
 - **L'année précédente est un exercice en arrière.** Toute croissance annuelle (`*_growth`),
   tout delta (Piotroski, Beneish, Montier, Dechow, Ohlson, Mohanram) et toute moyenne
@@ -739,7 +743,9 @@ recalcul complet les applique) :
 - **La capitalisation utilise le nombre d'actions de fin de période** (`shares_outstanding_end` :
   `OrdinarySharesNumber` / EDGAR `CommonStockSharesOutstanding`, la moyenne pondérée en repli par
   période), de même que la VE, le P/B, le BVPS de Graham, NCAV/capitalisation et le terme rachats
-  du shareholder yield. Le BPA reste sur la moyenne pondérée.
+  du shareholder yield. Le BPA reste sur la moyenne pondérée. Le crawl enregistre la devise de
+  cotation réelle de Yahoo, qui l'emporte sur la devise listée (CCEP.L est listée en EUR, sa
+  devise de comptes, et cote en pence).
 - **Le prix dans la devise des comptes.** Quand une source enregistre la devise de reporting
   (`_currency` ESEF ; le `financialCurrency` Yahoo du crawl — ArcelorMittal publie en USD et
   cote en EUR, BREN.JK publie en USD et cote en IDR), le prix est converti avant tout multiple,
@@ -762,7 +768,8 @@ recalcul complet les applique) :
   SEC (TM en JPY, TSM en TWD, BABA en CNY).
 - **Warrants, unités et droits** (symbole US coté + W/WS/WT/U/UN/R/RT) n'ont pas de ligne de
   snapshot : Yahoo leur sert les comptes de la société et les ratios sur leur prix sont du
-  bruit.
+  bruit. L'annuaire SEC en rattache certains au CIK de la société (DAVEW) : EDGAR ne les sert
+  pas non plus.
 - **Groupe de pairs global** : une valeur dont le couple région × secteur compte moins de 5
   pairs est classée (et reçoit ses médianes Mohanram) contre **toutes** les dernières lignes,
   pas seulement les autres orphelines. `composite_rank` exige au moins deux piliers : une
@@ -781,19 +788,23 @@ recalcul complet les applique) :
 tax_rate         = income_tax_expense / income_before_tax     (clipped to 0–50 %, NaN on a pretax loss)
 NOPAT            = EBIT × (1 − tax_rate)
 invested_capital = total_equity + total_debt − cash_and_equivalents   (averaged over the year)
-roic             = NOPAT / invested_capital                   (NaN when invested capital ≤ 0)
+roic             = NOPAT / invested_capital                   (NaN when invested capital < 10 % of total assets)
 ```
 
 **EN** — What the operating business earns, after tax, on the capital shareholders and lenders
 put in. Unlike ROE it cannot be inflated by leverage; unlike ROA it ignores idle cash. A
 sustained ROIC above the cost of capital (~8–10 %) is the signature of a moat. The averaged
-capital needs a prior year, so the first period is `NaN`.
+capital needs a prior year, so the first period is `NaN`. Capital under a tenth of total assets
+is no denominator: when cash nearly cancels equity + debt (000858.SZ read 1,219×) or deposits
+sit outside « debt » (banks), the quotient is a rounding residue, not a return.
 
 **FR** — Ce que l'activité gagne, après impôt, sur le capital apporté par les actionnaires et
 les prêteurs. Contrairement au ROE, le levier ne peut pas le gonfler ; contrairement au ROA, la
 trésorerie dormante n'y pèse pas. Un ROIC durablement au-dessus du coût du capital (~8–10 %)
 signe un avantage concurrentiel. Le capital moyen exige l'exercice précédent : la première
-période vaut `NaN`.
+période vaut `NaN`. Un capital inférieur au dixième de l'actif n'est pas un dénominateur :
+quand la trésorerie annule presque capitaux propres + dette (000858.SZ affichait 1 219×) ou que
+les dépôts sortent de la « dette » (banques), le quotient est un résidu d'arrondi.
 
 ---
 
@@ -816,7 +827,8 @@ peu capitalistiques ressortent structurellement plus haut.
 ## 24. Net share issuance — `net_share_issuance`
 
 **Formula** — `shares_outstanding_end / prior-year shares_outstanding_end − 1` (period-end
-count, the weighted average as a fallback; NaN across a calendar gap)
+count, the weighted average as a fallback; NaN across a calendar gap, and when the count
+halves or doubles — a split, a merger or a unit change between filings, not issuance)
 
 **EN** — Positive = the share count grew (dilution: options, acquisitions paid in stock, capital
 raises); negative = net buybacks. Persistent dilution is one of the most reliable negative

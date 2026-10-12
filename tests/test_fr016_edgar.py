@@ -870,3 +870,13 @@ def test_fr016_net_income_falls_back_to_the_common_shareholder_concept() -> None
         facts_to_frames(both)[("income", "annual")].set_index("period").loc["2025-12-31", "NetIncome"]
         == 5.3e9
     )
+
+
+def test_fr016_share_classes_share_a_cik_but_warrants_do_not() -> None:
+    """GOOG/GOOGL both get the filing; DAVEW (a warrant on DAVE's CIK) does
+    not — its price on the parent's statements read a P/E of 0.07."""
+    from crible.ingest.enrich.us import symbols_by_cik
+
+    by_cik = symbols_by_cik({"GOOG": 1652044, "GOOGL": 1652044, "DAVE": 1841408, "DAVEW": 1841408})
+    assert sorted(by_cik[1652044]) == ["GOOG", "GOOGL"]
+    assert by_cik[1841408] == ["DAVE"]

@@ -64,21 +64,31 @@ class YFinanceProvider:
                 raise RateLimitedError(str(exc)) from exc
             raise
 
-        # the statements' currency (BREN.JK files in USD, quotes in IDR): the
-        # snapshot prices the company in it. Best effort — an unknown
-        # currency only means no conversion, never a failed fetch
-        currency = _financial_currency(ticker) if statements else None
+        # the statements' currency (BREN.JK files in USD, quotes in IDR) and
+        # the price's (CCEP.L is listed "EUR" but trades in pence): the
+        # snapshot prices the company in the first from the second. Best
+        # effort — an unknown currency only means no conversion, never a
+        # failed fetch
+        info = _profile(ticker) if statements else {}
+        currency = _text(info.get("financialCurrency"))
         if currency:
             statements = [
                 StatementPayload(p.statement_type, p.freq, p.frame.assign(_currency=currency))
                 for p in statements
             ]
+        quoted_in = _text(info.get("currency"))
+        if quoted_in and prices is not None:
+            prices = prices.assign(_quote_currency=quoted_in)
         return FetchResult(symbol=symbol, provider=self.id, statements=statements, prices=prices)
 
 
-def _financial_currency(ticker) -> str | None:
+def _profile(ticker) -> dict:
     try:
-        value = (ticker.get_info() or {}).get("financialCurrency")
+        info = ticker.get_info()
     except Exception:  # noqa: BLE001 — optional metadata, see the caller
-        return None
-    return str(value).strip() or None if value else None
+        return {}
+    return info if isinstance(info, dict) else {}
+
+
+def _text(value) -> str | None:
+    return (str(value).strip() or None) if value else None

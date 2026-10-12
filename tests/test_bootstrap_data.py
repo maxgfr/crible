@@ -168,10 +168,34 @@ def test_bootstrap_cli_command(tmp_path, monkeypatch) -> None:
     def fake_bootstrap(data_dir, repo=None, http=None, force=False):
         return BootstrapDataReport(source="release", files=3)
 
+    healed: list[str] = []
     monkeypatch.setattr("crible.bootstrap.bootstrap_data", fake_bootstrap)
+    monkeypatch.setattr("crible.ingest.service._heal_fx", lambda data: healed.append("fx") or 30)
+    monkeypatch.setattr(
+        "crible.ingest.service._heal_statement_currencies", lambda data: healed.append("currencies") or "url"
+    )
     result = CliRunner().invoke(app, ["bootstrap"])
     assert result.exit_code == 0, result.output
     assert "3 files from the release" in result.output
+    # the release ships no reference data: a compute right after a bootstrap
+    # dropped every *_eur column and priced ADRs in the wrong currency
+    assert healed == ["fx", "currencies"]
+
+
+def test_bootstrap_cli_survives_a_reference_data_outage(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path / "data"))
+
+    def down(data):
+        raise OSError("ECB unreachable")
+
+    monkeypatch.setattr(
+        "crible.bootstrap.bootstrap_data", lambda *a, **k: BootstrapDataReport(source="release", files=3)
+    )
+    monkeypatch.setattr("crible.ingest.service._heal_fx", down)
+    monkeypatch.setattr("crible.ingest.service._heal_statement_currencies", down)
+    result = CliRunner().invoke(app, ["bootstrap"])
+    assert result.exit_code == 0, result.output
+    assert "reference data unavailable (fx, statement_currencies)" in result.output
 
 
 def test_bootstrap_cli_surfaces_errors(tmp_path, monkeypatch) -> None:

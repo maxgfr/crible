@@ -26,6 +26,12 @@ def _cagr_3y(series: pd.Series) -> pd.Series:
     return growth.where((series > 0) & (base > 0))
 
 
+# invested capital below this share of total assets is no denominator (ROIC)
+MIN_INVESTED_CAPITAL_SHARE = 0.1
+# a year-over-year share-count ratio outside (1/x, x) is not issuance
+MAX_ISSUANCE_FACTOR = 2.0
+
+
 def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> pd.DataFrame:
     c = canonical
     ebit = c["earnings_before_interest_and_taxes"]
@@ -52,20 +58,28 @@ def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
 
     # ROIC = NOPAT / average invested capital. NOPAT taxes EBIT at the
     # effective rate (tax / pretax, clipped to 0–50 %, undefined on a pretax
-    # loss); invested capital = equity + debt − cash. Non-positive capital →
-    # NaN (a negative denominator would read a loss as a return)
+    # loss); invested capital = equity + debt − cash. Capital under a tenth of
+    # total assets → NaN: a negative denominator reads a loss as a return, and
+    # one where cash ≈ equity + debt (000858.SZ: ROIC 1,219×; banks, whose
+    # deposits sit outside "debt") is a rounding residue, not capital
     pretax = c["income_before_tax"]
     tax_rate = (c["income_tax_expense"] / pretax.where(pretax > 0)).clip(0.0, 0.5)
     invested = average(c["total_equity"] + c["total_debt"] - c["cash_and_equivalents"])
-    out["roic"] = ebit * (1 - tax_rate) / invested.where(invested > 0)
+    meaningful = invested >= MIN_INVESTED_CAPITAL_SHARE * average(c["total_assets"])
+    out["roic"] = ebit * (1 - tax_rate) / invested.where((invested > 0) & meaningful)
     # Novy-Marx (2013) gross profitability — the quality factor that survives
     # accounting choices below the gross line
     out["gross_profitability"] = c["gross_profit"] / c["total_assets"].where(c["total_assets"] > 0)
     # net share issuance: the yearly change of the period-end share count —
-    # positive dilutes, negative is a net buyback
+    # positive dilutes, negative is a net buyback. A count that halves or
+    # doubles in a year is a split, a merger or a unit change between filings
+    # (1e6 → 1e9), not a capital-allocation signal → NaN
     shares_end = price_shares(c)
     prior_shares = prior_period(shares_end)
-    out["net_share_issuance"] = (shares_end / prior_shares - 1).where(prior_shares > 0)
+    ratio = shares_end / prior_shares.where(prior_shares > 0)
+    out["net_share_issuance"] = (ratio - 1).where(
+        (ratio > 1 / MAX_ISSUANCE_FACTOR) & (ratio < MAX_ISSUANCE_FACTOR)
+    )
     # earnings-quality consistency: positive-FCF years among the last five
     # reported (at least three needed — never extrapolated)
     fcf = c["free_cash_flow"]

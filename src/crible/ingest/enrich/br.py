@@ -21,7 +21,9 @@ def run_cvm(
     keeps a single newest frame per statement — per-year writes would
     shadow each other), and write provider='cvm' raw for every mapped
     ``.SA`` listing. ``limit <= 0`` is a pure no-op (the marathon convention)."""
-    outcome: dict = {"enriched": 0, "unmatched": 0, "outage": None, "skipped": None}
+    # enriched = listings whose audited figures are current; written = raw
+    # files actually (re)written this run — the limit counts those
+    outcome: dict = {"enriched": 0, "written": 0, "unmatched": 0, "outage": None, "skipped": None}
     if limit <= 0:
         outcome["skipped"] = "limit 0"
         return outcome
@@ -125,5 +127,6 @@ def run_cvm(
             )
         )
         outcome["enriched"] += 1
+    outcome["written"] = written
     log.info("cvm: enriched %d BR listings over %s", outcome["enriched"], fetched_years)
     return outcome

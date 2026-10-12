@@ -20,10 +20,19 @@ def marked_dir(tmp_path, monkeypatch):
 
 def test_clean_recognises_a_raw_layout_without_universe(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
-    (tmp_path / "raw" / "provider=yfinance").mkdir(parents=True)
+    (tmp_path / "raw" / "provider=yfinance" / "symbol=AAPL").mkdir(parents=True)
     result = runner.invoke(app, ["clean", "--yes"])
     assert result.exit_code == 0, result.output
     assert not tmp_path.exists()
+
+
+def test_clean_refuses_an_empty_provider_folder(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    (tmp_path / "raw" / "provider=x").mkdir(parents=True)
+    (tmp_path / "thesis.tex").write_text("years of work")
+    result = runner.invoke(app, ["clean", "--yes"])
+    assert result.exit_code == 1
+    assert (tmp_path / "thesis.tex").exists()
 
 
 @pytest.mark.parametrize("folder", ["raw", "snapshot"])

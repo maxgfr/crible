@@ -186,3 +186,11 @@ def test_symbol_series_reads_only_its_rows_from_a_dump(tmp_path, monkeypatch) ->
     series = load_symbol_series(tmp_path, "VOD.L")
     assert set(series["symbol"]) == {"VOD.L"} and len(series) == 5
     assert [("symbol", "==", "VOD.L")] in calls
+
+
+def test_an_overlong_symbol_is_a_miss_not_an_error(tmp_path) -> None:
+    """/api/prices/<255 chars> was the recette's only 500 (ENAMETOOLONG)."""
+    from crible.price_series import load_symbol_series
+
+    (tmp_path / "raw" / "provider=yfinance").mkdir(parents=True)
+    assert load_symbol_series(tmp_path, "a" * 300).empty

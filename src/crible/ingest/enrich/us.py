@@ -19,10 +19,17 @@ from crible.ingest.enrich._base import (
 
 def symbols_by_cik(resolved: dict[str, int]) -> dict[int, list[str]]:
     """CIK → every listed symbol it files for: share classes (GOOG/GOOGL,
-    BRK-A/BRK-B, FOX/FOXA) share one CIK and must ALL get its figures."""
+    BRK-A/BRK-B, FOX/FOXA) share one CIK and must ALL get its figures. A
+    warrant/unit/right of a sibling (DAVEW next to DAVE) is not the company:
+    its $0.30 price on the parent's statements read a P/E of 0.07."""
+    from crible.compute.snapshot import derivative_listings
+
     by_cik: dict[int, list[str]] = {}
     for symbol, cik in resolved.items():
         by_cik.setdefault(int(cik), []).append(symbol)
+    for cik, symbols in by_cik.items():
+        derivatives = derivative_listings(set(symbols))
+        by_cik[cik] = [s for s in symbols if s not in derivatives]
     return by_cik
 
 

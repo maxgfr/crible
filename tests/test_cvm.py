@@ -192,7 +192,7 @@ def test_run_cvm_accumulates_years_into_one_frame(tmp_path, monkeypatch) -> None
         }
     )
     outcome = run_cvm(years=3, limit=10, http=http)
-    assert outcome["enriched"] == 1 and outcome["skipped"] is None
+    assert outcome["enriched"] == 1 and outcome["written"] == 1 and outcome["skipped"] is None
 
     files = sorted(tmp_path.glob("raw/provider=cvm/symbol=BBAS3.SA/income-annual-*.parquet"))
     assert len(files) == 1
@@ -201,7 +201,7 @@ def test_run_cvm_accumulates_years_into_one_frame(tmp_path, monkeypatch) -> None
 
     # steady state: identical re-run re-stamps nothing (skip_identical)
     again = run_cvm(years=3, limit=10, http=http)
-    assert again["enriched"] == 1
+    assert again["enriched"] == 1 and again["written"] == 0  # current, nothing rewritten
     assert sorted(tmp_path.glob("raw/provider=cvm/symbol=BBAS3.SA/income-annual-*.parquet")) == files
 
 
@@ -209,5 +209,11 @@ def test_run_cvm_limit_zero_is_a_pure_noop(tmp_path, monkeypatch) -> None:
     from crible.ingest.enrichment import run_cvm
 
     monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
-    assert run_cvm(limit=0) == {"enriched": 0, "unmatched": 0, "outage": None, "skipped": "limit 0"}
+    assert run_cvm(limit=0) == {
+        "enriched": 0,
+        "written": 0,
+        "unmatched": 0,
+        "outage": None,
+        "skipped": "limit 0",
+    }
     assert not (tmp_path / "mirror").exists()

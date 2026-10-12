@@ -47,6 +47,13 @@ def test_mcp_limit_is_capped(data_dir) -> None:
     assert out["returned"] <= mcp_server.MAX_LIMIT
 
 
+def test_mcp_rejects_a_negative_limit_or_offset(data_dir) -> None:
+    """limit=-5 used to return one row as if it were valid."""
+    for kwargs in ({"limit": -5}, {"limit": 0}, {"offset": -1}):
+        with pytest.raises(ValueError, match="limit must be"):
+            mcp_server.screen("", **kwargs)
+
+
 def test_mcp_dsl_errors_surface_readably(data_dir) -> None:
     with pytest.raises(ValueError, match="unknown field"):
         mcp_server.screen("nonexistent_column > 1")

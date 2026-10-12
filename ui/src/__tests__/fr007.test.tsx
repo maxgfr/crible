@@ -72,6 +72,32 @@ describe("FR-007 results grid", () => {
   });
 });
 
+describe("FR-007 error banner", () => {
+  it("FR-007: the server's message already carries position and hint — each shows once", async () => {
+    mockFetch((url) => {
+      if (url === "/api/screen")
+        return jsonResponse(
+          {
+            detail: {
+              error: "unknown field 'piotroski' at position 0 — did you mean 'piotroski_f'?",
+              position: 0,
+              hint: "did you mean 'piotroski_f'?",
+            },
+          },
+          422,
+        );
+      if (url === "/api/presets") return jsonResponse([]);
+      if (url === "/api/status") return jsonResponse({ universe: 8, snapshot: true });
+      return jsonResponse({}, 404);
+    });
+    render(<App />);  // the initial screen answers with the error
+    await waitFor(() => expect(rtl.getByRole("alert")).toBeInTheDocument());
+    const text = rtl.getByRole("alert").textContent ?? "";
+    expect(text.match(/position 0/g)).toHaveLength(1);
+    expect(text.match(/did you mean/g)).toHaveLength(1);
+  });
+});
+
 describe("FR-007 export", () => {
   it("FR-007: the export URL carries the executed query AND the visible columns", () => {
     expect(exportCsvUrl("piotroski_f >= 7", null)).toBe(

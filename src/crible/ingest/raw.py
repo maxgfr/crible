@@ -118,6 +118,10 @@ class RawInventory:
 
     # (provider, symbol) → (statement_type, freq) → (stamp seconds, path)
     entries: dict[tuple[str, str], dict[tuple[str, str], tuple[float, Path]]] = field(default_factory=dict)
+    # symbol → its providers, built on first use: newest_stamp is asked once
+    # per symbol per compute, and a scan of every entry each time was O(N²)
+    # (45 s of a 49 s no-op compute at 27k symbols)
+    _providers: dict[str, list[str]] | None = field(default=None, init=False, repr=False)
 
     @classmethod
     def scan(cls, data_dir: Path | str) -> RawInventory:
@@ -156,6 +160,7 @@ class RawInventory:
                     newest[key] = (seconds, Path(file.path))
         if newest:
             self.entries[(provider, symbol_entry.name.split("=", 1)[1])] = newest
+            self._providers = None
 
     def symbols(self, provider: str | None = None) -> set[str]:
         return {s for p, s in self.entries if provider is None or p == provider}
@@ -171,11 +176,15 @@ class RawInventory:
         """Newest fetched-at (seconds) for a symbol across providers (or one),
         optionally restricted to statement types; 0.0 when none."""
         safe = symbol.replace("/", "_")
+        if self._providers is None:
+            self._providers = {}
+            for p, s in self.entries:
+                self._providers.setdefault(s, []).append(p)
         best = 0.0
-        for (p, s), found in self.entries.items():
-            if s != safe or (provider is not None and p != provider):
+        for p in self._providers.get(safe, ()):
+            if provider is not None and p != provider:
                 continue
-            for (statement_type, _), (seconds, _) in found.items():
+            for (statement_type, _), (seconds, _) in self.entries[(p, safe)].items():
                 if types is None or statement_type in types:
                     best = max(best, seconds)
         return best

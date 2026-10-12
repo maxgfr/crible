@@ -1,6 +1,6 @@
 # crible — TODO
 
-État : v1 zéro clé **publique, testée (498 pytest + 206 vitest), E2E réel validé**.
+État : v1 zéro clé **publique, testée (549 pytest + 213 vitest), E2E réel validé**.
 Sources bulk-first / local-first en place : universe FinanceDatabase, prix bulk
 (HuggingFace US + Stooq worldwide), fondamentaux audités SEC (companyfacts +
 FSDS), ESEF (EU), Companies House (UK), CVM (BR), TWSE (TW), FX BCE (`*_eur`).

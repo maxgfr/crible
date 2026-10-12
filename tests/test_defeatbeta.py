@@ -251,6 +251,19 @@ def test_fundamentals_import_targets_gap_symbols_only(tmp_path) -> None:
     assert (tmp_path / "raw" / "provider=defeatbeta" / "symbol=GAP1").exists()
 
 
+def test_fundamentals_limit_counts_symbols_the_dump_serves(tmp_path) -> None:
+    """The gap is universe-wide and sorted (000001.SZ first), the dump
+    US-only: `--limit 20` took 20 .SZ listings and imported nothing."""
+    pd.DataFrame({"symbol": ["000001.SZ", "000002.SZ", "AAPL", "MSFT"]}).to_parquet(
+        tmp_path / "universe.parquet", index=False
+    )
+    report = import_defeatbeta_fundamentals(
+        tmp_path, table=_statements_table(tmp_path, symbols=("AAPL", "MSFT")), limit=1
+    )
+    assert report.imported == 1
+    assert (tmp_path / "raw" / "provider=defeatbeta" / "symbol=AAPL").exists()
+
+
 def test_snapshot_falls_back_to_defeatbeta_fundamentals(tmp_path) -> None:
     """A defeatbeta-only symbol gets real canonical fields + ratios, tagged
     provider=defeatbeta; a symbol with yfinance statements ignores them."""

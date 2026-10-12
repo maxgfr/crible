@@ -176,7 +176,9 @@ def test_run_loop_computes_right_after_an_on_demand_fetch(loop_env, monkeypatch)
     data, _ = loop_env
     order: list[str] = []
     original_compute, original_once = service.run_compute, service.run_once
-    monkeypatch.setattr(service, "run_compute", lambda: (order.append("compute"), original_compute())[1])
+    monkeypatch.setattr(
+        service, "run_compute", lambda **kw: (order.append("compute"), original_compute(**kw))[1]
+    )
 
     def tracked_once(*args, **kwargs):
         order.append("targeted" if kwargs.get("symbols") else "cycle")
@@ -261,7 +263,7 @@ def test_a_stop_during_the_crawl_skips_compute_and_the_rest_of_the_cycle(loop_en
     data, calls = loop_env
     fetched: list[str] = []
     computes: list[int] = []
-    monkeypatch.setattr(service, "run_compute", lambda: computes.append(1) or 0)
+    monkeypatch.setattr(service, "run_compute", lambda **kw: computes.append(1) or 0)
 
     class StopsOnFirst(FakeYfProvider):
         def fetch_statements(self, symbol):
@@ -281,3 +283,82 @@ def test_a_stop_during_the_crawl_skips_compute_and_the_rest_of_the_cycle(loop_en
     assert len(fetched) == 1  # the cycle stopped at the next symbol
     assert computes == []  # no compute after the stop
     assert "esef" not in calls  # no scheduled task either
+
+
+def test_an_on_demand_fetch_never_waits_on_a_spent_budget(loop_env, monkeypatch) -> None:
+    """A spent bucket and one pending request: the request stays pending for a
+    later tick — it used to sleep ~3,000 s in the token bucket, deaf to SIGTERM."""
+    import time as _time
+
+    import crible.ingest.service as service
+    from crible.ingest.requests import pending_requests, request_fetch
+
+    data, _ = loop_env
+    monkeypatch.setenv("CRIBLE_BUDGET_PER_HOUR", "8")
+    run_loop(
+        max_ticks=1,
+        clock=FakeClock().now,
+        sleep=lambda s: None,
+        provider=FakeYfProvider(),
+        price_provider=FakePriceProvider(),
+        fetch_universe=fixture_frame,
+    )
+    (data / "budget-state.json").write_text(
+        json.dumps({"window_seconds": 3600, "stamps": [_time.time() - 60] * 8})
+    )
+    request_fetch(data, "AIR.PA")
+    slept: list[float] = []
+    original = service._make_crawler
+
+    def no_long_wait(seconds: float) -> None:
+        slept.append(seconds)
+        if seconds > 1:  # the fake clock never frees the bucket: fail, don't hang
+            raise RuntimeError(f"waited {seconds:.0f}s on the budget")
+
+    def recording(*args, **kwargs):
+        crawler = original(*args, **kwargs)
+        crawler.sleep = no_long_wait
+        return crawler
+
+    monkeypatch.setattr(service, "_make_crawler", recording)
+    run_loop(
+        max_ticks=1,
+        clock=FakeClock().now,
+        sleep=slept.append,
+        provider=FakeYfProvider(),
+        price_provider=FakePriceProvider(),
+        fetch_universe=fixture_frame,
+    )
+    assert max(slept, default=0) <= 1
+    assert pending_requests(data) == ["AIR.PA"]
+
+
+def test_sigterm_during_a_compute_stops_it_before_the_publish(loop_env, monkeypatch) -> None:
+    """A 38 min rebuild outlived the 1 min stop grace period (exit 137): the
+    compute checks the stop between symbols and publishes nothing."""
+    import os
+    import signal
+
+    import crible.compute.snapshot as snap
+
+    data, _ = loop_env
+    built: list[str] = []
+    original = snap.build_symbol_snapshot
+
+    def stops_the_container(symbol, *args, **kwargs):
+        built.append(symbol)
+        os.kill(os.getpid(), signal.SIGTERM)
+        return original(symbol, *args, **kwargs)
+
+    monkeypatch.setattr(snap, "build_symbol_snapshot", stops_the_container)
+    run_loop(
+        max_ticks=None,
+        clock=FakeClock().now,
+        sleep=lambda s: None,
+        provider=FakeYfProvider(),
+        price_provider=FakePriceProvider(),
+        fetch_universe=fixture_frame,
+    )
+    assert len(built) == 1  # the next symbol saw the stop
+    assert not (data / "snapshot" / "snapshot.parquet").exists()
+    assert json.loads((data / "budget-state.json").read_text())["stamps"]

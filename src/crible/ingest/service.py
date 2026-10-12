@@ -18,7 +18,7 @@ from typing import Callable
 import duckdb
 
 from crible import config
-from crible.compute.snapshot import publish_incremental
+from crible.compute.snapshot import ComputeStopped, publish_incremental
 from crible.ingest.backoff import BackoffPolicy
 from crible.ingest.budget import TokenBucket
 from crible.ingest.crawler import Crawler, CrawlOutcome
@@ -667,6 +667,8 @@ def run_once(
         if symbols:
             outcome = CrawlOutcome()
             for symbol in symbols:
+                if should_stop is not None and should_stop():
+                    break  # the rest stays for the next run
                 (outcome.fetched if crawler.crawl_symbol(symbol) else outcome.failed).append(symbol)
         else:
             outcome = crawler.run_cycle(limit=limit)
@@ -740,7 +742,7 @@ class _YfPriceAdapter:
         return bars.reset_index() if bars is not None and not bars.empty else None
 
 
-def run_compute() -> int:
+def run_compute(should_stop: Callable[[], bool] | None = None) -> int:
     data = config.data_dir()
     if not (data / "universe.parquet").exists() and config.database_path().exists():
         # self-heal installs bootstrapped before universe export existed
@@ -756,7 +758,13 @@ def run_compute() -> int:
                 log.info("compute: exported missing universe.parquet")
         finally:
             con.close()
-    snapshot = publish_incremental(data)
+    try:
+        snapshot = publish_incremental(data, should_stop=should_stop)
+    except ComputeStopped:
+        # a 38 min rebuild outlives the container's stop grace period: the
+        # previous snapshot and base stay, the next start redoes the work
+        log.info("compute: stopped before publishing")
+        return 0
     if snapshot is None:
         log.info("compute: no raw changes since last build — snapshot unchanged")
         return 0
@@ -964,22 +972,33 @@ class Scheduler:
         return outcome
 
 
-def _serve_fetch_requests(data, budget, provider) -> list[str]:
+def _affordable(budget, provider) -> int:
+    """Symbols the budget pays for RIGHT NOW — never one that would wait on
+    the token bucket (a wait starves compute, enrichment, the heartbeat and
+    the stop signal for up to an hour)."""
+    cost = max(1, int(getattr(provider, "requests_per_fetch", 1)))
+    return max(0, (budget.capacity - budget.used_in_window()) // cost)
+
+
+def _serve_fetch_requests(data, budget, provider, should_stop=None) -> list[str]:
     """On-demand fetches (the API drops request files — ADR-0003 keeps the
-    API a reader): crawl them budget-charged and clear them."""
+    API a reader): crawl what the budget affords now, budget-charged, and
+    clear those; the rest stay pending for a later tick."""
     from crible.ingest.requests import clear_request, pending_requests
 
     try:
         requested = pending_requests(data)
     except Exception:  # noqa: BLE001 — a corrupt request never kills the loop
         return []
-    batch = requested[:20]
-    if batch:
-        targeted = run_once(symbols=batch, budget=budget, provider=provider)
-        for symbol in batch:
-            clear_request(data, symbol)
-        log.info("on-demand fetch %s: +%d/-%d", batch, len(targeted.fetched), len(targeted.failed))
-    return batch
+    batch = requested[: min(20, _affordable(budget, provider))]
+    if not batch:
+        return []
+    targeted = run_once(symbols=batch, budget=budget, provider=provider, should_stop=should_stop)
+    served = targeted.fetched + targeted.failed
+    for symbol in served:
+        clear_request(data, symbol)
+    log.info("on-demand fetch %s: +%d/-%d", served, len(targeted.fetched), len(targeted.failed))
+    return served
 
 
 def run_loop(
@@ -1062,24 +1081,26 @@ def run_loop(
     statuses: dict = {}
     tick = 0
     stop = _StopFlag.install()
+
+    def stopping() -> bool:
+        return stop.requested is not None
+
     try:
         while (max_ticks is None or tick < max_ticks) and not stop.requested:
             tick += 1
-            requested = _serve_fetch_requests(data, budget, provider)
-            if requested:
+            requested = _serve_fetch_requests(data, budget, provider, should_stop=stopping)
+            if requested and not stop.requested:
                 # compute right away: the user's drawer fills within minutes, not
                 # after a whole budget-bound crawl cycle and the periodic tasks
-                _stage({}, "compute", run_compute)
+                _stage({}, "compute", run_compute, should_stop=stopping)
                 last_compute = clock()
             # first boot: crawl exactly the bootstrap sample, then publish
             # immediately — a first screen must return rows within hours (FR-008)
             limit = max(10, len(bootstrap_sample())) if first_cycle else cycle_limit
             first_cycle = False
-            # never more symbols than the budget affords RIGHT NOW: a cycle that
-            # waits on the token bucket starves compute, enrichment, the heartbeat
-            # and on-demand requests for up to an hour (40 × 8 > a 120/h budget)
-            cost = max(1, int(getattr(provider, "requests_per_fetch", 1)))
-            limit = min(limit, (budget.capacity - budget.used_in_window()) // cost)
+            # never more symbols than the budget affords RIGHT NOW (40 × 8 > a
+            # 120/h budget)
+            limit = min(limit, _affordable(budget, provider))
             crawl: dict = {"crawl": CrawlOutcome()}
             if limit > 0:
                 _stage(
@@ -1089,7 +1110,7 @@ def run_loop(
                     limit=limit,
                     budget=budget,
                     provider=provider,
-                    should_stop=lambda: stop.requested is not None,
+                    should_stop=stopping,
                 )
             outcome = crawl["crawl"] if isinstance(crawl["crawl"], CrawlOutcome) else CrawlOutcome()
             if stop.requested:
@@ -1103,7 +1124,9 @@ def run_loop(
 
             now = clock()
             if not stop.requested and (outcome.fetched or now - last_compute >= compute_every_seconds):
-                _stage(ran, "compute", run_compute)
+                _stage(ran, "compute", run_compute, should_stop=stopping)
+                if stop.requested:
+                    break
                 last_compute = now
                 _publish_heartbeat(
                     data,

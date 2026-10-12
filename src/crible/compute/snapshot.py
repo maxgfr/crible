@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -431,6 +432,17 @@ def _listing_currencies(data_dir: Path | str) -> dict[str, str]:
     }
 
 
+def _crawled_quote_currency(frames: dict[tuple[str, str], pd.DataFrame]) -> str | None:
+    """The currency Yahoo quotes the crawled bars in (GBp, USD…), recorded
+    at crawl time — it beats the universe's listed currency, which for
+    CCEP.L is the EUR it reports in while it trades in pence."""
+    bars = frames.get(("prices", "daily"))
+    if bars is None or "_quote_currency" not in bars.columns:
+        return None
+    known = bars["_quote_currency"].dropna()
+    return str(known.iloc[-1]) if len(known) else None
+
+
 def _reporting_currency(audited: dict[tuple[str, str], pd.DataFrame]) -> str | None:
     """The statements' currency when a source records it (ESEF's and the
     crawl's ``_currency``) — None when no source says, and nothing is
@@ -586,8 +598,15 @@ def _price_quotes(data_dir: Path | str) -> dict[str, dict]:
 AUDITED_PRECEDENCE = ("edgar", "edgar-fsds", "esef", "companies-house", "cvm", "twse")
 
 
+class ComputeStopped(Exception):
+    """A stop was requested mid-build: nothing is published."""
+
+
 def build_symbol_rows(
-    data_dir: Path | str, symbols: list[str], inventory: RawInventory | None = None
+    data_dir: Path | str,
+    symbols: list[str],
+    inventory: RawInventory | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> pd.DataFrame:
     """The per-symbol stage: canonical fields + ratios + scores + price for each
     symbol, BEFORE the cross-sectional finalize (universe/FX/ranks). This is the
@@ -598,12 +617,16 @@ def build_symbol_rows(
     rates = load_rates(data_dir)
     splits = _load_splits(data_dir)
     statement_currencies = load_statement_currencies(data_dir)
-    derivatives = derivative_listings(_universe_symbols(data_dir))
+    # the raw layer's own symbols count as bases too: a warrant the SEC
+    # directory maps to its parent's CIK (DAVEW) is not in the universe
+    derivatives = derivative_listings(_universe_symbols(data_dir) | set(symbols))
     # ONE scan of the raw layer for the whole build (it used to be 8 globs
     # per symbol — the dominant cost at 20k symbols)
     inventory = inventory if inventory is not None else RawInventory.scan(data_dir)
     parts = []
     for symbol in symbols:
+        if should_stop is not None and should_stop():
+            raise ComputeStopped(symbol)
         if symbol in derivatives:
             continue  # a warrant/unit/right is not the company: no ratios on its price
         scraped = latest_raw_frames(data_dir, symbol, provider="yfinance", inventory=inventory)
@@ -649,7 +672,7 @@ def build_symbol_rows(
             price_quote=(quote["close"], quote["price_asof"]) if quote else None,
             quote_features=quote,
             currency=(
-                quote_currencies.get(symbol),
+                _crawled_quote_currency(scraped) or quote_currencies.get(symbol),
                 audited_currency or _reporting_currency(scraped) or statement_currencies.get(symbol),
                 rates,
             ),
@@ -682,7 +705,10 @@ def build_snapshot(data_dir: Path | str, symbols: list[str] | None = None) -> pd
 
 BASE_NAME = "base.parquet"
 BASE_SCHEMA_NAME = "base-schema.json"
-# Bump on EVERY commit that adds or removes per-symbol snapshot columns.
+# the price-distillate rows the base was built with (one fingerprint per symbol)
+BASE_QUOTES_NAME = "base-quotes.parquet"
+# Bump on EVERY commit that adds or removes per-symbol snapshot columns
+# (tests/test_engine_schema.py enforces it) or changes their values.
 # Kept (non-dirty) base rows carry the schema they were built with: without
 # this guard a deploy that adds columns would ship them as NULL for every
 # unchanged symbol until its raw happens to change.
@@ -699,10 +725,15 @@ BASE_SCHEMA_NAME = "base-schema.json"
 #    reporting_currency (price converted into the statements' currency),
 #    roic, gross_profitability, net_share_issuance, positive_fcf_years_5y,
 #    altman_z_double_prime
-ENGINE_SCHEMA_VERSION = 9
+# 10: values only, no new column — but every kept row must be redone: ROIC
+#     capital floor, issuance unit guard, crawled quote currency (pence),
+#     warrants outside the universe. Value-changing fixes bump too.
+ENGINE_SCHEMA_VERSION = 10
 
 
-def publish_incremental(data_dir: Path | str) -> pd.DataFrame | None:
+def publish_incremental(
+    data_dir: Path | str, should_stop: Callable[[], bool] | None = None
+) -> pd.DataFrame | None:
     """Recompute only the symbols whose raw changed since the last build, reuse
     the cached per-symbol rows for the rest, re-finalize over everything and
     publish. Returns the published snapshot, or None when nothing changed (no
@@ -718,7 +749,8 @@ def publish_incremental(data_dir: Path | str) -> pd.DataFrame | None:
     never a base claiming a snapshot that was not published."""
     data_dir = Path(data_dir)
     started = time.time()
-    built = _incremental_rows(data_dir)
+    quotes = _quote_fingerprints(data_dir)
+    built = _incremental_rows(data_dir, quotes, should_stop)
     if built is None:
         return None
     rows, refresh_base = built
@@ -727,11 +759,38 @@ def publish_incremental(data_dir: Path | str) -> pd.DataFrame | None:
         return snapshot
     publish_snapshot(snapshot, data_dir)
     if refresh_base:
-        _publish_base(rows, data_dir, watermark=started)
+        _publish_base(rows, data_dir, watermark=started, quotes=quotes)
     return snapshot
 
 
-def _incremental_rows(data_dir: Path) -> tuple[pd.DataFrame, bool] | None:
+def _quote_fingerprints(data_dir: Path) -> pd.DataFrame:
+    """symbol → a hash of the price-distillate fields a base row bakes in
+    (close, as-of, momentum features) — never the import stamp, which moves
+    on every row at each import."""
+    from crible.ingest.price_import import load_prices_latest
+
+    table = load_prices_latest(data_dir)
+    columns = [c for c in ("close", "price_asof", *MOMENTUM_COLUMNS) if c in table.columns]
+    if table.empty:
+        return pd.DataFrame({"symbol": pd.Series(dtype=str), "fingerprint": pd.Series(dtype="uint64")})
+    hashed = pd.util.hash_pandas_object(table[columns].astype(str), index=False)
+    return pd.DataFrame({"symbol": table["symbol"].astype(str).to_numpy(), "fingerprint": hashed.to_numpy()})
+
+
+def _changed_quote_symbols(data_dir: Path, quotes: pd.DataFrame) -> set[str] | None:
+    """Symbols whose distillate row differs from the one the base was built
+    with (added, removed or changed); None when the base predates the record."""
+    try:
+        previous = pd.read_parquet(data_dir / "snapshot" / BASE_QUOTES_NAME)
+    except (OSError, ValueError):
+        return None
+    merged = previous.merge(quotes, on="symbol", how="outer", suffixes=("_was", "_now"))
+    return set(merged.loc[merged["fingerprint_was"] != merged["fingerprint_now"], "symbol"].astype(str))
+
+
+def _incremental_rows(
+    data_dir: Path, quotes: pd.DataFrame, should_stop: Callable[[], bool] | None = None
+) -> tuple[pd.DataFrame, bool] | None:
     """(pre-finalize rows, whether the base cache must be rewritten), or None
     when the published snapshot is already current."""
     base_path = data_dir / "snapshot" / BASE_NAME
@@ -740,17 +799,18 @@ def _incremental_rows(data_dir: Path) -> tuple[pd.DataFrame, bool] | None:
     # no cache, or a cache built by a different engine schema (the nightly
     # restores base.parquet from the last release) → full rebuild
     if not base_path.exists() or _cached_schema_version(data_dir) != ENGINE_SCHEMA_VERSION:
-        return build_symbol_rows(data_dir, symbols, inventory=inventory), True
+        return build_symbol_rows(data_dir, symbols, inventory=inventory, should_stop=should_stop), True
 
     watermark = _base_watermark(data_dir)
     # a refreshed price distillate changes the price_quote / return_6m baked into
-    # EVERY symbol's base row, so it makes them all dirty (F8) — otherwise the
-    # base-persisted rows serve stale prices and value/momentum ranks.
+    # base rows (F8): the symbols whose distillate row moved are dirty — all of
+    # them when the base predates that record (a 14-symbol Stooq import used to
+    # cost a 36 min full rebuild)
+    dirty = [s for s in symbols if inventory.newest_stamp(s) > watermark]
     price_file = data_dir / "prices-latest.parquet"
     if price_file.exists() and price_file.stat().st_mtime > watermark:
-        dirty = list(symbols)
-    else:
-        dirty = [s for s in symbols if inventory.newest_stamp(s) > watermark]
+        moved = _changed_quote_symbols(data_dir, quotes)
+        dirty = list(symbols) if moved is None else [s for s in symbols if s in moved or s in set(dirty)]
     # the base cache may predate the schema (the nightly restores it from the
     # last release): scrub retired columns so kept rows can't resurrect them
     prev = _scrub_retired_columns(pd.read_parquet(base_path))
@@ -763,7 +823,11 @@ def _incremental_rows(data_dir: Path) -> tuple[pd.DataFrame, bool] | None:
         return (prev, False) if _snapshot_stale(data_dir) else None
 
     kept = prev[prev["symbol"].isin(set(symbols) - set(dirty))] if "symbol" in prev.columns else prev
-    fresh = build_symbol_rows(data_dir, dirty, inventory=inventory) if dirty else pd.DataFrame()
+    fresh = (
+        build_symbol_rows(data_dir, dirty, inventory=inventory, should_stop=should_stop)
+        if dirty
+        else pd.DataFrame()
+    )
     rows = pd.concat([kept, fresh], ignore_index=True) if not fresh.empty else kept.reset_index(drop=True)
     return rows, True
 
@@ -815,7 +879,9 @@ def _base_watermark(data_dir: Path | str) -> float:
     return (Path(data_dir) / "snapshot" / BASE_NAME).stat().st_mtime
 
 
-def _publish_base(rows: pd.DataFrame, data_dir: Path | str, watermark: float) -> None:
+def _publish_base(
+    rows: pd.DataFrame, data_dir: Path | str, watermark: float, quotes: pd.DataFrame | None = None
+) -> None:
     import json
 
     directory = Path(data_dir) / "snapshot"
@@ -823,6 +889,10 @@ def _publish_base(rows: pd.DataFrame, data_dir: Path | str, watermark: float) ->
     tmp = directory / f".tmp-{BASE_NAME}"
     rows.to_parquet(tmp, index=False)
     tmp.rename(directory / BASE_NAME)
+    if quotes is not None:
+        tmp = directory / f".tmp-{BASE_QUOTES_NAME}"
+        quotes.to_parquet(tmp, index=False)
+        tmp.rename(directory / BASE_QUOTES_NAME)
     (directory / BASE_SCHEMA_NAME).write_text(
         json.dumps({"engine_schema_version": ENGINE_SCHEMA_VERSION, "watermark": watermark})
     )

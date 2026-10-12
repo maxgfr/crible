@@ -261,3 +261,10 @@ def test_fr005_screen_json_format_and_unknown_formats(tmp_path, monkeypatch) -> 
     assert result.exit_code == 0
     assert json.loads(result.output) == {"total": 1, "rows": [{"symbol": "B", "period": "2025", "x": 2.0}]}
     assert CliRunner().invoke(app, ["screen", "--format", "xml"]).exit_code == 1
+
+
+def test_fr005_screen_limit_zero_prints_only_the_count(data_dir) -> None:
+    result = runner.invoke(app, ["screen", "--limit", "0"])
+    assert result.exit_code == 0, result.output
+    assert "Empty DataFrame" not in result.output
+    assert "(0 of " in result.output
