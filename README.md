@@ -69,6 +69,22 @@ The first run bootstraps the universe and starts a rate-budgeted, Europe-first c
 screener shows live progress until the first rows land. See the **Status** view for coverage,
 freshness and provider health.
 
+That first run does **not** download the published dataset — it crawls a ~100-symbol sample,
+then grows coverage within the rate budget. To start from the full nightly dataset instead,
+restore it once into the empty volume before starting the stack:
+
+```bash
+docker compose run --rm ingest crible bootstrap   # one-shot: restore the published dataset
+docker compose up -d                              # the ingest loop extends it from there
+```
+
+The restored snapshot is query-ready at once — no `crible compute` needed. Leave the
+`ingest` service's `command` as `ingest --loop`: `bootstrap` is a one-shot that exits, so
+under `restart: unless-stopped` it reruns and refuses the dataset it just restored
+(`/data already contains a dataset`). On a volume that already holds data it never
+overwrites without `--force`. (`crible ingest --bootstrap` is unrelated: it only loads the
+universe list.)
+
 ### Standalone CLI — no clone needed
 
 crible is a regular Python CLI (`[project.scripts]`); install it as a tool and run it anywhere
