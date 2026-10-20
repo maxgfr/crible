@@ -120,8 +120,9 @@ npx skills add maxgfr/crible -g     # pick your agent(s) when prompted
 npx skills update -g -y             # pull the latest version from the repo
 ```
 
-The repository also exposes `skills/crible-cli` at `.agents/skills/crible-cli`
-for Codex project discovery; that path is a versioned link, not a divergent copy.
+Working in a clone? `npx skills add .` installs the repo's skill (source:
+`skills/crible-cli`) for your agent — add `-a <agent>` to target one. The installed
+copies (`.agents/skills/`, `.claude/skills/`, `skills-lock.json`) are gitignored.
 
 Uninstalling: `crible clean` deletes the dataset directory (with a marker guard so a
 mistyped `--data-dir` never removes an arbitrary folder), then remove the tool itself:
