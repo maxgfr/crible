@@ -101,17 +101,19 @@ crible --data-dir ~/.crible-data fields                   # every filterable col
 relative to the current directory — outside a clone, always pass it.
 
 Agents can screen through MCP — a read-only tool surface (`screen`, `fields`, `presets`,
-`company`, `status`) over stdio:
+`company`, `status`) over stdio. Register it with your agent's own command (any other MCP
+client: run `crible mcp` with `CRIBLE_DATA_DIR` set):
 
 ```bash
-codex mcp add crible --env CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp
-# Claude Code: claude mcp add crible -e CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp
+claude mcp add crible -e CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp         # Claude Code
+codex mcp add crible --env CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp       # Codex
+opencode mcp add crible --env CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp    # OpenCode
 ```
 
 The repo also ships a [`crible-cli` agent skill](skills/crible-cli/SKILL.md) that
 teaches coding agents the full CLI — screening syntax, data management, publishing. Install
-it once, globally, with the [skills CLI](https://skills.sh) (works for Codex, Claude Code,
-and other compatible agents; re-run `update` anytime to sync with this repo):
+it once, globally, with the [skills CLI](https://skills.sh) (works for Claude Code, Codex,
+OpenCode and other compatible agents; re-run `update` anytime to sync with this repo):
 
 ```bash
 npx skills add maxgfr/crible -g     # pick your agent(s) when prompted
@@ -127,7 +129,7 @@ mistyped `--data-dir` never removes an arbitrary folder), then remove the tool i
 ```bash
 crible --data-dir ~/.crible-data clean   # or clean --yes to skip the prompt
 uv tool uninstall crible                 # pipx uninstall crible, if installed that way
-claude mcp remove crible                 # only if the MCP server was registered
+claude mcp remove crible                 # if registered: codex mcp remove crible, or drop it from opencode.json
 ```
 
 ### Start with data — zero crawl
