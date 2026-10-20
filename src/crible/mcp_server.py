@@ -3,9 +3,12 @@
 Read-only by construction: the five tools wrap the shared Runtime — the same
 DSL and the same schema-derived whitelist as the CLI/API/UI — and expose NO
 crawl/refresh/compute: side effects stay out of the tool surface. Standard
-registration, after `crible bootstrap` pulled the published dataset:
+registration with the host's own command, after `crible bootstrap` pulled the
+published dataset:
 
     claude mcp add crible -e CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp
+    codex mcp add crible --env CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp
+    opencode mcp add crible --env CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp
 """
 
 from __future__ import annotations

@@ -199,14 +199,12 @@ After any raw change, `crible compute` is what refreshes ratios/ranks. Check
 `crible mcp` serves a READ-ONLY MCP tool surface over stdio — `screen`
 (the same DSL; blank = whole universe), `fields`, `presets`, `company`,
 `status`. No crawl/refresh tool is exposed. Register it in the active host
-after bootstrap. Codex uses its native MCP registry:
+after bootstrap, with that host's own MCP command:
 
 ```bash
-codex mcp add crible --env CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp
+claude mcp add crible -e CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp         # Claude Code
+codex mcp add crible --env CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp       # Codex
+opencode mcp add crible --env CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp    # OpenCode
 ```
 
-Claude Code uses its corresponding registry:
-
-```bash
-claude mcp add crible -e CRIBLE_DATA_DIR=$HOME/.crible-data -- crible mcp
-```
+Any other MCP client runs `crible mcp` over stdio with `CRIBLE_DATA_DIR` set.
