@@ -1,8 +1,6 @@
 ---
 name: crible-cli
 description: Screen stocks by fundamentals and manage Crible datasets, prices, snapshots, and site publishing. Use only when the user explicitly asks for crible-cli or a Crible screen, dataset, or publishing task.
-metadata:
-  opencode/autoinvoke: 'true'
 ---
 
 # Run stock screens with the crible CLI
