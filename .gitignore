@@ -28,3 +28,8 @@ ui/tsconfig.tsbuildinfo
 
 # design critique snapshots (local working notes, never published)
 .impeccable/
+
+# agent skill installs (produced by `npx skills add .`, never committed)
+.agents/skills/
+.claude/skills/
+skills-lock.json
