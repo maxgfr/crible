@@ -283,9 +283,9 @@ MIT
 
 ## Skill invocation: on request or explicit-only
 
-The `crible-cli` skill ships **model-invocable, on request**: its description restricts it to explicit requests, so the agent calls it when you ask for it, not on its own. Invoking it by name always works: `$crible-cli` in Codex or `/crible-cli` in Claude Code and OpenCode (with the plugin namespace when installed as a Claude plugin).
+The `crible-cli` skill ships **model-invocable, on request**: its description restricts it to explicit requests, so the agent calls it when you ask for it, not on its own. Invoking it by name always works: `$crible-cli` in Codex or `/crible-cli` in Claude Code and OpenCode.
 
-Making it explicit-only, so that only its name runs it, is one setting per host, applied to the installed copy:
+Making it explicit-only again is one setting, read by Claude Code and OpenCode, applied to the **installed** copy of the skill:
 
 | Host | Shipped, on request | Explicit-only |
 | --- | --- | --- |
