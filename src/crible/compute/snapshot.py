@@ -402,7 +402,26 @@ def attach_universe(snapshot: pd.DataFrame, data_dir: Path | str) -> pd.DataFram
         return snapshot
     universe = pd.read_parquet(universe_path)
     keep = ["symbol"] + [c for c in UNIVERSE_COLUMNS if c in universe.columns]
-    return snapshot.merge(universe[keep], on="symbol", how="left")
+    universe = universe[keep]
+    if {"isin", "country", "name"} <= set(universe.columns):
+        universe = universe.assign(depositary_receipt=depositary_receipt(universe))
+    return snapshot.merge(universe, on="symbol", how="left")
+
+
+_RECEIPT_NAME = r"\bAD[RS]s?\b|(?i:\bdepositary\b)"
+
+
+def depositary_receipt(universe: pd.DataFrame) -> pd.Series:
+    """A depositary receipt, flagged on explicit data: a US ISIN on a
+    company outside the US, or ADR/ADS in its name. It is its own group
+    (ADRs never fold into their ordinary's) — a screen drops it on this
+    column. A US-incorporated company headquartered abroad is flagged too:
+    the known false positive of the rule."""
+    isin = universe["isin"].astype("string")
+    country = universe["country"].astype("string")
+    us_isin = isin.str.startswith("US").fillna(False) & country.notna() & (country != "US").fillna(False)
+    named = universe["name"].astype("string").str.contains(_RECEIPT_NAME, regex=True).fillna(False)
+    return (us_isin | named).astype(bool)
 
 
 def _frames_provider(frames: dict[tuple[str, str], pd.DataFrame], default: str) -> str:
@@ -739,7 +758,9 @@ BASE_QUOTES_NAME = "base-quotes.parquet"
 # 10: values only, no new column — but every kept row must be redone: ROIC
 #     capital floor, issuance unit guard, crawled quote currency (pence),
 #     warrants outside the universe. Value-changing fixes bump too.
-ENGINE_SCHEMA_VERSION = 10
+# 11: values only — impossible multiples nulled at compute (earnings yield
+#     above 100 %, P/E below 1, P/B ≤ 0).
+ENGINE_SCHEMA_VERSION = 11
 
 
 def publish_incremental(

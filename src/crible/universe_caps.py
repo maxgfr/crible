@@ -9,10 +9,12 @@ converted to EUR via the mirrored ECB rates; a missing rate leaves NULL,
 never imputed.
 
 Companies dedup by ISIN (universe ISIN, else the census's, else the listing
-is its own group); one deterministic primary listing per group. Known v1
-limitation: ADRs carry US ISINs and do not fold into their ordinary's group
-— name-based folding is rejected (false merges), the hysteresis band absorbs
-the duplicate slots.
+is its own group); one deterministic primary listing per group, none for an
+ISIN-less cross-listing outside the company's country. Known v1 limitation:
+ADRs carry US ISINs and do not fold into their ordinary's group — name-based
+folding is rejected (false merges), the hysteresis band absorbs the
+duplicate slots; the snapshot flags them (``depositary_receipt``) so a
+reader can drop them on explicit data.
 
 Membership: entry at rank ≤ 10,000, stay while rank ≤ 11,000 (hysteresis),
 plus a class floor — Mega/Large groups with NO numeric cap are members
@@ -217,29 +219,74 @@ def build_cap_table(
     return caps
 
 
-def pick_primary(caps: pd.DataFrame) -> pd.DataFrame:
-    """Exactly one primary listing per group. Deterministic tie-break:
-    listing venue in the company's own country, then largest cap, then
-    largest census volume, then symbol ASC."""
+# Yahoo suffix → the venue's country, from the TV venue table (plus the LSE
+# international order book and EuroTLX). A bare symbol is a US listing.
+def _suffix_countries() -> dict[str, str]:
+    from crible.ingest.tradingview import TV_COUNTRY_ISO, TV_EXCHANGE_SUFFIXES
+
+    table = {".IL": "GB", ".TI": "IT"}
+    for (country, _exchange), suffixes in TV_EXCHANGE_SUFFIXES.items():
+        for suffix in suffixes:
+            if suffix and country in TV_COUNTRY_ISO:
+                table.setdefault(suffix, TV_COUNTRY_ISO[country])
+    return table
+
+
+def _venue_country(caps: pd.DataFrame) -> pd.Series:
+    """ISO country of each listing's venue: the census's when it matched,
+    else read off the symbol suffix (None for an unknown suffix)."""
     from crible.ingest.tradingview import TV_COUNTRY_ISO
 
-    venue_iso = caps["census_country"].map(lambda c: TV_COUNTRY_ISO.get(str(c), None))
-    caps = caps.assign(_home=(venue_iso == caps["country"]).fillna(False).astype(int))
+    suffixes = _suffix_countries()
+
+    def from_symbol(symbol: str) -> str | None:
+        dot = symbol.rfind(".")
+        return "US" if dot < 0 else suffixes.get(symbol[dot:].upper())
+
+    census = caps["census_country"].map(lambda c: TV_COUNTRY_ISO.get(str(c), None))
+    return census.fillna(caps["symbol"].astype(str).map(from_symbol))
+
+
+def pick_primary(caps: pd.DataFrame) -> pd.DataFrame:
+    """One primary listing per group. Deterministic tie-break: listing venue
+    in the company's own country, then the venue of the ISIN's country (an
+    ADR's US line beats its Frankfurt echo), then largest cap, then largest
+    census volume, then symbol ASC.
+
+    A cross-listing nobody can tie to its company — no ISIN, so its own
+    ``sym:`` group, on a venue outside the company's country (AXA.BE, the
+    IOB and Cedear lines) — is no primary at all: its company already has
+    one through the home line, and name folding stays rejected."""
+    venue_iso = _venue_country(caps)
+    isin_iso = caps["company_group"].where(~caps["company_group"].str.startswith("sym:")).str[:2]
+    caps = caps.assign(
+        _home=(venue_iso == caps["country"]).fillna(False).astype(int),
+        _isin_home=(venue_iso == isin_iso).fillna(False).astype(int),
+    )
     ordered = caps.sort_values(
-        ["company_group", "_home", "cap_eur", "census_volume", "symbol"],
-        ascending=[True, False, False, False, True],
+        ["company_group", "_home", "_isin_home", "cap_eur", "census_volume", "symbol"],
+        ascending=[True, False, False, False, False, True],
         na_position="last",
     )
     primary_symbols = ordered.drop_duplicates("company_group", keep="first")["symbol"]
-    caps = caps.assign(primary_listing=caps["symbol"].isin(set(primary_symbols)))
-    return caps.drop(columns=["_home"])
+    cross = (
+        caps["company_group"].str.startswith("sym:")
+        & venue_iso.notna()
+        & caps["country"].notna()
+        & (venue_iso != caps["country"])
+    )
+    caps = caps.assign(primary_listing=caps["symbol"].isin(set(primary_symbols)) & ~cross)
+    return caps.drop(columns=["_home", "_isin_home"])
 
 
 def assign_top10k(caps: pd.DataFrame, previous_members: set[str]) -> pd.DataFrame:
     """Group ranking + membership: entry ≤ 10,000, stay ≤ 11,000 for previous
     members, plus the Mega/Large class floor for cap-less groups (only once a
     ranking exists at all — pre-census nothing activates)."""
-    group_cap = caps.groupby("company_group")["cap_eur"].max()
+    # a group without a primary (an untied cross-listing) is a duplicate of
+    # a company ranked through its home line: it competes for no slot
+    owned = caps.groupby("company_group")["primary_listing"].transform("any")
+    group_cap = caps[owned].groupby("company_group")["cap_eur"].max()
     ranked = group_cap.dropna().sort_values(ascending=False)
     rank_of_group = {group: index + 1 for index, group in enumerate(ranked.index)}
 
@@ -248,7 +295,7 @@ def assign_top10k(caps: pd.DataFrame, previous_members: set[str]) -> pd.DataFram
         return caps.assign(top10k=False, _floor=False)
 
     previous_groups = set(caps.loc[caps["symbol"].isin(previous_members), "company_group"])
-    floor_classes = caps["market_cap_class"].isin(FLOOR_TIERS)
+    floor_classes = caps["market_cap_class"].isin(FLOOR_TIERS) & owned
     floor_groups = set(caps.loc[floor_classes, "company_group"]) - set(ranked.index)
 
     def _member(group: str) -> bool:

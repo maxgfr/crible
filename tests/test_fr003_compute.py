@@ -1684,3 +1684,30 @@ def test_an_audited_share_scale_error_never_outranks_the_scraped_count() -> None
     }
     row = build_symbol_snapshot("MCD", frames, computed_at=1.0, audited_frames=audited).iloc[-1]
     assert row["shares_outstanding"] == 713e6
+
+
+def test_fr003_impossible_multiples_are_nulled() -> None:
+    """A statement/price currency mismatch gives an earnings yield of 27x —
+    never a bargain: nulled, like its P/E-below-1 reciprocal and a P/B ≤ 0."""
+    from crible.compute.ratios import _guard
+
+    ey = _guard("earnings_yield", pd.Series([0.08, 1.0, 1.3, 27.4]), {})
+    assert ey.iloc[:2].tolist() == [0.08, 1.0]
+    assert ey.iloc[2:].isna().all()
+    pe = _guard("price_to_earnings_ratio", pd.Series([12.0, 0.04]), {})
+    assert pe.iloc[0] == 12.0 and pd.isna(pe.iloc[1])
+    pb = _guard("price_to_book_ratio", pd.Series([1.5, 0.0, -2.0]), {})
+    assert pb.iloc[0] == 1.5 and pb.iloc[1:].isna().all()
+
+
+def test_fr003_depositary_receipt_flag() -> None:
+    from crible.compute.snapshot import depositary_receipt
+
+    universe = pd.DataFrame(
+        {
+            "isin": ["US1707151064", "US0378331005", "FR0000121014", None, None],
+            "country": ["FR", "US", "FR", "JP", "US"],
+            "name": ["Christian Dior SE", "Apple Inc.", "LVMH", "Toyota Motor Corp ADR", "Adstar Inc."],
+        }
+    )
+    assert depositary_receipt(universe).tolist() == [True, False, False, True, False]

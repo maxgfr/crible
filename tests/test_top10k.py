@@ -237,6 +237,40 @@ def test_primary_listing_tie_breaks() -> None:
     assert caps.groupby("company_group")["primary_listing"].sum().eq(1).all()
 
 
+def test_an_untied_cross_listing_is_no_primary() -> None:
+    from crible.universe_caps import assign_top10k, build_cap_table, pick_primary
+
+    universe = _uni(
+        [
+            {"symbol": "CS.PA", "isin": "FR0000120628", "country": "FR", "market_cap_class": "Mega Cap"},
+            # AXA's Berlin line: no ISIN, its own sym: group, a foreign venue
+            {"symbol": "AXA.BE", "country": "FR", "market_cap_class": "Mega Cap"},
+            # a German company on a German regional venue stays its own primary
+            {"symbol": "XYZ.BE", "country": "DE"},
+            # Dior's ADR group: the US receipt beats its Frankfurt echo
+            {"symbol": "CHDRY", "isin": "US1707151064", "country": "FR"},
+            {"symbol": "DIO0.F", "isin": "US1707151064", "country": "FR"},
+        ]
+    )
+    census = _census(
+        [
+            {"symbol": "CS.PA", "market_cap": 80.0, "census_country": "france"},
+            {"symbol": "AXA.BE", "market_cap": 80.0, "census_country": "germany"},
+            {"symbol": "CHDRY", "market_cap": 70.0},
+            {"symbol": "DIO0.F", "market_cap": 70.0, "census_country": "germany", "census_volume": 999.0},
+        ]
+    )
+    caps = pick_primary(build_cap_table(universe, census, None, None, RATES, NOW))
+    primaries = set(caps.loc[caps["primary_listing"], "symbol"])
+    assert primaries == {"CS.PA", "XYZ.BE", "CHDRY"}
+
+    ranked = assign_top10k(caps, previous_members=set()).set_index("symbol")
+    # the untied line takes no rank and no class-floor seat
+    assert pd.isna(ranked.loc["AXA.BE", "cap_rank_global"])
+    assert not ranked.loc["AXA.BE", "top10k"]
+    assert ranked.loc["CS.PA", "cap_rank_global"] == 1
+
+
 def test_top10k_hysteresis_and_class_floor(monkeypatch) -> None:
     import crible.universe_caps as uc
 
