@@ -67,6 +67,18 @@ POSITIVE_DENOMINATORS: dict[str, tuple[str, ...]] = {
 }
 
 
+# Bounds no real multiple crosses: an earnings yield above 100 % (a P/E
+# below 1) or a non-positive P/B is a unit or currency mismatch between the
+# statements and the price (a foreign line quoted in EUR over local-currency
+# accounts), never a bargain. (lower, upper]: lower exclusive, upper
+# inclusive, None = open.
+IMPOSSIBLE_BOUNDS: dict[str, tuple[float | None, float | None]] = {
+    "earnings_yield": (None, 1.0),
+    "price_to_earnings_ratio": (1.0, None),
+    "price_to_book_ratio": (0.0, None),
+}
+
+
 def _avg(series: pd.Series) -> pd.Series:
     return average(series)
 
@@ -194,10 +206,16 @@ def compute_ratios(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
 
 
 def _guard(column: str, result: pd.Series, inputs: dict[str, pd.Series]) -> pd.Series:
-    """NaN where a POSITIVE_DENOMINATORS input is not > 0 (or missing)."""
+    """NaN where a POSITIVE_DENOMINATORS input is not > 0 (or missing), and
+    outside IMPOSSIBLE_BOUNDS."""
     for name in POSITIVE_DENOMINATORS.get(column, ()):
         if name in inputs:
             result = result.where(inputs[name] > 0)
+    lower, upper = IMPOSSIBLE_BOUNDS.get(column, (None, None))
+    if lower is not None:
+        result = result.where(result > lower)
+    if upper is not None:
+        result = result.where(result <= upper)
     return result
 
 
