@@ -1600,6 +1600,19 @@ def test_derivatives_need_a_four_letter_base() -> None:
     assert derivative_listings(universe) == {"DAVEW", "TDGMW", "ABCDU"}
 
 
+def test_derivatives_spelled_with_a_separator() -> None:
+    """RAC-WS next to RAC: the NYSE spelling of a warrant is a derivative
+    too, while share classes, preferreds and exchange suffixes stay."""
+    from crible.compute.snapshot import derivative_listings
+
+    universe = {
+        *("RAC", "RAC-WS", "KCAC", "KCAC-UN", "XYZ", "XYZ.U", "XYZ-RT", "XYZ-WT"),
+        *("BRK-A", "BRK-B", "BAC", "BAC-PL", "REI", "REI-UN.TO", "SAP", "SAP.DE"),
+        "ORPH-WS",  # no listed base: nothing to be a derivative of
+    }
+    assert derivative_listings(universe) == {"RAC-WS", "KCAC-UN", "XYZ.U", "XYZ-RT", "XYZ-WT"}
+
+
 def test_a_warrant_outside_the_universe_is_not_built(tmp_path) -> None:
     """DAVEW: the SEC directory maps it to DAVE's CIK, so it has raw
     statements without being in the universe — P/E 0.07, rank #3."""
