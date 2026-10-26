@@ -711,7 +711,9 @@ recompute ships them):
 - **Warrants, units and rights** (a listed US base symbol + W/WS/WT/U/UN/R/RT) get no snapshot
   row: Yahoo serves them the company's statements, and ratios on their price are noise. The
   suffix only counts after a 4-letter base, Nasdaq's 5th letter (DAVEW, ACAHU): MU, PHR or DOCU
-  are companies, not M + U, PH + R or DOC + U. The SEC directory maps some to the parent's CIK
+  are companies, not M + U, PH + R or DOC + U. The NYSE spelling with a separator (RAC-WS,
+  KCAC-UN) counts too; share classes (BRK-B) and exchange suffixes (SAP.DE) do not. The SEC
+  directory maps some to the parent's CIK
   (DAVEW): EDGAR does not serve them either.
 - **Global peer group**: a listing whose region × sector has fewer than 5 peers is ranked (and
   gets its Mohanram medians) against **every** latest row, not just the other leftovers.
@@ -771,7 +773,9 @@ en 10 (un recalcul complet les applique) :
 - **Warrants, unités et droits** (symbole US coté + W/WS/WT/U/UN/R/RT) n'ont pas de ligne de
   snapshot : Yahoo leur sert les comptes de la société et les ratios sur leur prix sont du
   bruit. Le suffixe ne compte qu'après une base de 4 lettres, la 5e lettre du Nasdaq (DAVEW,
-  ACAHU) : MU, PHR ou DOCU sont des sociétés, pas M + U, PH + R ou DOC + U. L'annuaire SEC en
+  ACAHU) : MU, PHR ou DOCU sont des sociétés, pas M + U, PH + R ou DOC + U. La graphie NYSE
+  avec séparateur (RAC-WS, KCAC-UN) compte aussi ; pas les classes d'actions (BRK-B) ni les
+  suffixes de place (SAP.DE). L'annuaire SEC en
   rattache certains au CIK de la société (DAVEW) : EDGAR ne les sert pas non plus.
 - **Groupe de pairs global** : une valeur dont le couple région × secteur compte moins de 5
   pairs est classée (et reçoit ses médianes Mohanram) contre **toutes** les dernières lignes,

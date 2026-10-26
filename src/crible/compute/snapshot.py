@@ -495,8 +495,14 @@ def derivative_listings(universe: set[str]) -> set[str]:
     """Symbols that are a listed base symbol plus a derivative suffix."""
     out = set()
     for symbol in universe:
-        if "." in symbol or "-" in symbol:
-            continue  # US common tickers only; share classes (BRK-B) stay
+        cut = max(symbol.rfind("."), symbol.rfind("-"))
+        if cut >= 0:
+            # NYSE spells them with a separator (RAC-WS, KCAC-UN); share
+            # classes (BRK-B), preferreds (BAC-PL) and exchange suffixes
+            # (SAP.DE, REI-UN.TO) end in no derivative suffix and stay
+            if symbol[cut + 1 :] in DERIVATIVE_SUFFIXES and symbol[:cut] in universe:
+                out.add(symbol)
+            continue
         for suffix in DERIVATIVE_SUFFIXES:
             base = symbol[: -len(suffix)]
             if symbol.endswith(suffix) and len(base) >= DERIVATIVE_BASE_LENGTH and base in universe:
