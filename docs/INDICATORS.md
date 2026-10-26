@@ -709,8 +709,10 @@ recompute ships them):
   stands alone instead of being merged cell by cell. US listings take their statements'
   currency from the SEC directory mirror (TM files in JPY, TSM in TWD, BABA in CNY).
 - **Warrants, units and rights** (a listed US base symbol + W/WS/WT/U/UN/R/RT) get no snapshot
-  row: Yahoo serves them the company's statements, and ratios on their price are noise. The SEC
-  directory maps some to the parent's CIK (DAVEW): EDGAR does not serve them either.
+  row: Yahoo serves them the company's statements, and ratios on their price are noise. The
+  suffix only counts after a 4-letter base, Nasdaq's 5th letter (DAVEW, ACAHU): MU, PHR or DOCU
+  are companies, not M + U, PH + R or DOC + U. The SEC directory maps some to the parent's CIK
+  (DAVEW): EDGAR does not serve them either.
 - **Global peer group**: a listing whose region × sector has fewer than 5 peers is ranked (and
   gets its Mohanram medians) against **every** latest row, not just the other leftovers.
   `composite_rank` needs at least two pillars: a momentum-only listing (a SPAC warrant with no
@@ -768,8 +770,9 @@ en 10 (un recalcul complet les applique) :
   SEC (TM en JPY, TSM en TWD, BABA en CNY).
 - **Warrants, unités et droits** (symbole US coté + W/WS/WT/U/UN/R/RT) n'ont pas de ligne de
   snapshot : Yahoo leur sert les comptes de la société et les ratios sur leur prix sont du
-  bruit. L'annuaire SEC en rattache certains au CIK de la société (DAVEW) : EDGAR ne les sert
-  pas non plus.
+  bruit. Le suffixe ne compte qu'après une base de 4 lettres, la 5e lettre du Nasdaq (DAVEW,
+  ACAHU) : MU, PHR ou DOCU sont des sociétés, pas M + U, PH + R ou DOC + U. L'annuaire SEC en
+  rattache certains au CIK de la société (DAVEW) : EDGAR ne les sert pas non plus.
 - **Groupe de pairs global** : une valeur dont le couple région × secteur compte moins de 5
   pairs est classée (et reçoit ses médianes Mohanram) contre **toutes** les dernières lignes,
   pas seulement les autres orphelines. `composite_rank` exige au moins deux piliers : une

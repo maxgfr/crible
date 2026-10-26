@@ -1587,6 +1587,19 @@ def test_warrants_units_and_rights_are_not_companies() -> None:
     assert derivative_listings(universe) == {"TNONW", "ACAHU", "ACAHW", "ACAHR"}
 
 
+def test_derivatives_need_a_four_letter_base() -> None:
+    """#33: MU (M + U), PHR (PH + R), DOCU (DOC + U) are companies — the
+    suffix only marks a derivative as Nasdaq's 5th letter."""
+    from crible.compute.snapshot import derivative_listings
+
+    universe = {
+        *("PH", "PHR", "ACH", "ACHR", "CV", "CVU", "W", "WU", "M", "MU", "DOC", "DOCU"),
+        *("V", "VRT", "SO", "SOUN"),
+        *("DAVE", "DAVEW", "TDGM", "TDGMW", "ABCD", "ABCDU"),
+    }
+    assert derivative_listings(universe) == {"DAVEW", "TDGMW", "ABCDU"}
+
+
 def test_a_warrant_outside_the_universe_is_not_built(tmp_path) -> None:
     """DAVEW: the SEC directory maps it to DAVE's CIK, so it has raw
     statements without being in the universe — P/E 0.07, rank #3."""

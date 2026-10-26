@@ -485,6 +485,10 @@ def load_statement_currencies(data_dir: Path | str) -> dict[str, str]:
 # serves them the company's statements, and ratios on a $0.05 warrant price
 # topped the net-net preset (TNONW: NCAV 23,654× its "market cap")
 DERIVATIVE_SUFFIXES = ("WS", "WT", "UN", "RT", "W", "U", "R")
+# a suffix without separator is Nasdaq's 5th letter after a 4-letter base
+# (DAVEW, ACAHU): on a shorter base it is a coincidence between two
+# companies (MU is not M + U, PHR not PH + R)
+DERIVATIVE_BASE_LENGTH = 4
 
 
 def derivative_listings(universe: set[str]) -> set[str]:
@@ -494,7 +498,8 @@ def derivative_listings(universe: set[str]) -> set[str]:
         if "." in symbol or "-" in symbol:
             continue  # US common tickers only; share classes (BRK-B) stay
         for suffix in DERIVATIVE_SUFFIXES:
-            if symbol.endswith(suffix) and len(symbol) > len(suffix) and symbol[: -len(suffix)] in universe:
+            base = symbol[: -len(suffix)]
+            if symbol.endswith(suffix) and len(base) >= DERIVATIVE_BASE_LENGTH and base in universe:
                 out.add(symbol)
                 break
     return out
