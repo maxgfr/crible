@@ -53,7 +53,7 @@ jobs:
       # link, which silently killed the whole EDGAR layer (diagnosed 2026-07-14).
       CRIBLE_SEC_USER_AGENT: "crible maxgolfier@gmail.com"
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # --retry-all-errors so --retry also covers the HTTP 404 window a
       # concurrent `gh release upload --clobber` opens (see crawl-marathon.yml).
