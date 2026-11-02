@@ -71,13 +71,8 @@ jobs:
       - run: uv python install 3.12
       - run: uv sync --locked --extra captcha
 
-      # paperswithbacktest/Stocks-Daily-Price became gated (manual approval) in
-      # October 2026: anonymous downloads now get a 401. Like the nightly, it
-      # must not fail the whole import — defeatbeta and Stooq still land.
-      - name: Import the HuggingFace price dump (US — series + distillate)
-        continue-on-error: true # prices are an enrichment, never a gate
-        run: uv run crible import-prices huggingface
-
+      # The paperswithbacktest HuggingFace dump is paid since October 2026 (gated
+      # behind a subscription); defeatbeta covers the same US listings.
       - name: Import the defeatbeta dump (US prices + capital events)
         continue-on-error: true # prices are an enrichment, never a gate
         run: uv run crible import-prices defeatbeta

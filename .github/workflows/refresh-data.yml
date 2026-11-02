@@ -83,12 +83,9 @@ jobs:
             https://mapping.gleif.org/api/v2/isin-lei/latest/download
 
       # the worldwide price series come from the yfinance crawl below (Europe-
-      # first) + the optional Stooq worldwide dump (import-prices workflow);
-      # this weekly step just tops up US listings from the HuggingFace dump
-      - name: Weekly HuggingFace price dump (US listings — series + distillate)
-        continue-on-error: true # prices are an enrichment, never a gate
-        run: uv run crible import-prices huggingface --max-age-days 6
-
+      # first) + the optional Stooq worldwide dump (import-prices workflow); US
+      # listings are topped up from the defeatbeta dump (the paperswithbacktest
+      # HuggingFace dump is paid since October 2026)
       # BEFORE the refresh: the crawl's dump-covered deferral reads this
       # store, so fresh coverage must land first (assumed-risk tier, like
       # Stooq — see docs/DATA-SOURCES.md)
