@@ -8,7 +8,7 @@
 
 FROM ghcr.io/astral-sh/uv:0.12.21 AS uv
 
-FROM node:26.10.0-alpine AS ui
+FROM node:26.13.0-alpine AS ui
 WORKDIR /build
 COPY ui/package.json ui/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
