@@ -6,7 +6,7 @@
 # BuildKit cache mounts keep the npm and uv download caches across builds
 # (outside the image layers), so a lockfile bump re-downloads only the delta.
 
-FROM ghcr.io/astral-sh/uv:0.12.21 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
 
 FROM node:26.13.0-alpine AS ui
 WORKDIR /build
