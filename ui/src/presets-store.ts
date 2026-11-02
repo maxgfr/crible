@@ -1,6 +1,8 @@
 // FR-009 AC-2 — edited queries can be saved as new named presets.
 // Custom presets live in localStorage (self-hosted, single operator) —
-// same try/catch contract as theme.ts: storage may be missing or full.
+// same try/catch contract as theme.ts: storage may be missing or full (on
+// GitHub Pages the origin's quota is shared with every other site served
+// from maxgfr.github.io), so writes report whether they landed.
 
 import type { Preset } from "./data/types";
 
@@ -16,11 +18,19 @@ export function loadCustomPresets(): Preset[] {
   }
 }
 
-function persist(presets: Preset[]): void {
+/** The custom presets after a change, and whether they reached storage. */
+export interface CustomPresetsResult {
+  presets: Preset[];
+  /** false: quota or SecurityError — the list still updates for this session only */
+  persisted: boolean;
+}
+
+function persist(presets: Preset[]): CustomPresetsResult {
   try {
     localStorage.setItem(KEY, JSON.stringify(presets));
+    return { presets, persisted: true };
   } catch {
-    /* quota or SecurityError — the list still updates for this session */
+    return { presets, persisted: false };
   }
 }
 
@@ -44,7 +54,7 @@ export function customPresetId(name: string): string {
   return `custom-${slug ? `${slug}-` : ""}${nameHash(name)}`;
 }
 
-export function saveCustomPreset(name: string, dsl: string): Preset[] {
+export function saveCustomPreset(name: string, dsl: string): CustomPresetsResult {
   const preset: Preset = {
     id: customPresetId(name),
     name,
@@ -52,13 +62,9 @@ export function saveCustomPreset(name: string, dsl: string): Preset[] {
     dsl,
   };
   const others = loadCustomPresets().filter((p) => p.id !== preset.id);
-  const next = [...others, preset];
-  persist(next);
-  return next;
+  return persist([...others, preset]);
 }
 
-export function deleteCustomPreset(id: string): Preset[] {
-  const next = loadCustomPresets().filter((p) => p.id !== id);
-  persist(next);
-  return next;
+export function deleteCustomPreset(id: string): CustomPresetsResult {
+  return persist(loadCustomPresets().filter((p) => p.id !== id));
 }

@@ -475,5 +475,25 @@ describe("presets popover", () => {
     fireEvent.click(rtl.getByRole("button", { name: "Delete preset Cash cows" }));
     expect(rtl.queryByRole("group", { name: "Custom" })).not.toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem("crible.custom-presets") ?? "[]")).toEqual([]);
+    expect(rtl.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("says so when storage refuses to keep a saved preset", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => [] })),
+    );
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota exceeded", "QuotaExceededError");
+    });
+    render(<PresetsMenu onPick={() => {}} currentQuery="fcf_margin >= 0.05" activeDsl={null} />);
+    fireEvent.click(await rtl.findByRole("button", { name: "Presets" }));
+
+    fireEvent.change(rtl.getByLabelText("New preset name"), { target: { value: "Cash cows" } });
+    fireEvent.submit(rtl.getByLabelText("New preset name").closest("form")!);
+    // still listed for this session, but not claimed as kept
+    expect(within(rtl.getByRole("group", { name: "Custom" })).getByText("Cash cows")).toBeInTheDocument();
+    expect(rtl.getByRole("alert")).toHaveTextContent(/lost on reload/);
+    setItem.mockRestore();
   });
 });

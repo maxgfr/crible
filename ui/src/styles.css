@@ -1398,3 +1398,11 @@ table.results .symlink:hover {
   flex: 1;
   min-width: 0;
 }
+
+.preset-unsaved {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  font-size: var(--scale-small);
+}
