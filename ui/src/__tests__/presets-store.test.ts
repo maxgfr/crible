@@ -40,9 +40,16 @@ describe("storage failures", () => {
       throw new DOMException("quota exceeded", "QuotaExceededError");
     });
     expect(() => saveCustomPreset("Cash cows", "fcf_margin >= 0.05")).not.toThrow();
-    expect(saveCustomPreset("Cash cows", "fcf_margin >= 0.05")).toEqual([
-      expect.objectContaining({ id: "custom-cash-cows" }),
-    ]);
+    expect(saveCustomPreset("Cash cows", "fcf_margin >= 0.05")).toEqual({
+      presets: [expect.objectContaining({ id: "custom-cash-cows" })],
+      persisted: false,
+    });
     expect(() => deleteCustomPreset("custom-cash-cows")).not.toThrow();
+    expect(deleteCustomPreset("custom-cash-cows").persisted).toBe(false);
+  });
+
+  it("reports a write that landed", () => {
+    expect(saveCustomPreset("Cash cows", "fcf_margin >= 0.05").persisted).toBe(true);
+    expect(deleteCustomPreset("custom-cash-cows")).toEqual({ presets: [], persisted: true });
   });
 });

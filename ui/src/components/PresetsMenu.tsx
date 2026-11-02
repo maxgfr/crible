@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { presets as fetchPresets, type Preset } from "../data";
 import { fieldGroup } from "../data/field-catalog";
 import {
+  type CustomPresetsResult,
   customPresetId,
   deleteCustomPreset,
   loadCustomPresets,
@@ -36,6 +37,8 @@ export function PresetsMenu({ onPick, currentQuery, activeDsl }: Props) {
   const [custom, setCustom] = useState<Preset[]>([]);
   const [open, setOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
+  // the last change could not be stored: say so rather than look saved
+  const [unsaved, setUnsaved] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -63,6 +66,10 @@ export function PresetsMenu({ onPick, currentQuery, activeDsl }: Props) {
     return GROUP_ORDER.filter((g) => byGroup.has(g)).map((g) => [g, byGroup.get(g)!] as const);
   }, [all]);
   const wouldReplace = custom.some((p) => p.id === customPresetId(saveName));
+  const applyChange = ({ presets, persisted }: CustomPresetsResult) => {
+    setCustom(presets);
+    setUnsaved(!persisted);
+  };
 
   return (
     <div
@@ -101,7 +108,7 @@ export function PresetsMenu({ onPick, currentQuery, activeDsl }: Props) {
                       className="preset-delete"
                       aria-label={`Delete preset ${preset.name}`}
                       title={`Delete preset ${preset.name}`}
-                      onClick={() => setCustom(deleteCustomPreset(preset.id))}
+                      onClick={() => applyChange(deleteCustomPreset(preset.id))}
                     >
                       ×
                     </button>
@@ -115,7 +122,7 @@ export function PresetsMenu({ onPick, currentQuery, activeDsl }: Props) {
             onSubmit={(event) => {
               event.preventDefault();
               if (saveName.trim() && currentQuery.trim()) {
-                setCustom(saveCustomPreset(saveName.trim(), currentQuery));
+                applyChange(saveCustomPreset(saveName.trim(), currentQuery));
                 setSaveName("");
               }
             }}
@@ -130,6 +137,11 @@ export function PresetsMenu({ onPick, currentQuery, activeDsl }: Props) {
               {wouldReplace ? "Replace" : "Save"}
             </button>
           </form>
+          {unsaved && (
+            <p className="preset-unsaved" role="alert">
+              Storage for this site is full or blocked — this change will be lost on reload.
+            </p>
+          )}
         </div>
       )}
     </div>
