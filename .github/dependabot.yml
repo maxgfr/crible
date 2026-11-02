@@ -7,6 +7,16 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    ignore:
+      # The python base is the project's interpreter: it must match
+      # requires-python (pyproject.toml, 3.12 only), or `uv sync` finds no
+      # interpreter and the image build fails. Only 3.12.x patches come from
+      # here; a new interpreter line is a deliberate migration (pyproject,
+      # uv.lock, CI, docs). Python 3.15 is blocked upstream anyway:
+      # onnxruntime, needed by the captcha extra (ddddocr), ships no cp315
+      # wheels and no sdist.
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
