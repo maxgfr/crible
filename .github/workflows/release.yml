@@ -4,7 +4,8 @@
 # release is cut, the SAME workflow builds the multi-arch Docker image
 # (amd64 for the classic VPS path, arm64 for Hetzner CAX / Apple Silicon /
 # Pi NAS) — it must live here because a tag pushed with GITHUB_TOKEN never
-# triggers other workflows (GitHub recursion protection).
+# triggers other workflows (GitHub recursion protection). The same goes for
+# the CLI (job cli): the release's wheel and sdist, attached to it.
 # Every green push to main also publishes `main` + `sha-<short>` + `latest`
 # (job docker-main), so the image is always current. When that push cuts a
 # release, the docker job owns `latest` (the bumped commit) instead.
@@ -25,6 +26,10 @@ on:
         description: "Compute the next version without releasing (no-op mode)"
         type: boolean
         default: false
+      cli_tag:
+        description: "Attach the CLI (wheel + sdist) to this existing release tag, e.g. v0.17.0 — skips the version job"
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -37,7 +42,7 @@ concurrency:
 jobs:
   version:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' && inputs.cli_tag == '') ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
@@ -58,6 +63,37 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           changelog: "false"
           no_operation_mode: ${{ inputs.dry_run == true }}
+
+  # The CLI of every release: its wheel and sdist, attached to the GitHub
+  # Release once the wheel's `crible --version` prints the tag. The Homebrew
+  # formula (maxgfr/homebrew-tap) follows the tag's source tarball, which holds
+  # uv.lock; the wheel is for `uv tool install <url>` of one exact release.
+  cli:
+    needs: version
+    if: >-
+      !cancelled() &&
+      (needs.version.outputs.released == 'true' ||
+       (github.event_name == 'workflow_dispatch' && inputs.cli_tag != ''))
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.version.outputs.tag || inputs.cli_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: uv python install 3.12
+      - run: uv build
+      - name: Smoke-test the wheel
+        run: |
+          version="${TAG#v}"
+          out="$(uvx --python 3.12 --from "dist/crible-${version}-py3-none-any.whl" crible --version)"
+          echo "crible --version → $out"
+          test "$out" = "$version"
+      - name: Attach the CLI to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$TAG" dist/* --clobber
 
   docker:
     needs: version
