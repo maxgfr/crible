@@ -95,13 +95,20 @@ uv tool install git+https://github.com/maxgfr/crible    # or one-shot: uvx --fro
 crible --data-dir ~/.crible-data bootstrap                # pull the FULL published dataset — no crawl
 crible --data-dir ~/.crible-data screen "price_to_earnings_ratio <= 15 AND region = 'europe'"
 crible --data-dir ~/.crible-data fields                   # every filterable column + type
+crible --data-dir ~/.crible-data stats --symbol MC.PA roic gross_margin   # where it sits among its peers
 ```
+
+`stats` gives each numeric field's distribution over a peer group (n, mean, min, p10, p25,
+median, p75, p90, max) and, with `--symbol`, that symbol's value and percentile. The group
+is `--query` (a DSL filter) when given, else the symbol's region×sector (at least 5 rows,
+else the whole universe, the percentile ranks' own rule). The API serves it at
+`GET /api/stats?fields=roic,gross_margin&symbol=MC.PA`.
 
 `--data-dir` (or `CRIBLE_DATA_DIR`) selects the dataset location; the default is `./data`
 relative to the current directory — outside a clone, always pass it.
 
 Agents can screen through MCP — a read-only tool surface (`screen`, `fields`, `presets`,
-`company`, `status`) over stdio. Register it with your agent's own command (any other MCP
+`company`, `stats`, `prices`, `status`) over stdio. Register it with your agent's own command (any other MCP
 client: run `crible mcp` with `CRIBLE_DATA_DIR` set):
 
 ```bash

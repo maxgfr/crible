@@ -17,6 +17,7 @@ import pandas as pd
 from crible import config
 from crible.compute.snapshot import SNAPSHOT_NAME
 from crible.dsl.parser import DslError
+from crible import store
 from crible.store import field_types_from_relation, screen_with_total
 
 
@@ -89,6 +90,27 @@ class Runtime:
         try:
             return screen_with_total(
                 con, query, whitelist=set(types), sort=sort, limit=limit, offset=offset, types=types
+            )
+        finally:
+            con.close()
+
+    def stats(self, fields: list[str], *, query: str = "", symbol: str | None = None) -> dict | None:
+        """Distribution of numeric fields over a peer group — the DSL `query`,
+        else `symbol`'s region×sector (the percentile ranks' rule), else the
+        universe — plus the symbol's value and percentile. None when the
+        symbol is not in the snapshot."""
+        from crible.compute.ranks import MIN_PEERS
+
+        con, types = _latest(self.snapshot_path())
+        try:
+            return store.stats(
+                con,
+                fields,
+                query=query,
+                symbol=symbol,
+                whitelist=set(types),
+                types=types,
+                min_peers=MIN_PEERS,
             )
         finally:
             con.close()

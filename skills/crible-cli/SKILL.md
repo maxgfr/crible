@@ -130,6 +130,10 @@ uv run crible screen "price_to_book_ratio < 1.5 AND altman_z > 2.99 AND beneish_
 
 # One company's full detail: filter on symbol
 uv run crible screen "symbol = 'AIR.PA'" --format csv
+
+# Where it sits among its peers: each field's p10…p90 over its region×sector,
+# its value and percentile (--query sets another peer group; --format json)
+uv run crible stats --symbol AIR.PA roic gross_margin price_to_earnings_ratio
 ```
 
 When a screen returns 0 rows, loosen one clause at a time (coverage is bounded:
@@ -198,7 +202,8 @@ After any raw change, `crible compute` is what refreshes ratios/ranks. Check
 
 `crible mcp` serves a READ-ONLY MCP tool surface over stdio — `screen`
 (the same DSL; blank = whole universe), `fields`, `presets`, `company`,
-`status`. No crawl/refresh tool is exposed. Register it in the active host
+`stats` (a peer group's distribution and one symbol's percentile), `prices`
+(daily bars), `status`. No crawl/refresh tool is exposed. Register it in the active host
 after bootstrap, with that host's own MCP command:
 
 ```bash

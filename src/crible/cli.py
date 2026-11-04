@@ -103,6 +103,53 @@ def screen(
 
 
 @app.command()
+def stats(
+    fields: list[str] = typer.Argument(..., help="Numeric fields, e.g. return_on_equity gross_margin"),
+    symbol: str = typer.Option(None, "--symbol", help="Place this symbol in its peer group"),
+    query: str = typer.Option(
+        "", "--query", help="Peer group as a DSL filter (default: the symbol's region×sector)"
+    ),
+    fmt: str = typer.Option("table", "--format", help="table | json"),
+) -> None:
+    """Distribution of numeric fields over a peer group, and one symbol's percentile."""
+    if fmt not in ("table", "json"):
+        _fail(f"unknown --format {fmt!r} — table or json")
+    try:
+        out = Runtime.from_env().stats(fields, query=query, symbol=symbol)
+    except SnapshotMissingError as exc:
+        _fail(str(exc))
+    except DslError as exc:
+        _fail(f"invalid stats request: {exc}")
+    if out is None:
+        _fail(f"unknown symbol {symbol!r}")
+    if fmt == "json":
+        typer.echo(json.dumps(out))
+        return
+    group = out["group"]
+    where = (
+        group.get("query")
+        or "×".join(str(group[k]) for k in ("region", "sector") if k in group)
+        or "universe"
+    )
+    typer.echo(f"peer group: {group['basis']} ({where}), {group['rows']} rows")
+
+    def cell(v: object) -> str:
+        return "—" if v is None else f"{v:.4g}"
+
+    head = ["field", "n", "p10", "p25", "median", "p75", "p90"] + (["value", "pct"] if symbol else [])
+    rows = [
+        [name, str(st["n"]), *(cell(st[k]) for k in ("p10", "p25", "median", "p75", "p90"))]
+        + ([cell(st["value"]), cell(st["percentile"])] if symbol else [])
+        for name, st in out["fields"].items()
+    ]
+    widths = [max(len(r[i]) for r in [head, *rows]) for i in range(len(head))]
+    for r in [head, *rows]:
+        typer.echo(
+            "  ".join(c.rjust(w) if i else c.ljust(w) for i, (c, w) in enumerate(zip(r, widths, strict=True)))
+        )
+
+
+@app.command()
 def export(
     query: str = typer.Argument(None, help="Filter DSL"),
     preset: str = typer.Option(None, "--preset"),
