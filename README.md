@@ -88,10 +88,13 @@ universe list.)
 ### Standalone CLI — no clone needed
 
 crible is a regular Python CLI (`[project.scripts]`); install it as a tool and run it anywhere
-(uv auto-provisions the required Python 3.12):
+(uv auto-provisions the required Python 3.12). Every release ships the CLI: the GitHub Release
+carries its wheel and sdist, and the Homebrew formula follows the releases:
 
 ```bash
+brew install maxgfr/tap/crible                          # macOS / Linux, from the locked dependencies
 uv tool install git+https://github.com/maxgfr/crible    # or one-shot: uvx --from git+https://github.com/maxgfr/crible crible …
+uv tool install <the .whl URL of a release>          # one exact release, e.g. to match a pin
 crible --data-dir ~/.crible-data bootstrap                # pull the FULL published dataset — no crawl
 crible --data-dir ~/.crible-data screen "price_to_earnings_ratio <= 15 AND region = 'europe'"
 crible --data-dir ~/.crible-data fields                   # every filterable column + type
@@ -136,7 +139,7 @@ mistyped `--data-dir` never removes an arbitrary folder), then remove the tool i
 
 ```bash
 crible --data-dir ~/.crible-data clean   # or clean --yes to skip the prompt
-uv tool uninstall crible                 # pipx uninstall crible, if installed that way
+uv tool uninstall crible                 # or brew uninstall crible, or pipx uninstall crible
 claude mcp remove crible                 # if registered: codex mcp remove crible, or drop it from opencode.json
 ```
 

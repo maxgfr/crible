@@ -17,7 +17,9 @@ crible --data-dir ~/.crible-data bootstrap
 crible --data-dir ~/.crible-data screen "piotroski_f >= 7" --sort -composite_rank
 ```
 
-(One-shot alternative: `uvx --from git+https://github.com/maxgfr/crible crible …`.)
+(Alternatives: `brew install maxgfr/tap/crible` on macOS / Linux, or one-shot
+`uvx --from git+https://github.com/maxgfr/crible crible …`. Every release also
+carries its wheel, for `uv tool install <wheel URL>` of one exact version.)
 
 The global `--data-dir` option (before the subcommand) selects the dataset
 location. Default: `$CRIBLE_DATA_DIR`, else `./data` **relative to the
