@@ -144,6 +144,20 @@ def create_app() -> FastAPI:
         the symbol has no series (the chart hides; never an error)."""
         return runtime().prices(symbol)
 
+    @app.get("/api/stats")
+    def stats(fields: str, symbol: str | None = None, query: str = ""):
+        """Distribution of comma-separated numeric `fields` over a peer group
+        (the DSL `query`, else the symbol's region×sector, else the universe),
+        with the symbol's value and percentile. DSL errors are 422."""
+        wanted = [f.strip() for f in fields.split(",") if f.strip()]
+        try:
+            out = runtime().stats(wanted, query=query, symbol=symbol)
+        except SnapshotMissingError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if out is None:
+            raise HTTPException(status_code=404, detail=f"unknown symbol {symbol!r}")
+        return out
+
     @app.get("/api/search")
     def search(q: str, limit: int = 20) -> list[dict]:
         """Universe search by symbol/name substring — deep-links the company

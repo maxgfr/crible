@@ -1,6 +1,6 @@
 """MCP server — screen crible from any agent (`crible mcp`, stdio).
 
-Read-only by construction: the five tools wrap the shared Runtime — the same
+Read-only by construction: the seven tools wrap the shared Runtime — the same
 DSL and the same schema-derived whitelist as the CLI/API/UI — and expose NO
 crawl/refresh/compute: side effects stay out of the tool surface. Standard
 registration with the host's own command, after `crible bootstrap` pulled the
@@ -31,7 +31,9 @@ mcp = FastMCP(
         "IN ('FR','DE')\"; a blank query screens the whole covered universe); "
         "fields() lists every filterable column; presets() the published "
         "starting screens; company() one symbol's full period history; "
-        "status() dataset coverage."
+        "stats() a field's distribution over a peer group and one symbol's "
+        "percentile in it; prices() one symbol's daily bars; status() dataset "
+        "coverage."
     ),
 )
 
@@ -86,6 +88,29 @@ def company(symbol: str) -> dict | None:
     """One symbol's profile and full period history (every computed
     indicator, newest first). None when the symbol is not in the universe."""
     return _runtime().company(symbol)
+
+
+@mcp.tool()
+def stats(fields: list[str], symbol: str | None = None, query: str = "") -> dict | None:
+    """Where a company sits among its peers: per numeric field, n, mean, min,
+    p10, p25, median, p75, p90, max over the group — and, with a symbol, its
+    value and percentile (0-100, ties half). The group is the DSL `query`
+    when given, else the symbol's region×sector (the percentile ranks' rule:
+    at least 5 rows, else the whole universe), else the universe. None when
+    the symbol is not in the snapshot."""
+    try:
+        return _runtime().stats(fields, query=query, symbol=symbol)
+    except DslError as exc:
+        raise ValueError(f"DSL error: {exc}") from exc
+    except SnapshotMissingError as exc:
+        raise ValueError(str(exc)) from exc
+
+
+@mcp.tool()
+def prices(symbol: str) -> list[dict]:
+    """One symbol's published daily bars (date, open, high, low, close,
+    volume), oldest first — [] when the symbol has no series."""
+    return _runtime().prices(symbol)
 
 
 @mcp.tool()

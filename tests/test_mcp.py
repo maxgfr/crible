@@ -77,9 +77,28 @@ def test_mcp_fields_presets_company_status(data_dir) -> None:
 
 
 def test_mcp_surface_is_read_only() -> None:
-    """Guard: only the five read tools exist — no crawl/refresh/compute."""
+    """Guard: only the seven read tools exist — no crawl/refresh/compute."""
     tools = asyncio.run(mcp_server.mcp.list_tools())
-    assert sorted(t.name for t in tools) == ["company", "fields", "presets", "screen", "status"]
+    assert sorted(t.name for t in tools) == [
+        "company",
+        "fields",
+        "presets",
+        "prices",
+        "screen",
+        "stats",
+        "status",
+    ]
+
+
+def test_mcp_stats_places_a_symbol_among_its_peers(data_dir) -> None:
+    out = mcp_server.stats(["piotroski_f"], query="region = 'europe'", symbol="AIR.PA")
+    assert out["group"]["basis"] == "query" and out["group"]["rows"] == 2
+    st = out["fields"]["piotroski_f"]
+    assert st["n"] == 2 and st["median"] == 7.0 and st["value"] == 8.0 and st["percentile"] == 75.0
+    assert mcp_server.stats(["piotroski_f"], symbol="NOPE.XX") is None
+    with pytest.raises(ValueError, match="unknown field"):
+        mcp_server.stats(["piotroski"])
+    assert mcp_server.prices("AIR.PA") == []
 
 
 def test_mcp_screen_pages_with_an_offset(data_dir) -> None:
