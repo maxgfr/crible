@@ -111,6 +111,9 @@ export default function App() {
   const queryInputRef = useRef<HTMLInputElement>(null);
   // the id of the latest screen request — any other response is stale
   const reqId = useRef(0);
+  // the q/sort of the URL the app has already acted on: the one it booted on,
+  // then every screen that ran, then every URL edit it picked up (ran or not)
+  const handledUrl = useRef({ q: route.q, sort: route.sort });
   // latest-value refs: callbacks read them without re-memoising per keystroke
   const queryRef = useRef(query);
   queryRef.current = query;
@@ -144,6 +147,7 @@ export default function App() {
       if (id !== reqId.current) return;
       setResult(response);
       setRanQuery(q);
+      handledUrl.current = { q, sort: sortNext || null };
       setSort(sortNext);
       setPage(pageNext);
       pushQueryHistory(q);
@@ -212,12 +216,16 @@ export default function App() {
   }, []);
 
   // A hand-edited or history-navigated URL re-runs its screen — a new q OR
-  // only a new sort. The comparison with what last ran breaks the loop
-  // (runScreen writes the same q/sort back via replace); an edit made while
-  // a screen runs simply supersedes it (reqId).
+  // only a new sort. The comparison with the URL already acted on breaks the
+  // loop (runScreen writes the same q/sort back via replace); an edit made
+  // while a screen runs simply supersedes it (reqId). It is NOT a comparison
+  // with the last screen that succeeded: after a failed first screen (unknown
+  // field, API down) a corrected URL must still run.
   useEffect(() => {
-    if (route.view !== "screener" || route.q === null || ranQuery === null) return;
-    if (route.q !== ranQuery || route.sort !== sort) {
+    if (route.view !== "screener" || route.q === null) return;
+    const handled = handledUrl.current;
+    if (route.q !== handled.q || route.sort !== handled.sort) {
+      handledUrl.current = { q: route.q, sort: route.sort };
       setQuery(route.q);
       runScreen(route.q, route.sort, 1);
     }

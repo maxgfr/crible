@@ -184,6 +184,38 @@ describe("request races", () => {
     expect(parseHash(window.location.hash).q).toBe("piotroski_f >= 7");
   });
 
+  it("a corrected URL re-runs the screen after the first one failed", async () => {
+    mockApi();
+    const working = globalThis.fetch;
+    let failedOnce = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (String(url) === "/api/screen" && !failedOnce) {
+          failedOnce = true;
+          const body = JSON.parse(String(init?.body ?? "{}"));
+          screenCalls.push({ query: body.query, sort: body.sort ?? null, page: body.page });
+          return {
+            ok: false,
+            status: 422,
+            json: async () => ({
+              detail: { error: "unknown field 'piotroski' at position 0", position: 0, hint: null },
+            }),
+          };
+        }
+        return working(url, init);
+      }),
+    );
+    window.location.hash = `#/?q=${encodeURIComponent("piotroski >= 7")}`;
+    render(<App />);
+    await waitFor(() => expect(rtl.getByText(/unknown field 'piotroski'/)).toBeInTheDocument());
+    // the user fixes the permalink by hand (or presses Back/Forward)
+    window.location.hash = `#/?q=${encodeURIComponent("piotroski_f >= 7")}`;
+    await waitFor(() => expect(screenCalls.length).toBe(2));
+    expect(screenCalls[1].query).toBe("piotroski_f >= 7");
+    await waitFor(() => expect(rtl.getAllByText("AIR.PA").length).toBeGreaterThan(0));
+  });
+
   it("a URL edit that only changes the sort re-runs the screen", async () => {
     mockApi();
     render(<App />);
