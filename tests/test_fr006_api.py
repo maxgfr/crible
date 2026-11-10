@@ -57,6 +57,54 @@ def test_fr006_post_screen_returns_rows_total_and_timing(client) -> None:
     assert body["tookMs"] >= 0
 
 
+def test_fr006_screen_payload_is_plain_json_missing_is_null_text_intact(tmp_path, monkeypatch) -> None:
+    """The contract of the page payload, whatever serializes it: a JSON
+    object, NaN/±inf as null (never a bare NaN token), non-ASCII names and
+    quotes intact, integers still integers."""
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    publish_snapshot(
+        pd.DataFrame(
+            {
+                "symbol": ["MC.PA", "NESN.SW"],
+                "period": ["2025", "2025"],
+                "name": ['LVMH Moët "Hennessy" — Louis Vuitton', "Nestlé S.A. </script>"],
+                "piotroski_f": [8, 7],
+                "altman_z": [float("nan"), 3.25],
+                "return_on_equity": [float("inf"), 0.5],
+                "top10k": [True, False],
+            }
+        ),
+        tmp_path,
+    )
+    response = TestClient(create_app()).post("/api/screen", json={"query": "", "sort": "symbol", "page": 1})
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    assert "NaN" not in response.text and "Infinity" not in response.text
+    body = response.json()
+    assert set(body) == {"rows", "total", "page", "tookMs"}
+    assert body["total"] == 2 and body["page"] == 1 and isinstance(body["tookMs"], float | int)
+    assert body["rows"] == [
+        {
+            "symbol": "MC.PA",
+            "period": "2025",
+            "name": 'LVMH Moët "Hennessy" — Louis Vuitton',
+            "piotroski_f": 8,
+            "altman_z": None,
+            "return_on_equity": None,
+            "top10k": True,
+        },
+        {
+            "symbol": "NESN.SW",
+            "period": "2025",
+            "name": "Nestlé S.A. </script>",
+            "piotroski_f": 7,
+            "altman_z": 3.25,
+            "return_on_equity": 0.5,
+            "top10k": False,
+        },
+    ]
+
+
 def test_fr006_blank_query_screens_the_full_snapshot(client) -> None:
     response = client.post("/api/screen", json={"query": ""})
     assert response.status_code == 200

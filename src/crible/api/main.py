@@ -6,12 +6,13 @@ Serves the built SPA when ui/dist exists."""
 from __future__ import annotations
 
 import io
+import json
 import time
 from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -60,14 +61,15 @@ def create_app() -> FastAPI:
         except SnapshotMissingError as exc:
             return {"rows": [], "total": 0, "page": request.page, "tookMs": 0, "hint": str(exc)}
         took = round((time.perf_counter() - started) * 1000, 2)
-        import json as _json
-
-        return {
-            "rows": _json.loads(rows.to_json(orient="records")),
-            "total": total,
-            "page": request.page,
-            "tookMs": took,
-        }
+        # pandas already writes the rows as JSON (NaN/±inf → null): send those
+        # bytes as they are. Parsing them back into Python objects only for
+        # FastAPI to walk and re-encode every cell cost more than the query
+        # itself on a full page (1000 rows × ~200 columns).
+        payload = (
+            f'{{"rows":{rows.to_json(orient="records")},"total":{json.dumps(total)},'
+            f'"page":{json.dumps(request.page)},"tookMs":{json.dumps(took)}}}'
+        )
+        return Response(content=payload, media_type="application/json")
 
     @app.get("/api/screen.csv")
     def screen_csv(query: str, sort: str | None = None, columns: str | None = None):
