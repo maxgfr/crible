@@ -49,9 +49,16 @@ def latest_close(frames: dict[tuple[str, str], pd.DataFrame]) -> tuple[float, st
     date_col = next((c for c in ("Date", "date", "Datetime") if c in bars.columns), None)
     if close_col is None:
         return None
-    last = bars.dropna(subset=[close_col]).iloc[-1] if bars[close_col].notna().any() else None
-    if last is None:
+    # the newest POSITIVE close, by date — the bars momentum reads (a trailing
+    # zero from a halted session, or unsorted rows, priced off another bar)
+    closes = pd.to_numeric(bars[close_col], errors="coerce")
+    valid = bars[closes > 0]
+    if date_col and len(valid):
+        order = pd.to_datetime(valid[date_col], errors="coerce", utc=True)
+        valid = valid.iloc[order.argsort(kind="stable")]
+    if not len(valid):
         return None
+    last = valid.iloc[-1]
     as_of = str(last[date_col])[:10] if date_col else ""
     return float(last[close_col]), as_of
 
@@ -184,6 +191,11 @@ def _resolve_price(
     return price, price_asof, features
 
 
+# two sources date one split up to a few sessions apart; two real splits at
+# the same ratio never come this close
+SPLIT_SAME_EVENT_DAYS = 5
+
+
 def _split_factor(
     canonical: pd.DataFrame,
     frames: dict[tuple[str, str], pd.DataFrame],
@@ -223,18 +235,21 @@ def _split_factor(
             events += [
                 (str(d)[:10], float(r)) for d, r in zip(hits[date_col], hits["Stock Splits"], strict=True)
             ]
-    factor, seen = 1.0, set()
+    factor = 1.0
+    applied: list[tuple[pd.Timestamp, float]] = []
     for day, ratio in events:
         when = pd.to_datetime(str(day)[:10], errors="coerce")
-        if (
-            pd.isna(when)
-            or when <= after
-            or (pd.notna(until) and when > until)
-            or ratio <= 0
-            or str(day)[:10] in seen
+        if pd.isna(when) or when <= after or (pd.notna(until) and when > until) or ratio <= 0:
+            continue
+        # the same split from both sources counts once — and the two rarely
+        # agree on the day (ex-date in the dump, next session in the bars)
+        if any(
+            abs((when - seen).days) <= SPLIT_SAME_EVENT_DAYS
+            and abs(ratio - known) <= 1e-9 * max(ratio, known)
+            for seen, known in applied
         ):
             continue
-        seen.add(str(day)[:10])  # the same split from both sources counts once
+        applied.append((when, ratio))
         factor *= ratio
     return factor
 

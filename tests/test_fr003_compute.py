@@ -1564,6 +1564,49 @@ def test_a_split_after_the_fiscal_year_end_rebases_the_price() -> None:
     assert row["market_cap"] == pytest.approx(200.0 * 25 * 10)
 
 
+def test_one_split_dated_a_day_apart_by_two_sources_counts_once() -> None:
+    """The dump dates a split on its ex-date, the crawled bars the next
+    session: the exact-date de-duplication let it through twice and a 25:1
+    split multiplied the market cap by 625."""
+    frames = {
+        (s, "annual"): income_frame(rows, ["2023-12-31", "2024-12-31", "2025-12-31"])
+        for s, rows in IMPROVING.items()
+    }
+    frames[("income", "annual")]["BasicAverageShares"] = [10.0, 10.0, 10.0]
+    frames[("income", "annual")]["_fetched_at"] = pd.Timestamp("2026-02-01").timestamp()
+    frames[("prices", "daily")] = pd.DataFrame(
+        {"Date": ["2026-06-01", "2026-06-02"], "Close": [5000.0, 200.0], "Stock Splits": [0.0, 25.0]}
+    )
+    row = build_symbol_snapshot("BK", frames, computed_at=1.0, splits=[("2026-06-01", 25.0)]).iloc[-1]
+    assert row["market_cap"] == pytest.approx(200.0 * 25 * 10)
+    # two real splits months apart both count, even at the same ratio
+    frames[("prices", "daily")] = pd.DataFrame(
+        {"Date": ["2026-03-02", "2026-06-02"], "Close": [400.0, 200.0], "Stock Splits": [2.0, 2.0]}
+    )
+    row = build_symbol_snapshot("BK", frames, computed_at=1.0).iloc[-1]
+    assert row["market_cap"] == pytest.approx(200.0 * 4 * 10)
+
+
+def test_the_price_is_the_newest_positive_close_whatever_the_bar_order() -> None:
+    """latest_close took the last ROW: unsorted bars, or a trailing zero close
+    from a halted session, priced the company off the wrong bar — while
+    return_6m (which sorts and drops non-positive closes) used another one."""
+    from crible.compute.snapshot import latest_close
+
+    unsorted = pd.DataFrame({"Date": ["2026-06-03", "2026-06-01", "2026-06-02"], "Close": [30.0, 10.0, 20.0]})
+    assert latest_close({("prices", "daily"): unsorted}) == (30.0, "2026-06-03")
+    halted = pd.DataFrame({"Date": ["2026-06-01", "2026-06-02", "2026-06-03"], "Close": [10.0, 20.0, 0.0]})
+    assert latest_close({("prices", "daily"): halted}) == (20.0, "2026-06-02")
+    aware = pd.DataFrame(
+        {
+            "Date": pd.to_datetime(["2026-06-02 00:00:00+02:00", "2026-06-01 00:00:00+02:00"]),
+            "Close": [20.0, 10.0],
+        }
+    )
+    assert latest_close({("prices", "daily"): aware}) == (20.0, "2026-06-02")
+    assert latest_close({("prices", "daily"): pd.DataFrame({"Date": ["2026-06-01"], "Close": [0.0]})}) is None
+
+
 def test_statements_in_two_currencies_are_never_merged(tmp_path) -> None:
     """VALE3.SA: CVM in BRL, Yahoo in USD — reconcile put BRL debt next to
     USD capex; P/E TTM read 101.7 against 21."""
