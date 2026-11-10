@@ -85,7 +85,14 @@ export type AstNode = Comparison | InList | NotNode | BoolOp;
 const TOKEN_RE =
   /([ \t\n\r\f\v]+)|(>=|<=|!=|<>|==|>|<|=)|(\()|(\))|(,)|(-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)|('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")|([A-Za-z_][A-Za-z0-9_.]*)/y;
 
-const KEYWORDS: Record<string, TokenKind> = { and: "AND", or: "OR", not: "NOT", in: "IN" };
+// a Map, not an object literal: `constructor`, `__proto__`, `toString`… must
+// tokenize as plain fields (Python parity) and never reach Object.prototype
+const KEYWORDS = new Map<string, TokenKind>([
+  ["and", "AND"],
+  ["or", "OR"],
+  ["not", "NOT"],
+  ["in", "IN"],
+]);
 
 export const MAX_QUERY_LENGTH = 2000;
 export const MAX_DEPTH = 32;
@@ -123,7 +130,7 @@ export function tokenize(text: string): Token[] {
     else if (match[5] !== undefined) kind = "COMMA";
     else if (match[6] !== undefined) kind = "NUMBER";
     else if (match[7] !== undefined) kind = "STRING";
-    else kind = KEYWORDS[value.toLowerCase()] ?? "FIELD";
+    else kind = KEYWORDS.get(value.toLowerCase()) ?? "FIELD";
     tokens.push({ kind, value, position: start });
   }
   return tokens;

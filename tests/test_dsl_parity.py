@@ -121,6 +121,13 @@ ERRORS = [
     "\x85",
     " \t ",
     "name = '😀' AND 😀 > 1",
+    # names every JS object inherits: plain unknown fields, never keywords
+    # (a `KEYWORDS[word]` lookup in the TS port found Object.prototype's)
+    "constructor > 1",
+    "__proto__ = 1",
+    "toString IN (1, 2)",
+    "piotroski_f > 1 AND hasOwnProperty > 2",
+    "piotroski_f > valueOf",
     # caps: nesting depth and length
     "NOT " * 40 + "piotroski_f > 1",
     "(" * 40 + "piotroski_f > 1" + ")" * 40,

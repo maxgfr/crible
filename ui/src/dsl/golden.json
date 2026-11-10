@@ -444,6 +444,36 @@
       "hint": null
     },
     {
+      "query": "constructor > 1",
+      "message": "unknown field 'constructor' at position 0 — no similar field exists",
+      "position": 0,
+      "hint": "no similar field exists"
+    },
+    {
+      "query": "__proto__ = 1",
+      "message": "unknown field '__proto__' at position 0 — no similar field exists",
+      "position": 0,
+      "hint": "no similar field exists"
+    },
+    {
+      "query": "toString IN (1, 2)",
+      "message": "unknown field 'toString' at position 0 — no similar field exists",
+      "position": 0,
+      "hint": "no similar field exists"
+    },
+    {
+      "query": "piotroski_f > 1 AND hasOwnProperty > 2",
+      "message": "unknown field 'hasOwnProperty' at position 20 — no similar field exists",
+      "position": 20,
+      "hint": "no similar field exists"
+    },
+    {
+      "query": "piotroski_f > valueOf",
+      "message": "expected a number or quoted string but found 'valueOf' at position 14",
+      "position": 14,
+      "hint": null
+    },
+    {
       "query": "NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT NOT piotroski_f > 1",
       "message": "query nests too deeply at position 128 — at most 32 levels of NOT / parentheses",
       "position": 128,
