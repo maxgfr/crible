@@ -205,6 +205,33 @@ def test_run_cvm_accumulates_years_into_one_frame(tmp_path, monkeypatch) -> None
     assert sorted(tmp_path.glob("raw/provider=cvm/symbol=BBAS3.SA/income-annual-*.parquet")) == files
 
 
+def test_run_cvm_register_fallback_is_not_an_outage(tmp_path, monkeypatch) -> None:
+    """January: this year's FCA register is not published yet and last year's
+    serves. The stage worked — it used to keep the first 404 as its outage,
+    so the status view showed CVM down every January."""
+    from datetime import date
+
+    from crible.ingest.enrichment import run_cvm
+
+    _seed_br_universe(tmp_path, monkeypatch)
+    year = date.today().year
+    http = _MultiHttp(
+        {
+            f"fca_cia_aberta_{year - 1}": _fca_zip().getvalue(),
+            f"dfp_cia_aberta_{year}": _dfp_zip(year).getvalue(),
+            f"dfp_cia_aberta_{year - 1}": _dfp_zip(year - 1).getvalue(),
+        }
+    )
+    outcome = run_cvm(years=1, limit=10, http=http)
+    assert outcome["enriched"] == 1
+    assert outcome["outage"] is None
+
+    # no register at all is still an outage
+    (tmp_path / "mirror" / "cvm" / f"fca_{year - 1}.zip").unlink()
+    down = run_cvm(years=1, limit=10, http=_MultiHttp({}))
+    assert down["outage"] and down["enriched"] == 0
+
+
 def test_run_cvm_limit_zero_is_a_pure_noop(tmp_path, monkeypatch) -> None:
     from crible.ingest.enrichment import run_cvm
 

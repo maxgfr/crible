@@ -65,6 +65,7 @@ def run_cvm(
                 http=http,
                 max_age_seconds=CVM_MAX_AGE,
             ).path
+            outcome["outage"] = None  # the fallback register serves: no outage
             break
         except Exception as exc:  # noqa: BLE001 — outage: record, resume next run
             outcome["outage"] = f"fca {fca_year}: {exc}"
