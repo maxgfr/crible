@@ -634,13 +634,16 @@ def export_site_cmd(
 def compute() -> None:
     """Build and atomically publish the wide snapshot from the raw layer."""
     from crible import config
-    from crible.compute.snapshot import SNAPSHOT_NAME, publish_incremental
+    from crible.compute.snapshot import SNAPSHOT_NAME, ComputeBusy, publish_incremental
 
     data = config.data_dir()
     # incremental: rebuild only symbols whose raw changed since the last build,
     # reuse the base cache for the rest, and skip the republish when nothing
     # changed (F7) — same path the service loop and nightly refresh use
-    snapshot = publish_incremental(data)
+    try:
+        snapshot = publish_incremental(data)
+    except ComputeBusy as exc:
+        _fail(f"{exc} (the ingest loop?) — it will publish; run this again afterwards")
     if snapshot is None:
         typer.echo("snapshot unchanged — no raw changes since the last build")
         return

@@ -18,7 +18,7 @@ from typing import Callable
 import duckdb
 
 from crible import config
-from crible.compute.snapshot import ComputeStopped, publish_incremental
+from crible.compute.snapshot import ComputeBusy, ComputeStopped, publish_incremental
 from crible.ingest.backoff import BackoffPolicy
 from crible.ingest.budget import TokenBucket
 from crible.ingest.crawler import Crawler, CrawlOutcome
@@ -773,6 +773,11 @@ def run_compute(should_stop: Callable[[], bool] | None = None) -> int:
         # a 38 min rebuild outlives the container's stop grace period: the
         # previous snapshot and base stay, the next start redoes the work
         log.info("compute: stopped before publishing")
+        return 0
+    except ComputeBusy as exc:
+        # the ingest loop and a manual `crible compute` on one data directory:
+        # the other one publishes, this one must not write over it
+        log.warning("compute: %s — skipped", exc)
         return 0
     if snapshot is None:
         log.info("compute: no raw changes since last build — snapshot unchanged")

@@ -1918,3 +1918,25 @@ def test_fr003_depositary_receipt_flag() -> None:
         }
     )
     assert depositary_receipt(universe).tolist() == [True, False, False, True, False]
+
+
+def test_two_computes_never_run_on_one_data_directory(tmp_path, monkeypatch) -> None:
+    """The ingest loop and a manual `crible compute`: the second one must not
+    read the base cache and write the snapshot, the base and its watermark
+    through the same temp files as the first — it refuses and says so."""
+    from typer.testing import CliRunner
+
+    from crible.cli import app
+    from crible.compute.snapshot import ComputeBusy, compute_lock, publish_incremental
+    from crible.ingest.service import run_compute
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    with compute_lock(tmp_path):
+        with pytest.raises(ComputeBusy):
+            publish_incremental(tmp_path)
+        assert run_compute() == 0  # the loop skips its turn, it never crashes
+        result = CliRunner().invoke(app, ["compute"])
+        assert result.exit_code == 1 and "another compute is running" in result.output
+        assert not (tmp_path / "snapshot").exists()  # nothing was written under the lock
+    # released: the next compute goes through (no raw data here → nothing to publish)
+    assert publish_incremental(tmp_path).empty

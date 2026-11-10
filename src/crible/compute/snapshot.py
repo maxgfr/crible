@@ -8,6 +8,7 @@ half-written snapshot.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
 from collections.abc import Callable
@@ -634,6 +635,39 @@ class ComputeStopped(Exception):
     """A stop was requested mid-build: nothing is published."""
 
 
+class ComputeBusy(RuntimeError):
+    """Another compute holds this data directory: nothing is built here."""
+
+
+COMPUTE_LOCK_NAME = ".compute.lock"
+
+
+@contextlib.contextmanager
+def compute_lock(data_dir: Path | str):
+    """One compute at a time per data directory. Two at once (the ingest loop
+    and a manual `crible compute`) read the same base cache and wrote the
+    snapshot, the base and its watermark over each other through the same
+    temp files — a watermark newer than the rows it describes, and those
+    symbols were never rebuilt. An advisory lock that the OS releases when
+    the process dies; raises ComputeBusy instead of waiting."""
+    directory = Path(data_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    try:
+        import fcntl
+    except ImportError:  # no advisory locks on this platform: single-process use
+        yield
+        return
+    with open(directory / COMPUTE_LOCK_NAME, "w") as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise ComputeBusy(f"another compute is running on {directory}") from None
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 def build_symbol_rows(
     data_dir: Path | str,
     symbols: list[str],
@@ -783,21 +817,24 @@ def publish_incremental(
     Ordering is the safety: the base (and its watermark, the compute START
     time) is written strictly AFTER the snapshot swap, so a finalize or publish
     that dies leaves the previous base and the next run redoes the work —
-    never a base claiming a snapshot that was not published."""
+    never a base claiming a snapshot that was not published. One compute at
+    a time per data directory (``compute_lock``): a second one raises
+    ComputeBusy."""
     data_dir = Path(data_dir)
-    started = time.time()
-    quotes = _quote_fingerprints(data_dir)
-    built = _incremental_rows(data_dir, quotes, should_stop)
-    if built is None:
-        return None
-    rows, refresh_base = built
-    snapshot = finalize_snapshot(rows, data_dir)
-    if snapshot.empty:
+    with compute_lock(data_dir):
+        started = time.time()
+        quotes = _quote_fingerprints(data_dir)
+        built = _incremental_rows(data_dir, quotes, should_stop)
+        if built is None:
+            return None
+        rows, refresh_base = built
+        snapshot = finalize_snapshot(rows, data_dir)
+        if snapshot.empty:
+            return snapshot
+        publish_snapshot(snapshot, data_dir)
+        if refresh_base:
+            _publish_base(rows, data_dir, watermark=started, quotes=quotes)
         return snapshot
-    publish_snapshot(snapshot, data_dir)
-    if refresh_base:
-        _publish_base(rows, data_dir, watermark=started, quotes=quotes)
-    return snapshot
 
 
 def _quote_fingerprints(data_dir: Path) -> pd.DataFrame:
@@ -933,16 +970,17 @@ def _publish_base(
         tmp = directory / f".tmp-{BASE_QUOTES_NAME}"
         quotes.to_parquet(tmp, index=False)
         tmp.rename(directory / BASE_QUOTES_NAME)
-    (directory / BASE_SCHEMA_NAME).write_text(
-        json.dumps({"engine_schema_version": ENGINE_SCHEMA_VERSION, "watermark": watermark})
-    )
+    # last and atomic: the watermark must never describe rows that are not there
+    tmp = directory / f".tmp-{BASE_SCHEMA_NAME}"
+    tmp.write_text(json.dumps({"engine_schema_version": ENGINE_SCHEMA_VERSION, "watermark": watermark}))
+    tmp.rename(directory / BASE_SCHEMA_NAME)
 
 
 def publish_snapshot(snapshot: pd.DataFrame, data_dir: Path | str) -> Path:
     """Atomic swap for readers: write to a temp file, rename over the old — a
     reader sees the previous snapshot or the new one, never a partial file.
-    Not fsynced (a power cut may lose the new file, never corrupt the old),
-    and the temp name is fixed: one compute at a time per data directory."""
+    Not fsynced (a power cut may lose the new file, never corrupt the old).
+    The temp name is fixed: ``compute_lock`` guarantees a single writer."""
     directory = Path(data_dir) / "snapshot"
     directory.mkdir(parents=True, exist_ok=True)
     final = directory / SNAPSHOT_NAME
