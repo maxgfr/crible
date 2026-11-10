@@ -669,7 +669,15 @@ def run_once(
             for symbol in symbols:
                 if should_stop is not None and should_stop():
                     break  # the rest stays for the next run
-                (outcome.fetched if crawler.crawl_symbol(symbol) else outcome.failed).append(symbol)
+                if crawler.crawl_symbol(symbol):
+                    outcome.fetched.append(symbol)
+                elif crawler.stopped is None:
+                    outcome.failed.append(symbol)
+                else:
+                    # deadline or 429 breaker: this symbol and the rest were
+                    # never served — they stay due, and the run says why
+                    outcome.aborted = crawler.stopped
+                    break
         else:
             outcome = crawler.run_cycle(limit=limit)
         save_bucket(crawler.budget, budget_state)

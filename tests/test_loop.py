@@ -362,3 +362,48 @@ def test_sigterm_during_a_compute_stops_it_before_the_publish(loop_env, monkeypa
     assert len(built) == 1  # the next symbol saw the stop
     assert not (data / "snapshot" / "snapshot.parquet").exists()
     assert json.loads((data / "budget-state.json").read_text())["stamps"]
+
+
+def test_a_rate_limited_on_demand_batch_stops_and_keeps_its_requests(loop_env, monkeypatch) -> None:
+    """The 429 breaker trips inside a targeted crawl: the batch stops there
+    (it kept calling Yahoo once per remaining symbol), the run reports
+    rate-limited, and the requests it never served stay pending (they were
+    cleared as "failed")."""
+    import crible.ingest.service as service
+    from crible.ingest.budget import TokenBucket
+    from crible.ingest.requests import pending_requests, request_fetch
+    from crible.providers.base import RateLimitedError
+
+    data, _ = loop_env
+    run_loop(
+        max_ticks=1,
+        clock=FakeClock().now,
+        sleep=lambda s: None,
+        provider=FakeYfProvider(),
+        price_provider=FakePriceProvider(),
+        fetch_universe=fixture_frame,
+    )
+
+    class Limited(FakeYfProvider):
+        def fetch_statements(self, symbol):
+            self.calls.append(symbol)
+            raise RateLimitedError("429 Too Many Requests")
+
+    original = service._make_crawler
+
+    def no_sleep(*args, **kwargs):
+        crawler = original(*args, **kwargs)
+        crawler.sleep = lambda seconds: None
+        return crawler
+
+    monkeypatch.setattr(service, "_make_crawler", no_sleep)
+    symbols = list(fixture_frame()["symbol"][:5])
+    for symbol in symbols:
+        request_fetch(data, symbol)
+    provider = Limited()
+    budget = TokenBucket(capacity=100, window_seconds=3600)
+    served = service._serve_fetch_requests(data, budget, provider)
+    assert len(provider.calls) == 3  # three consecutive 429s trip the breaker
+    assert served == []
+    assert sorted(pending_requests(data)) == sorted(symbols)
+    assert json.loads((data / "status.json").read_text())["providers"]["yfinance"] == "rate-limited"
