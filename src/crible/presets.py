@@ -262,6 +262,62 @@ _PRESETS = [
         columns=("net_share_issuance", "shareholder_yield", "free_cash_flow_yield", "market_cap"),
     ),
     Preset(
+        id="cash-compounders",
+        name="Cash compounders",
+        description=(
+            "Free cash flow of at least 15% of invested capital (CROIC), a steady gross margin"
+            " (mean at least 10× its standard deviation) and growth the retained earnings can"
+            " fund on their own (≥ 10% a year)"
+        ),
+        dsl="croic >= 0.15 AND gross_margin_stability >= 10 AND sustainable_growth_rate >= 0.1",
+        columns=("croic", "gross_margin_stability", "sustainable_growth_rate", "roic", "fcf_margin"),
+    ),
+    Preset(
+        id="net-cash-value",
+        name="Net cash value",
+        description=(
+            "Cash net of all debt worth at least a quarter of the market cap, and the whole"
+            " enterprise priced under 12× its free cash flow — financials left out (a bank's"
+            " cash is its customers')"
+        ),
+        dsl="net_cash_to_market_cap >= 0.25 AND ev_to_fcf <= 12 AND sector != 'Financials'",
+        columns=(
+            "net_cash_to_market_cap",
+            "ev_to_fcf",
+            "sector",
+            "free_cash_flow_yield",
+            "ncav_to_market_cap",
+            "market_cap",
+        ),
+    ),
+    Preset(
+        id="short-cash-runway",
+        name="Short cash runway",
+        description=(
+            "Risk screen: operations burn cash and under 18 months of it is left at last"
+            " year's rate — refinancing or dilution ahead (capex-heavy companies whose"
+            " operations still earn cash are left out)"
+        ),
+        dsl="cash_runway_years < 1.5 AND operating_cashflow < 0",
+        columns=(
+            "cash_runway_years",
+            "operating_cashflow",
+            "free_cash_flow",
+            "cash_and_equivalents",
+            "net_share_issuance",
+        ),
+    ),
+    Preset(
+        id="bloated-balance-sheet",
+        name="Bloated balance sheet",
+        description=(
+            "Risk screen: net operating assets above 120% of the opening total assets —"
+            " accounting profits have outrun cash (Hirshleifer et al., 2004)"
+        ),
+        dsl="net_operating_assets >= 1.2",
+        columns=("net_operating_assets", "sloan_accruals", "croic", "roic", "total_assets_growth"),
+    ),
+    Preset(
         id="all-indicators",
         name="All indicators",
         description=(

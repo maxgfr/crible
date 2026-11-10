@@ -70,6 +70,14 @@ def con(tmp_path_factory) -> duckdb.DuckDBPyConnection:
                 random() * 0.2 - 0.1 AS net_share_issuance,
                 CAST(floor(random() * 6) AS TINYINT) AS positive_fcf_years_5y,
                 random() * 8 - 1 AS altman_z_double_prime,
+                random() * 2 - 0.2 AS net_operating_assets,
+                random() * 0.5 - 0.1 AS croic,
+                random() * 6 AS cash_runway_years,
+                random() * 0.4 - 0.1 AS sustainable_growth_rate,
+                random() * 40 AS gross_margin_stability,
+                random() * 1.5 - 1 AS net_cash_to_market_cap,
+                random() * 60 AS ev_to_fcf,
+                random() * 2e9 - 5e8 AS operating_cashflow,
                 {fillers}
             FROM range({ROWS}) t(i)
         ) TO '{path.as_posix()}' (FORMAT parquet)

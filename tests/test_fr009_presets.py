@@ -50,6 +50,13 @@ def test_fr009_every_indicator_has_a_preset() -> None:
         "net_share_issuance",
         "positive_fcf_years_5y",
         "altman_z_double_prime",
+        "net_operating_assets",
+        "croic",
+        "cash_runway_years",
+        "sustainable_growth_rate",
+        "gross_margin_stability",
+        "net_cash_to_market_cap",
+        "ev_to_fcf",
     ]
     all_dsl = " ".join(p.dsl for p in PRESETS.values())
     missing = [key for key in indicator_keys if key not in all_dsl]
@@ -86,6 +93,8 @@ def test_fr009_running_a_preset_is_byte_for_byte_its_dsl() -> None:
     frame = pd.DataFrame(
         {
             "symbol": ["A", "B", "C"],
+            "sector": ["Industrials", "Financials", "Health Care"],
+            "operating_cashflow": [120.0, -40.0, 300.0],
             "piotroski_f": [8, 6, 9],
             "altman_z": [3.5, 1.2, 4.0],
             "beneish_m": [-2.5, -1.0, -2.9],
@@ -117,6 +126,13 @@ def test_fr009_running_a_preset_is_byte_for_byte_its_dsl() -> None:
             "net_share_issuance": [-0.01, 0.08, 0.0],
             "positive_fcf_years_5y": [5.0, 2.0, 4.0],
             "altman_z_double_prime": [3.1, 0.9, 2.7],
+            "net_operating_assets": [0.5, 1.4, 0.7],
+            "croic": [0.2, -0.05, 0.18],
+            "cash_runway_years": [float("nan"), 0.8, float("nan")],
+            "sustainable_growth_rate": [0.14, float("nan"), 0.12],
+            "gross_margin_stability": [18.0, 3.0, 25.0],
+            "net_cash_to_market_cap": [0.3, -0.6, 0.05],
+            "ev_to_fcf": [9.0, float("nan"), 22.0],
         }
     )
     con.register("snapshot_latest", frame)
