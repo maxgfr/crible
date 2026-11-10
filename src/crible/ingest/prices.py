@@ -3,9 +3,9 @@
 Prices share the ONE Yahoo request budget — yfinance is the only price
 source in the keyless core (no redistributable bulk price feed exists).
 The priority set gets daily refreshes; everything else rides leftover
-budget. Switch rule: 3 consecutive rate-limit failures (or a hang,
-enforced by the crawler's watchdog) end the cycle politely — symbols keep
-their last price, staleness stays visible via price_asof.
+budget. Switch rule: 3 consecutive rate-limit failures or hangs (a fetch the
+shared watchdog timed out) end the cycle politely — symbols keep their last
+price, staleness stays visible via price_asof.
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ class PriceRefresher:
                 outcome.aborted = True
                 outcome.skipped.extend(symbols[len(outcome.refreshed) + len(outcome.skipped) :])
                 log.warning(
-                    "price refresh aborted after %d consecutive rate-limits — "
+                    "price refresh aborted after %d consecutive rate-limits or hangs — "
                     "remaining symbols keep their last price (visible via price_asof)",
                     consecutive_failures,
                 )
@@ -71,11 +71,15 @@ class PriceRefresher:
                     self.fetch_timeout,
                     label=f"fetch_prices({symbol})",
                 )
-            except RateLimitedError:
+            except (RateLimitedError, TimeoutError) as exc:
+                # a watchdog timeout is the same signal as a 429 — Yahoo is not
+                # serving us: three in a row end the cycle instead of waiting
+                # out the full timeout on every remaining symbol
+                log.info("price fetch for %s: %s — skipped", symbol, exc)
                 consecutive_failures += 1
                 outcome.skipped.append(symbol)
                 continue
-            except Exception as exc:  # noqa: BLE001 — hang (watchdog) or error: skip, never freeze
+            except Exception as exc:  # noqa: BLE001 — one symbol's error: skip, never freeze
                 log.info("price fetch failed for %s: %s — skipped", symbol, exc)
                 outcome.skipped.append(symbol)
                 continue
