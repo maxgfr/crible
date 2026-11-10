@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — 2026-11-10 (cash & balance-sheet quality, audit)
+
+- **Seven indicators, all from fields already collected** (no new source): `croic`,
+  `net_operating_assets` (Hirshleifer et al. 2004 balance-sheet bloat), `cash_runway_years`,
+  `sustainable_growth_rate` (Higgins), `gross_margin_stability` (Gray & Carlisle),
+  `net_cash_to_market_cap` and `ev_to_fcf` — formulas, reading and caveats in
+  `docs/INDICATORS.md` §27–33. Engine schema 13.
+- **Four presets**: Cash compounders, Net cash value, Short cash runway, Bloated balance sheet.
+- **Code audit** (`AUDIT.md`): 14 bugs fixed with regression tests, a full screen page served
+  ~16× faster, `stats` ~2.3× faster. `shareholder_yield` is now NULL across a split or unit
+  change (engine schema 12).
+
 ## Unreleased — 2026-07-17 (keyless-only)
 
 - **Keyed sources removed — crible is now 100% keyless by contract.** The two

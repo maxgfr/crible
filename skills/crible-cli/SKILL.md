@@ -95,6 +95,15 @@ comma-separated for multi-key (`--sort "country,-piotroski_f"`).
   dilutes, < 0 = net buybacks), `positive_fcf_years_5y` (0–5),
   `altman_z_double_prime` (Altman Z″ on book equity, no price needed: > 2.6
   safe, < 1.1 distress — prefer it to `altman_z` outside manufacturing).
+- **Cash & balance-sheet quality (engine schema 13)**: `croic` (free cash
+  flow / the invested capital of `roic`), `net_operating_assets`
+  ((debt + equity − cash) / prior-year assets — lower is leaner, ≥ 1.2 is a
+  bloated balance sheet), `cash_runway_years` (cash / annual burn, defined
+  for cash burners only: < 1 flags), `sustainable_growth_rate` (retained
+  earnings / opening equity, Higgins), `gross_margin_stability` (mean / σ of
+  the gross margin over up to 8 years, higher is steadier),
+  `net_cash_to_market_cap` (cash net of all debt / market cap, < 0 = net
+  debt), `ev_to_fcf` (enterprise value / free cash flow, lower is cheaper).
 - **Removed**: `return_on_invested_capital` (financetoolkit's formula was not
   a ROIC) — use `roic`.
 - **TTM**: `ttm_revenue`/`ttm_net_income`/`ttm_operating_cashflow`/
