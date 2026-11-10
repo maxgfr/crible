@@ -37,6 +37,16 @@ def _query(con: duckdb.DuckDBPyConnection, sql: str, params: list) -> pd.DataFra
         raise DslError(f"the query cannot run on this snapshot: {type(exc).__name__}", hint=str(exc)) from exc
 
 
+def _query_row(con: duckdb.DuckDBPyConnection, sql: str, params: list) -> dict:
+    """The single row of an aggregate query as column → native Python value
+    (NULL is None, a LIST a list) — same error contract as ``_query``."""
+    try:
+        cursor = con.execute(sql, params)
+        return dict(zip([column[0] for column in cursor.description], cursor.fetchone(), strict=True))
+    except duckdb.Error as exc:
+        raise DslError(f"the query cannot run on this snapshot: {type(exc).__name__}", hint=str(exc)) from exc
+
+
 def _paging(limit: int, offset: int) -> tuple[int, int]:
     if not isinstance(limit, int) or not isinstance(offset, int) or limit < 0 or offset < 0:
         raise DslError("limit and offset must be non-negative integers")
@@ -209,35 +219,39 @@ def stats(
             f: _finite(own[f].iloc[0]) if len(own) and not pd.isna(own[f].iloc[0]) else None for f in names
         }
 
-    out: dict[str, dict] = {}
-    for f in names:
+    # ONE pass over the group for every field (it was one query per field —
+    # up to 40 scans), and one sort per field for all five quantiles
+    quantiles = ", ".join(str(q) for q in STATS_QUANTILES)
+    parts: list[str] = []
+    ranked: list = []  # the percentile's two `?` per field, in SELECT order
+    for i, f in enumerate(names):
         x = f'CASE WHEN isfinite(CAST("{f}" AS DOUBLE)) THEN CAST("{f}" AS DOUBLE) END'
-        parts = [
-            f"count({x}) AS n",
-            f"avg({x}) AS mean",
-            f"min({x}) AS min",
-            f"max({x}) AS max",
-            *(f"quantile_cont({x}, {q}) AS q{i}" for i, q in enumerate(STATS_QUANTILES)),
+        parts += [
+            f"count({x}) AS n_{i}",
+            f"avg({x}) AS mean_{i}",
+            f"min({x}) AS min_{i}",
+            f"max({x}) AS max_{i}",
+            f"quantile_cont({x}, [{quantiles}]) AS q_{i}",
         ]
-        extra: list = []
         if values.get(f) is not None:
             parts.append(
-                f"avg(CASE WHEN {x} < ? THEN 1.0 WHEN {x} = ? THEN 0.5 ELSE 0.0 END) FILTER (WHERE {x} IS NOT NULL) AS pct"
+                f"avg(CASE WHEN {x} < ? THEN 1.0 WHEN {x} = ? THEN 0.5 ELSE 0.0 END)"
+                f" FILTER (WHERE {x} IS NOT NULL) AS pct_{i}"
             )
-            extra = [values[f], values[f]]
-        row = _query(
-            con, f"SELECT {', '.join(parts)} FROM snapshot_latest WHERE {where}", extra + params
-        ).iloc[0]
-        entry: dict = {"n": int(row["n"])}
+            ranked += [values[f], values[f]]
+    row = _query_row(con, f"SELECT {', '.join(parts)} FROM snapshot_latest WHERE {where}", ranked + params)
+
+    out: dict[str, dict] = {}
+    for i, f in enumerate(names):
+        entry: dict = {"n": int(row[f"n_{i}"])}
         for k in ("mean", "min", "max"):
-            entry[k] = _finite(row[k]) if not pd.isna(row[k]) else None
-        for i, q in enumerate(STATS_QUANTILES):
-            label = "median" if q == 0.5 else f"p{round(q * 100)}"
-            entry[label] = _finite(row[f"q{i}"]) if not pd.isna(row[f"q{i}"]) else None
+            entry[k] = _finite(row[f"{k}_{i}"])
+        cuts = row[f"q_{i}"] or [None] * len(STATS_QUANTILES)  # NULL: no finite value in the group
+        for q, cut in zip(STATS_QUANTILES, cuts, strict=True):
+            entry["median" if q == 0.5 else f"p{round(q * 100)}"] = _finite(cut)
         if symbol is not None:
+            pct = row.get(f"pct_{i}")
             entry["value"] = values.get(f)
-            entry["percentile"] = (
-                round(float(row["pct"]) * 100, 1) if "pct" in row.index and not pd.isna(row["pct"]) else None
-            )
+            entry["percentile"] = round(float(pct) * 100, 1) if pct is not None else None
         out[f] = entry
     return {"symbol": symbol, "group": group, "fields": out}
