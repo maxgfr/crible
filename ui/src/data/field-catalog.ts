@@ -53,11 +53,15 @@ const CATALOG: Record<string, CatalogEntry> = {
   price_to_earnings_ttm: { label: "P/E (TTM)", group: "Valuation" },
   price_to_sales_ttm: { label: "P/S (TTM)", group: "Valuation" },
   ttm_fcf_yield: { label: "FCF yield (TTM)", group: "Valuation" },
+  ev_to_fcf: { label: "EV/FCF", group: "Valuation" },
   // profitability & health
   return_on_equity: { label: "ROE", group: "Profitability" },
   return_on_assets: { label: "ROA", group: "Profitability" },
   return_on_capital_employed: { label: "ROCE", group: "Profitability" },
   roic: { label: "ROIC (NOPAT / invested capital)", group: "Profitability" },
+  croic: { label: "CROIC (FCF / invested capital)", group: "Profitability" },
+  gross_margin_stability: { label: "Gross margin stability (mean / σ)", group: "Profitability" },
+  sustainable_growth_rate: { label: "Sustainable growth rate", group: "Profitability" },
   gross_profitability: { label: "Gross profitability (GP / assets)", group: "Profitability" },
   net_profit_margin: { label: "Net margin", group: "Profitability" },
   gross_margin: { label: "Gross margin", group: "Profitability" },
@@ -81,6 +85,8 @@ const CATALOG: Record<string, CatalogEntry> = {
   capex_coverage_ratio: { label: "Capex coverage", group: "Health" },
   net_share_issuance: { label: "Net share issuance (YoY)", group: "Health" },
   positive_fcf_years_5y: { label: "Positive-FCF years (of 5)", group: "Health" },
+  cash_runway_years: { label: "Cash runway (years)", group: "Health" },
+  net_operating_assets: { label: "Net operating assets / assets", group: "Health" },
   // efficiency (turnover & working-capital cycle)
   asset_turnover_ratio: { label: "Asset turnover", group: "Efficiency" },
   inventory_turnover_ratio: { label: "Inventory turnover", group: "Efficiency" },
@@ -126,6 +132,7 @@ const CATALOG: Record<string, CatalogEntry> = {
   graham_margin_of_safety: { label: "Margin of safety", group: "Value" },
   ncav: { label: "NCAV", group: "Value" },
   ncav_to_market_cap: { label: "NCAV / mkt cap", group: "Value" },
+  net_cash_to_market_cap: { label: "Net cash / mkt cap", group: "Value" },
 };
 
 // display order for the field select's optgroups; unknown groups append after

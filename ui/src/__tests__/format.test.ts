@@ -3,6 +3,7 @@
 // un-thresholded ratios stay neutral — no coloring by taste.
 
 import { describe, expect, it } from "vitest";
+import { fieldGroup, fieldLabel } from "../data/field-catalog";
 import { FLAGS, VERDICT_COLUMNS, formatCell, formatNumber, formatPercent, verdictKind } from "../format";
 
 describe("formatNumber", () => {
@@ -99,6 +100,19 @@ describe("formatCell — the verdict table", () => {
     expect(verdictKind("peg_ratio", -0.5)).toBeNull(); // negative PEG never passes
     expect(verdictKind("revenue_growth", 0.5)).toBeNull(); // growth ≠ verdict
     expect(verdictKind("unknown_column", 1)).toBeNull();
+  });
+
+  it("reads the schema-13 indicators: a short runway warns, a cash burner is red", () => {
+    expect(verdictKind("cash_runway_years", 0.99)).toBe("warn"); // under a year of cash
+    expect(verdictKind("cash_runway_years", 1)).toBeNull();
+    expect(formatCell("cash_runway_years", 0.5).flag).not.toBe("");
+    expect(formatCell("croic", -0.08).className).toBe("num-bad"); // burning cash on its capital
+    expect(formatCell("croic", 0.2).className).toBe("");
+    // net debt is a fact, not a verdict: never colored
+    expect(formatCell("net_cash_to_market_cap", -0.4).className).toBe("");
+    expect(fieldLabel("ev_to_fcf")).toBe("EV/FCF");
+    expect(fieldLabel("net_operating_assets")).toBe("Net operating assets / assets");
+    expect(fieldGroup("net_cash_to_market_cap")).toBe("Value");
   });
 
   it("signs and colors growth without a glyph", () => {

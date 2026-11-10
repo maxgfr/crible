@@ -39,7 +39,7 @@ const NEGATIVE_IS_BAD = new Set([
   "ttm_net_income", "ttm_operating_cashflow", "ttm_free_cash_flow",
   "gross_margin", "operating_margin", "ebitda_margin", "net_profit_margin",
   "fcf_margin",
-  "return_on_equity", "return_on_assets", "roic", "gross_profitability",
+  "return_on_equity", "return_on_assets", "roic", "croic", "gross_profitability",
   "earnings_yield", "free_cash_flow_yield", "ttm_fcf_yield",
   "shareholder_yield", "greenblatt_earnings_yield", "greenblatt_roc",
 ]);
@@ -82,6 +82,9 @@ export function verdictKind(column: string, value: number): VerdictKind | null {
       return value >= 2 ? "good" : value < 1 ? "bad" : null;
     case "rule_of_40":
       return value >= 0.4 ? "good" : null;
+    // under a year of cash at the current burn: the going-concern horizon
+    case "cash_runway_years":
+      return value < 1 ? "warn" : null;
     // Lynch's GARP threshold — only a POSITIVE peg ≤ 1 passes
     case "peg_ratio":
       return value > 0 && value <= 1 ? "good" : null;
@@ -94,7 +97,7 @@ export function verdictKind(column: string, value: number): VerdictKind | null {
 export const VERDICT_COLUMNS = [
   "piotroski_f", "altman_z", "altman_z_double_prime", "beneish_m", "zmijewski_score", "ohlson_o",
   "montier_c", "dechow_f", "graham_margin_of_safety", "ncav_to_market_cap",
-  "fcf_conversion", "dividend_coverage", "rule_of_40", "peg_ratio",
+  "fcf_conversion", "dividend_coverage", "rule_of_40", "peg_ratio", "cash_runway_years",
 ] as const;
 
 /** ≥1e9 → "…B", ≥1e6 → "…M", integers verbatim, else 3 decimals; NaN and

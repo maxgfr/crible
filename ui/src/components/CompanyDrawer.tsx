@@ -59,6 +59,7 @@ const VALUE_ROWS: [string, string][] = [
   ["· margin of safety", "graham_margin_of_safety"],
   ["NCAV (net-net)", "ncav"],
   ["· NCAV / market cap", "ncav_to_market_cap"],
+  ["Net cash / market cap", "net_cash_to_market_cap"],
 ];
 // FR-015 — each pillar rank links back to the component values it ranks
 const RANK_PILLARS: [string, string, string[]][] = [
@@ -84,17 +85,19 @@ const CASH_QUALITY = [
   "ebitda_margin", "fcf_margin", "fcf_conversion", "income_quality_ratio",
   "sloan_accruals", "rule_of_40", "capex_coverage_ratio", "dividend_coverage",
   "dividend_payout_ratio", "positive_fcf_years_5y", "net_share_issuance",
+  "croic", "cash_runway_years", "net_operating_assets",
 ];
 // the classic ratio families, grouped the way an analyst scans them
 const KEY_RATIOS: [string, string[]][] = [
   ["Valuation", [
     "market_cap", "price_to_earnings_ratio", "peg_ratio", "price_to_book_ratio",
     "ev_to_ebitda_ratio", "ev_to_sales_ratio", "earnings_yield", "free_cash_flow_yield",
-    "weighted_dividend_yield", "shareholder_yield",
+    "weighted_dividend_yield", "shareholder_yield", "ev_to_fcf",
   ]],
   ["Profitability", [
     "gross_margin", "operating_margin", "net_profit_margin", "return_on_assets",
     "return_on_equity", "return_on_capital_employed", "roic", "gross_profitability",
+    "gross_margin_stability", "sustainable_growth_rate",
   ]],
   ["Balance", [
     "current_ratio", "quick_ratio", "cash_ratio", "debt_to_equity_ratio",
