@@ -252,6 +252,9 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
   // service has crawled + computed (one loop cycle, ~1-3 min), then swap the
   // drawer content in place. Gives up after ~6 min (rate-limit, bad symbol).
   const [fetchState, setFetchState] = useState<"idle" | "queued" | "failed">("idle");
+  // the symbol on screen now — async handlers compare it with the one they served
+  const symbolRef = useRef(symbol);
+  symbolRef.current = symbol;
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -278,12 +281,15 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
     };
   }, [symbol]);
 
+  // same `live` rule as the load above: clearing the interval does not cancel
+  // a poll already in flight, and its answer belongs to the previous symbol
   useEffect(() => {
     if (fetchState !== "queued") return;
+    let live = true;
     const poll = setInterval(async () => {
       try {
         const fresh = await company(symbol);
-        if (fresh && fresh.periods.length > 0) {
+        if (live && fresh && fresh.periods.length > 0) {
           setDetail(fresh);
           setFetchState("idle");
         }
@@ -293,6 +299,7 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
     }, 20_000);
     const giveUp = setTimeout(() => setFetchState("failed"), 6 * 60_000);
     return () => {
+      live = false;
       clearInterval(poll);
       clearTimeout(giveUp);
     };
@@ -448,11 +455,14 @@ export function CompanyDrawer({ symbol, onClose }: Props) {
                 <button
                   className="fetch-now"
                   onClick={async () => {
+                    // the answer is for THIS symbol: the drawer may show
+                    // another company by the time it lands
+                    const requested = symbol;
                     try {
-                      await requestFetch(symbol);
-                      setFetchState("queued");
+                      await requestFetch(requested);
+                      if (symbolRef.current === requested) setFetchState("queued");
                     } catch {
-                      setFetchState("failed");
+                      if (symbolRef.current === requested) setFetchState("failed");
                     }
                   }}
                 >

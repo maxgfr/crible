@@ -74,6 +74,61 @@ describe("on-demand fetch (FR-012)", () => {
   });
 });
 
+describe("on-demand fetch races", () => {
+  it("a fetch request answered after switching company never marks the new one queued", async () => {
+    let answer: (value: { queued: boolean }) => void = () => {};
+    requestFetchMock.mockImplementationOnce(
+      () => new Promise((resolve) => (answer = resolve)),
+    );
+    companyMock.mockImplementation(async (symbol) => ({
+      profile: { name: symbol === "AAA" ? "Alpha" : "Bravo" },
+      periods: [],
+    }));
+    const { rerender, unmount } = render(<CompanyDrawer symbol="AAA" onClose={() => {}} />);
+    await waitFor(() => expect(rtl.getByText("Alpha")).toBeInTheDocument());
+    fireEvent.click(rtl.getByRole("button", { name: /fetch this company now/i }));
+    rerender(<CompanyDrawer symbol="BBB" onClose={() => {}} />);
+    await waitFor(() => expect(rtl.getByText("Bravo")).toBeInTheDocument());
+    await act(async () => answer({ queued: true }));
+    // BBB was never requested: its own button is still offered, nothing is "queued"
+    expect(rtl.queryByRole("status")).not.toBeInTheDocument();
+    expect(rtl.getByRole("button", { name: /fetch this company now/i })).toBeInTheDocument();
+    unmount();
+  });
+
+  it("a poll answered after switching company never paints the old one's data", async () => {
+    vi.useFakeTimers();
+    try {
+      const pending: Array<(detail: CompanyDetail) => void> = [];
+      let polling = false;
+      companyMock.mockImplementation((symbol) => {
+        if (symbol === "AAA" && polling) return new Promise((resolve) => pending.push(resolve));
+        return Promise.resolve({
+          profile: { name: symbol === "AAA" ? "Alpha" : "Bravo" },
+          periods: [],
+        });
+      });
+      const { rerender, unmount } = render(<CompanyDrawer symbol="AAA" onClose={() => {}} />);
+      await act(async () => {});
+      fireEvent.click(rtl.getByRole("button", { name: /fetch this company now/i }));
+      await act(async () => {});
+      polling = true;
+      await act(async () => vi.advanceTimersByTime(20_000)); // the poll for AAA is in flight
+      expect(pending).toHaveLength(1);
+      rerender(<CompanyDrawer symbol="BBB" onClose={() => {}} />);
+      await act(async () => {});
+      expect(rtl.getByText("Bravo")).toBeInTheDocument();
+      await act(async () =>
+        pending[0]({ profile: { name: "Alpha" }, periods: [{ period: "2025", revenue: 1 }] }));
+      expect(rtl.getByText("Bravo")).toBeInTheDocument();
+      expect(rtl.queryByText("Alpha")).not.toBeInTheDocument();
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("drawer sizing", () => {
   it("Expand toggles a persisted wide mode that survives a reopen", async () => {
     const { unmount } = render(<CompanyDrawer symbol="ACME" onClose={() => {}} />);
