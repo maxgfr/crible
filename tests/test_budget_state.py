@@ -164,3 +164,29 @@ def test_run_once_honours_the_configured_budget(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(service, "_make_crawler", spy)
     service.run_once(limit=1, provider=FakeYfProvider())
     assert seen["capacity"] == 120
+
+
+def test_a_save_that_dies_mid_write_keeps_the_previous_state(tmp_path, monkeypatch) -> None:
+    """The window is replaced atomically: a crash while writing must leave the
+    last saved state readable (a truncated file started an empty bucket, and
+    the next run double-spent the hour)."""
+    from pathlib import Path
+
+    path = tmp_path / "budget-state.json"
+    bucket = TokenBucket(capacity=10, window_seconds=3600, now=lambda: 50_000.0)
+    assert bucket.try_acquire(5)
+    save_bucket(bucket, path, wall_now=1_000_000.0)
+
+    def dies_mid_write(self: Path, data: str, *args, **kwargs) -> int:
+        with open(self, "w") as handle:
+            handle.write(data[: len(data) // 2])
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_text", dies_mid_write)
+    assert bucket.try_acquire(1)
+    with pytest.raises(OSError):
+        save_bucket(bucket, path, wall_now=1_000_001.0)
+    monkeypatch.undo()
+
+    restored = load_bucket(path, capacity=10, window_seconds=3600, now=lambda: 3.0, wall_now=1_000_002.0)
+    assert restored.used_in_window() == 5

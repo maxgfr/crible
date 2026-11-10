@@ -69,7 +69,11 @@ def save_bucket(bucket: TokenBucket, path, wall_now: float | None = None) -> Non
     bucket._evict()
     wall = time.time() if wall_now is None else wall_now
     offset = wall - bucket._now()
-    Path(path).write_text(
+    final = Path(path)
+    # temp-then-rename: a crash mid-write must not truncate the saved window
+    # (load_bucket reads a corrupt file as an empty bucket → double spend)
+    tmp = final.with_name(f".tmp-{final.name}")
+    tmp.write_text(
         json.dumps(
             {
                 "window_seconds": bucket.window,
@@ -77,6 +81,7 @@ def save_bucket(bucket: TokenBucket, path, wall_now: float | None = None) -> Non
             }
         )
     )
+    tmp.rename(final)
 
 
 def load_bucket(
