@@ -441,11 +441,3 @@ class EsefClient:
         response = self._get(json_url)
         response.raise_for_status()
         return response.json()
-
-    def filing_page_url(self, filing: dict) -> str | None:
-        attributes = filing.get("attributes", {})
-        for key in ("viewer_url", "package_url", "json_url"):
-            if attributes.get(key):
-                url = attributes[key]
-                return "https://filings.xbrl.org" + url if url.startswith("/") else url
-        return None
