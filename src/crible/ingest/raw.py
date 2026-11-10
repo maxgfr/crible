@@ -46,7 +46,7 @@ def prune_raw(data_dir: Path | str) -> int:
     return deleted
 
 
-def _newest_matching(directory: Path, statement_type: str, freq: str) -> Path | None:
+def newest_raw_file(directory: Path, statement_type: str, freq: str) -> Path | None:
     prefix = f"{statement_type}-{freq}"
     candidates = [f for f in iter_raw_files(directory) if f.stem.rsplit("-", 1)[0] == prefix]
     return candidates[-1] if candidates else None
@@ -83,7 +83,7 @@ def write_raw_statement(
     directory = Path(data_dir) / "raw" / f"provider={provider}" / f"symbol={safe_symbol}"
     directory.mkdir(parents=True, exist_ok=True)
     if skip_identical:
-        existing = _newest_matching(directory, statement_type, freq)
+        existing = newest_raw_file(directory, statement_type, freq)
         if existing is not None:
 
             def strip(df: pd.DataFrame) -> pd.DataFrame:

@@ -19,7 +19,7 @@ from typing import Callable, Protocol
 import pandas as pd
 
 from crible.ingest.budget import TokenBucket
-from crible.ingest.raw import write_raw_statement
+from crible.ingest.raw import newest_raw_file, write_raw_statement
 from crible.ingest.watchdog import call_with_timeout
 from crible.providers.base import RateLimitedError
 
@@ -93,11 +93,34 @@ class PriceRefresher:
                 provider=self.provider.id,
                 statement_type="prices",
                 freq="daily",
-                frame=bars,
+                frame=self._with_quote_currency(symbol, bars),
                 fetched_at=self.now(),
             )
             outcome.refreshed.append(symbol)
         return outcome
+
+    def _with_quote_currency(self, symbol: str, bars: pd.DataFrame) -> pd.DataFrame:
+        """Carry the quote currency the crawl recorded (GBp for a .L listing)
+        over to the refreshed bars. The refresh spends ONE request and gets no
+        profile; the snapshot reads only the newest price file, so without
+        this a refresh silently put the listing back on its listed currency.
+        Best effort — unknown stays unknown."""
+        if "_quote_currency" in bars.columns:
+            return bars
+        directory = (
+            Path(self.data_dir)
+            / "raw"
+            / f"provider={self.provider.id}"
+            / f"symbol={symbol.replace('/', '_')}"
+        )
+        try:
+            previous = newest_raw_file(directory, "prices", "daily")
+            if previous is None:
+                return bars
+            known = pd.read_parquet(previous, columns=["_quote_currency"])["_quote_currency"].dropna()
+        except (OSError, ValueError, KeyError):  # no such column in the older file, or unreadable
+            return bars
+        return bars.assign(_quote_currency=str(known.iloc[-1])) if len(known) else bars
 
 
 def price_gap_symbols(data_dir: Path | str, limit: int | None = None, inventory=None) -> list[str]:

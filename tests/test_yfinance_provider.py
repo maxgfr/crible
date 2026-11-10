@@ -167,3 +167,54 @@ def test_a_symbol_holding_429_is_not_a_rate_limit(monkeypatch, symbol) -> None:
         YFinanceProvider().fetch_statements(symbol)
     with pytest.raises(RateLimitedError):
         _YfPriceAdapter().fetch_prices(symbol)
+
+
+def test_a_price_refresh_keeps_the_crawled_quote_currency(tmp_path) -> None:
+    """The daily refresh fetches bars only (one request, no profile): its
+    newer file used to drop the GBp the crawl had recorded, and the snapshot
+    — which reads the newest bars — priced CCEP.L in its listed EUR again."""
+    from crible.compute.snapshot import build_snapshot
+    from crible.ingest.budget import TokenBucket
+    from crible.ingest.prices import PriceRefresher
+    from crible.ingest.raw import write_raw_statement
+
+    pd.DataFrame({"symbol": ["CCEP.L"], "currency": ["EUR"]}).to_parquet(tmp_path / "universe.parquet")
+    (tmp_path / "mirror" / "fx").mkdir(parents=True)
+    (tmp_path / "mirror" / "fx" / "rates.json").write_text('{"rates": {"GBP": 0.85}}')
+    frames = {
+        "income": {"TotalRevenue": [20e9], "NetIncome": [1.7e9], "BasicAverageShares": [456e6]},
+        "balance": {"StockholdersEquity": [8e9], "TotalAssets": [30e9]},
+    }
+    for stmt, values in frames.items():
+        write_raw_statement(
+            tmp_path,
+            symbol="CCEP.L",
+            provider="yfinance",
+            statement_type=stmt,
+            freq="annual",
+            frame=pd.DataFrame({"period": ["2025-12-31"], **values, "_currency": "EUR"}),
+            fetched_at=1.0,
+        )
+    write_raw_statement(
+        tmp_path,
+        symbol="CCEP.L",
+        provider="yfinance",
+        statement_type="prices",
+        freq="daily",
+        frame=pd.DataFrame({"Date": ["2026-10-09"], "Close": [6700.0], "_quote_currency": ["GBp"]}),
+        fetched_at=1.0,
+    )
+
+    class BarsOnly:
+        id = "yfinance"
+
+        def fetch_prices(self, symbol):
+            return pd.DataFrame({"Date": ["2026-10-12"], "Close": [6810.0]})
+
+    outcome = PriceRefresher(
+        provider=BarsOnly(), budget=TokenBucket(capacity=10), data_dir=tmp_path, now=lambda: 2.0
+    ).refresh(["CCEP.L", "NEW.L"])
+    assert outcome.refreshed == ["CCEP.L", "NEW.L"]  # nothing to carry for NEW.L: still written
+    row = build_snapshot(tmp_path, ["CCEP.L"]).iloc[-1]
+    assert row["price_asof"] == "2026-10-12"
+    assert row["market_cap"] == pytest.approx(68.10 / 0.85 * 456e6)
