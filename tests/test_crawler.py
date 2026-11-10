@@ -202,3 +202,24 @@ def test_a_price_only_symbol_leaves_the_marker_too(tmp_path) -> None:
     assert restore_queue_from_raw(fresh.con, tmp_path) == 1
     next_due = fresh.con.execute("SELECT next_due FROM crawl_tasks").fetchone()[0]
     assert next_due > clock.t  # not due again tonight
+
+
+def test_a_stop_request_interrupts_a_backoff_sleep(tmp_path) -> None:
+    """SIGTERM lands while the crawler backs off (60–900 s) or waits on the
+    budget (up to an hour): the wait ends within a second or so — it used to
+    run to its end, past the container's grace period, and the SIGKILL lost
+    the budget window."""
+    clock = _Clock()
+    crawler = _crawler(tmp_path, _queue(["A", "B"]), _Provider(limited=True), clock)
+    crawler.should_stop = lambda: clock.t >= 1_000.0 + 2  # the signal arrives 2 s into the backoff
+    outcome = crawler.run_cycle(limit=10)
+    assert outcome.aborted == "stop requested"
+    assert clock.t <= 1_000.0 + 3
+    assert crawler.provider.calls == ["A"]
+    # the same wait on an exhausted budget
+    clock2 = _Clock()
+    crawler2 = _crawler(tmp_path, _queue(["A", "B"]), _Provider(), clock2, capacity=1)
+    crawler2.should_stop = lambda: clock2.t >= 1_000.0 + 2
+    outcome2 = crawler2.run_cycle(limit=10)
+    assert outcome2.fetched == ["A"] and outcome2.aborted == "stop requested"
+    assert clock2.t <= 1_000.0 + 3

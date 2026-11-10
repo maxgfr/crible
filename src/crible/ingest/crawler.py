@@ -5,7 +5,8 @@ spend budget, fetch through the provider, persist raw Parquet, update the
 queue. 429s trigger jittered exponential backoff and an in-place retry; other
 errors (fetch or raw write) reschedule the symbol. Three rate limits in a row
 trip a breaker that ends the cycle, and no sleep — budget wait or backoff —
-ever crosses the caller's ``deadline``. A symbol Yahoo returns nothing for
+ever crosses the caller's ``deadline`` or outlives a stop request by more
+than a poll interval. A symbol Yahoo returns nothing for
 leaves a ``meta-none`` marker so the nightly restore does not re-crawl it.
 Clock and sleep are injected for testability.
 """
@@ -33,6 +34,8 @@ MAX_RATE_LIMIT_RETRIES = 6
 # the price refresher's switch rule: this many 429s in a row end the cycle —
 # each symbol otherwise burns ~45 min of backoff (60+120+…+900 s)
 MAX_CONSECUTIVE_RATE_LIMITS = 3
+# a stop request (SIGTERM) is polled this often inside a backoff / budget wait
+STOP_POLL_SECONDS = 1.0
 # statement_type of the marker written for a symbol that returned nothing
 EMPTY_MARKER = ("meta", "none")
 
@@ -81,7 +84,19 @@ class Crawler:
     def _sleep_within_deadline(self, seconds: float) -> None:
         if self.deadline is not None and self.now() + seconds > self.deadline:
             raise _Stop("deadline")
-        self.sleep(seconds)
+        if self.should_stop is None:
+            self.sleep(seconds)
+            return
+        # a signal handler does not cut time.sleep short (PEP 475): sleep in
+        # slices so a stop is honoured inside the container's grace period
+        # instead of after a 900 s backoff or an hour-long budget wait
+        remaining = seconds
+        while remaining > 0:
+            if self.should_stop():
+                raise _Stop("stop requested")
+            step = min(STOP_POLL_SECONDS, remaining)
+            self.sleep(step)
+            remaining -= step
 
     def _acquire_budget(self, n: int = 1) -> None:
         while not self.budget.try_acquire(n):
