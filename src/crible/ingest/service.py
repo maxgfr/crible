@@ -719,7 +719,8 @@ def run_price_refresh(budget: TokenBucket, provider=None, topup_limit: int = 500
         fetch_timeout=config.fetch_timeout(),
     )
     sample = bootstrap_sample()
-    gaps = [s for s in price_gap_symbols(config.data_dir(), limit=topup_limit) if s not in set(sample)]
+    sampled = set(sample)
+    gaps = [s for s in price_gap_symbols(config.data_dir(), limit=topup_limit) if s not in sampled]
     outcome = refresher.refresh(sample + gaps)
     return {
         "refreshed": len(outcome.refreshed),

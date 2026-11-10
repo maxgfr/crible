@@ -84,11 +84,13 @@ def build_symbol_snapshot(
     if canonical.empty:
         return pd.DataFrame()
     price_asof: str | None = None
-    features = bars_features(frames.get(("prices", "daily")))
     if price is None:
+        # _resolve_price derives the bars' features itself
         price, price_asof, features = _resolve_price(frames, price_quote, quote_features, canonical.index)
-    elif quote_features is not None:
-        features = _fill_features(features, quote_features)
+    else:
+        features = bars_features(frames.get(("prices", "daily")))
+        if quote_features is not None:
+            features = _fill_features(features, quote_features)
     if price is not None and price_asof and _stale_period(canonical.index[-1], price_asof):
         # a 2015 fiscal year priced at today's close is no P/E at all
         price = pd.Series(float("nan"), index=price.index)
@@ -843,7 +845,10 @@ def _incremental_rows(
     price_file = data_dir / "prices-latest.parquet"
     if price_file.exists() and price_file.stat().st_mtime > watermark:
         moved = _changed_quote_symbols(data_dir, quotes)
-        dirty = list(symbols) if moved is None else [s for s in symbols if s in moved or s in set(dirty)]
+        # one set, built once: `s in set(dirty)` inside the comprehension
+        # rebuilt it per symbol — 7 s for 30k symbols with 10k dirty
+        was_dirty = set(dirty)
+        dirty = list(symbols) if moved is None else [s for s in symbols if s in moved or s in was_dirty]
     # the base cache may predate the schema (the nightly restores it from the
     # last release): scrub retired columns so kept rows can't resurrect them
     prev = _scrub_retired_columns(pd.read_parquet(base_path))
