@@ -22,6 +22,9 @@ log = logging.getLogger("crible.bootstrap")
 
 DATA_RELEASE_TAG = "data-latest"
 DATA_ASSET_NAME = "crible-data.tar.gz"
+# the archive is ~1.3 GB today; anything past this is not the dataset and
+# must not be allowed to fill the disk
+MAX_ARCHIVE_BYTES = 16 * 1024**3
 
 
 class BootstrapError(RuntimeError):
@@ -159,8 +162,15 @@ def _download_and_extract(data_dir: Path, repo: str, http) -> BootstrapDataRepor
                         f" — the {DATA_RELEASE_TAG} release is not published yet ({url})"
                     )
                 response.raise_for_status()
+                written = 0
                 with open(archive_path, "wb") as out:
                     for chunk in response.iter_bytes(1 << 20):
+                        written += len(chunk)
+                        if written > MAX_ARCHIVE_BYTES:
+                            raise BootstrapError(
+                                f"the published archive for {repo} is larger than"
+                                f" {MAX_ARCHIVE_BYTES} bytes — refusing to download it ({url})"
+                            )
                         out.write(chunk)
         except BootstrapError:
             raise

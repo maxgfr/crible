@@ -122,6 +122,16 @@ def test_bootstrap_streams_the_archive_without_buffering(tmp_path) -> None:
     assert (tmp_path / "data" / "universe.parquet").exists()
 
 
+def test_bootstrap_refuses_an_archive_past_the_size_ceiling(tmp_path, monkeypatch) -> None:
+    """A release asset replaced by something enormous must not fill the disk:
+    the download stops at the ceiling and nothing is restored."""
+    monkeypatch.setattr("crible.bootstrap.MAX_ARCHIVE_BYTES", 64)
+    http = FakeHttp({release_asset_url(REPO): FakeResponse(200, RELEASE_TAR, chunk=16)})
+    with pytest.raises(BootstrapError, match="larger than"):
+        bootstrap_data(tmp_path / "data", repo=REPO, http=http)
+    assert not (tmp_path / "data").exists()
+
+
 def test_bootstrap_ignores_members_outside_the_data_layer(tmp_path) -> None:
     http = FakeHttp({release_asset_url(REPO): FakeResponse(200, MIXED_TAR)})
     report = bootstrap_data(tmp_path / "data", repo=REPO, http=http)

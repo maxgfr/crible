@@ -56,6 +56,29 @@ def test_leftover_tmp_partial_is_ignored_by_readers_and_prune(tmp_path) -> None:
     assert (sym_dir / "income-annual-000000001000000.parquet").exists()
 
 
+def test_prune_leaves_a_stray_file_alone(tmp_path) -> None:
+    """A parquet that is not a raw statement (a manual copy, another tool's
+    output) used to raise out of prune_raw — and with it the whole refresh."""
+    frame = pd.DataFrame({"period": ["2025"], "TotalRevenue": [1.0]})
+    for stamp in (1000.0, 2000.0):
+        write_raw_statement(
+            tmp_path,
+            symbol="AIR.PA",
+            provider="yfinance",
+            statement_type="income",
+            freq="annual",
+            frame=frame,
+            fetched_at=stamp,
+        )
+    sym_dir = tmp_path / "raw" / "provider=yfinance" / "symbol=AIR.PA"
+    frame.to_parquet(sym_dir / "backup.parquet")
+    frame.to_parquet(sym_dir / "notes-2025.parquet")
+
+    assert prune_raw(tmp_path) == 1  # the older income file, nothing else
+    assert (sym_dir / "backup.parquet").exists() and (sym_dir / "notes-2025.parquet").exists()
+    assert len(list(sym_dir.glob("income-annual-*.parquet"))) == 1
+
+
 # --------------------------------------------------------------------- fakes
 
 

@@ -37,6 +37,8 @@ COMPANYFACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.jso
 # the whole US market's XBRL facts in one nightly archive (~1.4 GB) — the
 # ADR-0005 scale-up path; never committed, processed then discarded
 COMPANYFACTS_BULK_URL = "https://www.sec.gov/Archives/edgar/daily-index/xbrl/companyfacts.zip"
+# the bulk archive is ~1.4 GB; anything past this is not it
+MAX_BULK_BYTES = 8 * 1024**3
 
 # bound the snapshot's growth: 8 fiscal years is plenty for trends and keeps
 # the published parquet well under GitHub's 100 MiB file limit at ~10k issuers
@@ -405,7 +407,8 @@ class EdgarClient:
         return self._get_json(COMPANYFACTS_URL.format(cik=int(cik)))
 
     def download_bulk(self, dest) -> None:
-        """Stream companyfacts.zip (~1.4 GB) to dest — temp-then-rename."""
+        """Stream companyfacts.zip (~1.4 GB) to dest — temp-then-rename, and
+        never past ``MAX_BULK_BYTES``."""
         from pathlib import Path
 
         dest = Path(dest)
@@ -414,8 +417,14 @@ class EdgarClient:
         try:
             with self._http.stream("GET", COMPANYFACTS_BULK_URL, headers=self._headers) as response:
                 response.raise_for_status()
+                written = 0
                 with open(tmp, "wb") as out:
                     for chunk in response.iter_bytes(1 << 20):
+                        written += len(chunk)
+                        if written > MAX_BULK_BYTES:
+                            raise RuntimeError(
+                                f"companyfacts.zip is larger than {MAX_BULK_BYTES} bytes — refusing it"
+                            )
                         out.write(chunk)
             tmp.rename(dest)
         except BaseException:

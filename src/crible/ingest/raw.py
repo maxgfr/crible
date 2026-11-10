@@ -37,8 +37,10 @@ def prune_raw(data_dir: Path | str) -> int:
         newest: dict[tuple[str, str], Path] = {}
         # zero-padded ms stamps make lexical order chronological
         for file in iter_raw_files(directory):
-            statement_type, freq, _ = file.stem.split("-", 2)
-            key = (statement_type, freq)
+            parts = file.stem.split("-", 2)
+            if len(parts) != 3 or not parts[2].isdigit():
+                continue  # not a raw statement (a manual copy, a foreign file): not ours to prune
+            key = (parts[0], parts[1])
             if key in newest:
                 newest[key].unlink()
                 deleted += 1

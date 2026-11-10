@@ -223,3 +223,20 @@ def test_a_stop_request_interrupts_a_backoff_sleep(tmp_path) -> None:
     outcome2 = crawler2.run_cycle(limit=10)
     assert outcome2.fetched == ["A"] and outcome2.aborted == "stop requested"
     assert clock2.t <= 1_000.0 + 3
+
+
+def test_a_budget_below_one_fetch_stops_the_cycle_instead_of_crashing(tmp_path) -> None:
+    """CRIBLE_BUDGET_PER_HOUR=5 with an 8-request provider can never pay for a
+    symbol: the cycle ends with a reason — it used to raise a ValueError out
+    of the crawl and take the whole nightly refresh down."""
+    clock = _Clock()
+    provider = _Provider()
+    provider.requests_per_fetch = 8
+    queue = _queue(["A", "B"])
+    crawler = _crawler(tmp_path, queue, provider, clock, capacity=5)
+    outcome = crawler.run_cycle(limit=10)
+    assert outcome.fetched == [] and outcome.failed == []
+    assert outcome.aborted and "budget" in outcome.aborted
+    assert provider.calls == [] and clock.slept == []
+    # the symbols were not charged a failure: still first in line
+    assert queue.next_batch(clock.now(), 10) == ["A", "B"]

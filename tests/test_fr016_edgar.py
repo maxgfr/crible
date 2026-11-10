@@ -823,6 +823,33 @@ def test_fr016_a_dropped_bulk_download_leaves_no_partial(tmp_path) -> None:
     assert list(tmp_path.iterdir()) == []
 
 
+def test_fr016_a_bulk_download_past_the_ceiling_is_refused(tmp_path, monkeypatch) -> None:
+    class Stream:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def iter_bytes(self, chunk_size=0):
+            for _ in range(10):
+                yield b"x" * 16
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    class Http:
+        def stream(self, method, url, headers=None):
+            return Stream()
+
+    monkeypatch.setattr("crible.providers.edgar.MAX_BULK_BYTES", 64)
+    with pytest.raises(RuntimeError, match="larger than"):
+        EdgarClient(http=Http(), user_agent="test").download_bulk(tmp_path / "companyfacts.zip")
+    assert list(tmp_path.iterdir()) == []  # no partial left behind
+
+
 def test_fr016_the_ticker_directory_is_mirrored_daily(tmp_path) -> None:
     """The loop asks for company_tickers.json every cycle: one download a day."""
     import json

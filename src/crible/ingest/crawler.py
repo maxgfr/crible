@@ -130,6 +130,11 @@ class Crawler:
 
     def _crawl(self, symbol: str) -> bool:
         cost = getattr(self.provider, "requests_per_fetch", 1)
+        if cost > self.budget.capacity:
+            # a budget that can never pay for one symbol (CRIBLE_BUDGET_PER_HOUR
+            # under the provider's per-fetch cost) ends the cycle with a
+            # reason — waiting on the bucket would raise, or never end
+            raise _Stop(f"budget of {self.budget.capacity}/h is below one fetch ({cost} requests)")
         for attempt in range(1, MAX_RATE_LIMIT_RETRIES + 1):
             self._acquire_budget(cost)
             try:
