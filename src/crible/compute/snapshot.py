@@ -760,7 +760,8 @@ BASE_QUOTES_NAME = "base-quotes.parquet"
 #     warrants outside the universe. Value-changing fixes bump too.
 # 11: values only — impossible multiples nulled at compute (earnings yield
 #     above 100 %, P/E below 1, P/B ≤ 0).
-ENGINE_SCHEMA_VERSION = 11
+# 12: values only — shareholder_yield nulled across a split / unit change.
+ENGINE_SCHEMA_VERSION = 12
 
 
 def publish_incremental(

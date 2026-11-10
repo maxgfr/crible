@@ -467,13 +467,17 @@ shareholder_yield = (|dividends_paid| + buyback_value) / market_cap
 **EN** — Total cash returned to shareholders: dividends plus net buybacks, as a yield on market
 cap. Buybacks are proxied by the share-count decline valued at the current price — issuance
 reads NEGATIVE, so serial diluters show a drag, not a bonus. `common_stock_issuance` (34.6 %
-populated) is deliberately not used; the share count (83 %) is the more reliable signal.
+populated) is deliberately not used; the share count (83 %) is the more reliable signal. `NaN`
+when the count halves or doubles in a year (a split, a merger or a unit change between
+filings — the bound `net_share_issuance` applies): that is no capital return.
 
 **FR** — Le cash total rendu aux actionnaires : dividendes plus rachats nets, en rendement sur
 la capitalisation. Les rachats sont approximés par la baisse du nombre d'actions valorisée au
 prix courant — une émission compte NÉGATIVEMENT, donc les dilueurs en série affichent un frein,
 pas un bonus. `common_stock_issuance` (34,6 % renseigné) est volontairement écarté ; le nombre
-d'actions (83 %) est le signal le plus fiable.
+d'actions (83 %) est le signal le plus fiable. `NaN` quand le nombre d'actions est divisé ou
+multiplié par deux ou plus en un an (split, fusion ou changement d'unité entre deux dépôts —
+la borne de `net_share_issuance`) : ce n'est pas un retour de capital.
 
 ---
 

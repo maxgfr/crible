@@ -77,9 +77,8 @@ def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
     shares_end = price_shares(c)
     prior_shares = prior_period(shares_end)
     ratio = shares_end / prior_shares.where(prior_shares > 0)
-    out["net_share_issuance"] = (ratio - 1).where(
-        (ratio > 1 / MAX_ISSUANCE_FACTOR) & (ratio < MAX_ISSUANCE_FACTOR)
-    )
+    plausible_count_change = (ratio > 1 / MAX_ISSUANCE_FACTOR) & (ratio < MAX_ISSUANCE_FACTOR)
+    out["net_share_issuance"] = (ratio - 1).where(plausible_count_change)
     # earnings-quality consistency: positive-FCF years among the last five
     # reported (at least three needed — never extrapolated)
     fcf = c["free_cash_flow"]
@@ -127,7 +126,9 @@ def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
         # truly zero there, so the computable buyback signal survives.
         dividends = c["dividends_paid"].abs()
         dividends = dividends.mask(dividends.isna() & c["operating_cashflow"].notna(), 0.0)
-        buyback_value = (prior_period(shares) - shares) * price
+        # the same split / unit-change bound as net_share_issuance: an
+        # unrestated 1:10 reverse split is not a 900 % buyback
+        buyback_value = ((prior_period(shares) - shares) * price).where(plausible_count_change)
         out["shareholder_yield"] = (dividends + buyback_value) / market_cap
     else:
         for col in (

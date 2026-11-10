@@ -892,6 +892,28 @@ def test_fr003_buyback_only_shareholder_yield_survives_a_dividend_free_cashflow(
     assert out["shareholder_yield"] == pytest.approx((52.0 + 10.0 * 10.0) / 1000.0)
 
 
+def test_fr003_shareholder_yield_undefined_across_a_split_or_unit_change() -> None:
+    """A 1:10 reverse split left unrestated read as a 900 % buyback yield and
+    topped the shareholder-yield preset; a 10:1 split read −90 %. The share
+    count change is no capital return there — the same bound as
+    net_share_issuance (the count halves or doubles → undefined)."""
+    from crible.compute.extras import compute_extras
+
+    price = pd.Series([float("nan")] * 3 + [10.0], index=["2022", "2023", "2024", "2025"])
+
+    reverse_split = _quickwin_canonical()
+    reverse_split["shares_outstanding"] = [1000.0, 1000.0, 1000.0, 100.0]
+    assert pd.isna(compute_extras(reverse_split, price).loc["2025", "shareholder_yield"])
+
+    split = _quickwin_canonical()
+    split["shares_outstanding"] = [10.0, 10.0, 10.0, 100.0]
+    assert pd.isna(compute_extras(split, price).loc["2025", "shareholder_yield"])
+
+    # an ordinary buyback (110 → 100 shares) is untouched
+    out = compute_extras(_quickwin_canonical(), price).loc["2025"]
+    assert out["shareholder_yield"] == pytest.approx((52.0 + 10.0 * 10.0) / 1000.0)
+
+
 def test_fr003_total_debt_derives_from_the_sided_audited_tags() -> None:
     """Audited sources never file a TotalDebt aggregate; the sum of the two
     sided tags is exact when both exist — a missing side keeps honest NaN
