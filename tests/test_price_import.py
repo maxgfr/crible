@@ -304,6 +304,24 @@ def test_import_prices_cli_missing_archive_fails(tmp_path, monkeypatch) -> None:
     assert "stooq.com/db/h" in result.output
 
 
+def test_a_stooq_row_without_a_numeric_close_is_skipped_not_fatal(tmp_path) -> None:
+    """One unparsable close (Stooq's "N/D", a stray header) used to raise out
+    of the whole import — every other symbol of the archive was lost."""
+    _universe(tmp_path)
+    header = "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>\n"
+    rows = [f"BMW.DE,D,2026{month:02d}01,000000,50,51,49,{50 + month},1000,0\n" for month in range(1, 13)]
+    rows.insert(6, "BMW.DE,D,20260615,000000,N/D,N/D,N/D,N/D,0,0\n")
+    archive = tmp_path / "d_de_txt.zip"
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.writestr("data/daily/de/bmw.de.txt", header + "".join(rows))
+
+    report = import_stooq(tmp_path, archive)
+    assert report.imported == 1
+    assert load_prices_latest(tmp_path).set_index("symbol").loc["BMW.DE", "close"] == 62.0
+    series = pd.read_parquet(tmp_path / "prices" / "stooq-de.parquet")
+    assert len(series) == 12 and series["close"].notna().all()
+
+
 def _stooq_archive(tmp_path, name: str, members: dict[str, str]) -> str:
     body = "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>\n"
     body += "".join(f"X,D,2026{month:02d}01,000000,50,51,49,{50 + month},1000,0\n" for month in range(1, 13))

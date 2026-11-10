@@ -360,8 +360,8 @@ def import_stooq(data_dir: Path | str, archive: Path | str) -> ImportReport:
                 rows = []
                 for row in reader:
                     normalized = {k.strip("<>").lower(): v for k, v in row.items() if k}
-                    date, close = normalized.get("date"), normalized.get("close")
-                    if not date or not close:
+                    date, close = normalized.get("date"), _stooq_number(normalized.get("close"))
+                    if not date or close != close:  # no close ("N/D", blank): not a bar
                         continue
                     rows.append(
                         {
@@ -369,7 +369,7 @@ def import_stooq(data_dir: Path | str, archive: Path | str) -> ImportReport:
                             "open": _stooq_number(normalized.get("open")),
                             "high": _stooq_number(normalized.get("high")),
                             "low": _stooq_number(normalized.get("low")),
-                            "close": float(close),
+                            "close": close,
                             "volume": _stooq_number(normalized.get("vol")),
                         }
                     )
