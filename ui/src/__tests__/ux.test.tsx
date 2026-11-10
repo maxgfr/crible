@@ -419,6 +419,30 @@ function mockPresetColumnsApi() {
 }
 
 describe("presets popover", () => {
+  it("survives saved presets that are not presets (hand-edited or foreign storage)", async () => {
+    // an entry with a non-string id used to throw in the grouping on mount —
+    // the root error boundary replaced the whole app
+    localStorage.setItem(
+      "crible.custom-presets",
+      JSON.stringify([
+        { id: 1, name: "numeric id", dsl: "piotroski_f >= 7" },
+        { id: "custom-no-dsl", name: "object dsl", dsl: { op: ">" } },
+        { id: "custom-no-name", dsl: "altman_z > 3" },
+        null,
+        { id: "custom-good", name: "Good one", description: "custom preset", dsl: "altman_z > 3" },
+      ]),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => [] })),
+    );
+    render(<PresetsMenu onPick={vi.fn()} currentQuery="" activeDsl={null} />);
+    fireEvent.click(await rtl.findByRole("button", { name: /preset/i }));
+    expect(await rtl.findByText("Good one")).toBeInTheDocument();
+    expect(rtl.queryByText("numeric id")).not.toBeInTheDocument();
+    expect(rtl.queryByText("object dsl")).not.toBeInTheDocument();
+  });
+
   it("groups presets, previews their DSL, and picks one", async () => {
     vi.stubGlobal(
       "fetch",

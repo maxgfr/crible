@@ -8,11 +8,24 @@ import type { Preset } from "./data/types";
 
 const KEY = "crible.custom-presets";
 
+// storage is outside our control (hand edits, another app on the shared
+// origin): only entries with the three strings the menu reads are presets —
+// a numeric id threw in the menu's grouping and took the whole app down
+function isPreset(entry: unknown): entry is Preset {
+  const p = entry as Partial<Preset> | null;
+  return (
+    !!p &&
+    typeof p.id === "string" && p.id !== "" &&
+    typeof p.name === "string" &&
+    typeof p.dsl === "string" && p.dsl !== ""
+  );
+}
+
 export function loadCustomPresets(): Preset[] {
   try {
     const raw = localStorage.getItem(KEY);
-    const parsed = raw ? (JSON.parse(raw) as Preset[]) : [];
-    return Array.isArray(parsed) ? parsed.filter((p) => p && p.id && p.dsl) : [];
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter(isPreset) : [];
   } catch {
     return [];
   }
