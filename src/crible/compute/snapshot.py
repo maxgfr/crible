@@ -937,7 +937,10 @@ def _publish_base(
 
 
 def publish_snapshot(snapshot: pd.DataFrame, data_dir: Path | str) -> Path:
-    """Atomic swap: write to a temp file, fsync via close, rename over the old."""
+    """Atomic swap for readers: write to a temp file, rename over the old — a
+    reader sees the previous snapshot or the new one, never a partial file.
+    Not fsynced (a power cut may lose the new file, never corrupt the old),
+    and the temp name is fixed: one compute at a time per data directory."""
     directory = Path(data_dir) / "snapshot"
     directory.mkdir(parents=True, exist_ok=True)
     final = directory / SNAPSHOT_NAME
