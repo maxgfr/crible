@@ -763,7 +763,9 @@ BASE_QUOTES_NAME = "base-quotes.parquet"
 # 11: values only — impossible multiples nulled at compute (earnings yield
 #     above 100 %, P/E below 1, P/B ≤ 0).
 # 12: values only — shareholder_yield nulled across a split / unit change.
-ENGINE_SCHEMA_VERSION = 12
+# 13: + net_operating_assets, croic, cash_runway_years, sustainable_growth_rate,
+#     gross_margin_stability, net_cash_to_market_cap, ev_to_fcf
+ENGINE_SCHEMA_VERSION = 13
 
 
 def publish_incremental(

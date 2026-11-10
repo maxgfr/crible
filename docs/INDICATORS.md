@@ -49,6 +49,13 @@ imputée** ; la colonne `missing_inputs` du snapshot nomme les champs absents.
 | `net_share_issuance` | YoY change of the period-end share count | ~unbounded | lower · plus bas | `> 0` → dilution |
 | `positive_fcf_years_5y` | positive-FCF years among the last 5 | 0–5 | higher · plus haut | — |
 | `altman_z_double_prime` | Altman Z″ (non-manufacturers, book equity) | ~unbounded | higher · plus haut | `> 2.6` safe · `< 1.1` distress |
+| `croic` | FCF / average invested capital | ~unbounded | higher · plus haut | — (`>= 0.15` in Cash compounders) |
+| `net_operating_assets` | (debt + equity − cash) / prior-year total assets | ~unbounded | lower · plus bas | — (`>= 1.2` in Bloated balance sheet) |
+| `cash_runway_years` | cash / annual cash burn (burners only) | ≥ 0 | higher · plus haut | `< 1` → under a year of cash |
+| `sustainable_growth_rate` | (net income − dividends) / opening equity | ~unbounded | higher · plus haut | — |
+| `gross_margin_stability` | mean / σ of gross margin (up to 8 years) | > 0 | higher · plus haut | — (`>= 10` in Cash compounders) |
+| `net_cash_to_market_cap` | (cash − debt) / market cap | ≤ 5 | higher · plus haut | `< 0` → net debt |
+| `ev_to_fcf` | enterprise value / free cash flow | > 1 | lower · plus bas | — (`<= 12` in Net cash value) |
 
 Direction reminder: distress and manipulation scores are **risk** measures (lower is
 safer); value and quality metrics are **opportunity** measures (higher is better).
@@ -887,6 +894,185 @@ ventes/actif (un artefact sectoriel) disparaît et la capitalisation est remplac
 capitaux propres **comptables** ; il note donc toute société dotée d'un bilan, sans cours.
 Zones : **> 2,60 sûr, 1,10–2,60 gris, < 1,10 détresse**. À préférer au `altman_z` classique pour
 les services, la distribution, le logiciel et les cotations hors US.
+
+---
+
+## 27. CROIC — `croic`
+
+**Formula** — `free_cash_flow / invested_capital`, with the invested capital of `roic`
+(§22: `total_equity + total_debt − cash_and_equivalents`, averaged over the year, `NaN` under
+10 % of total assets)
+
+**EN** — Cash return on invested capital: the same denominator as ROIC, with the free cash
+flow the business actually produced in place of an after-tax accounting profit. Read the two
+side by side: a high ROIC that CROIC never follows is an accrual story (capitalised costs,
+receivables that do not collect). Cash-cow screens commonly ask for **≥ 15 %**. A cash burner
+reads negative; the first period is `NaN` (no opening capital).
+
+**FR** — Rendement cash du capital investi : le dénominateur du ROIC, avec le free cash flow
+réellement produit à la place d'un résultat comptable après impôt. À lire côte à côte : un
+ROIC élevé que le CROIC ne suit jamais est une histoire d'accruals (coûts capitalisés,
+créances qui ne rentrent pas). Les écrans « cash cows » demandent couramment **≥ 15 %**. Une
+société qui brûle du cash lit négatif ; la première période vaut `NaN`.
+
+---
+
+## 28. Net operating assets — `net_operating_assets`
+
+**Formula**
+
+```
+NOA                  = operating assets − operating liabilities
+                     = total_debt + total_equity − cash_and_equivalents
+net_operating_assets = NOA / total_assets(prior year)
+```
+
+**EN** — Hirshleifer, Hou, Teoh & Zhang (2004, *Do investors overvalue firms with bloated
+balance sheets?*): NOA is the cumulative gap between accounting profits and free cash flow,
+and firms with high NOA relative to their opening assets earn **lower** returns for years
+afterwards. Lower is leaner; the paper's decile medians run from about 0.26 to about 1.45, and
+a net-cash company reads negative. The first period is `NaN` (no opening balance sheet), and
+so is a year in which the balance sheet grew more than tenfold (a shell that merged, a SPAC
+that raised its trust): there is no comparable opening base.
+
+**FR** — Hirshleifer, Hou, Teoh & Zhang (2004) : les NOA sont l'écart cumulé entre profits
+comptables et free cash flow, et les sociétés aux NOA élevés rapportés à l'actif d'ouverture
+affichent des rendements **plus faibles** pendant des années. Plus bas = bilan plus léger ;
+les médianes par décile du papier vont d'environ 0,26 à environ 1,45, et une société en
+trésorerie nette lit négatif. La première période vaut `NaN`, de même qu'un exercice où le
+bilan a plus que décuplé (coquille fusionnée, SPAC ayant levé son trust) : pas de base
+d'ouverture comparable.
+
+> **Caveats · Nuances** — The paper also strips short-term investments from operating assets
+> and treats minority interest and preferred stock as financing. Those three lines are too
+> thinly populated across sources to subtract without nulling the column, so crible uses the
+> invested capital of `roic`: NOA is slightly overstated for a company holding large marketable
+> securities. · Le papier retire aussi les placements à court terme et traite intérêts
+> minoritaires et actions de préférence comme du financement ; ces lignes sont trop peu
+> renseignées pour être soustraites sans vider la colonne : les NOA sont légèrement surestimés
+> pour une société détenant beaucoup de titres de placement.
+
+---
+
+## 29. Cash runway — `cash_runway_years`
+
+**Formula** — `cash_and_equivalents / −free_cash_flow`, defined only when
+`free_cash_flow < 0` (and the reported cash is not negative)
+
+**EN** — Years of cash left at last year's burn rate. It exists for cash burners only: a
+company that generates cash has no runway to count, so the column is `NaN` there (never
+infinity) — filter on it to select burners. **Under 1** is the going-concern horizon
+(flagged); under 1.5 usually means a capital raise is already being prepared. It ignores
+undrawn credit lines and marketable securities, so it is a floor, not a forecast. It is a
+burn-versus-cash measure, not a solvency model: a utility that funds its capex with debt
+reads short while its operations earn cash — the *Short cash runway* preset therefore also
+asks for `operating_cashflow < 0`.
+
+**FR** — Années de trésorerie restantes au rythme de consommation du dernier exercice. Défini
+pour les seules sociétés qui brûlent du cash : celle qui en génère n'a pas de piste à compter,
+la colonne y vaut `NaN` (jamais l'infini) — filtrer dessus sélectionne les consommatrices.
+**Moins de 1** est l'horizon de continuité d'exploitation (signalé) ; sous 1,5 une levée est
+généralement déjà en préparation. Lignes de crédit non tirées et titres de placement sont
+ignorés : c'est un plancher, pas une prévision. C'est une mesure consommation/trésorerie, pas
+un modèle de solvabilité : une utility qui finance son capex par la dette lit court alors que
+son exploitation gagne du cash — le preset *Short cash runway* exige donc aussi
+`operating_cashflow < 0`.
+
+---
+
+## 30. Sustainable growth rate — `sustainable_growth_rate`
+
+**Formula** — `(net_income − |dividends_paid|) / total_equity(prior year)`
+
+**EN** — Higgins (1977): the growth a company can fund from retained earnings alone, without
+new equity and at constant leverage — return on opening equity times the retention ratio.
+Revenue growing durably faster than this has to be paid for by debt or dilution. `NaN` on a
+loss (a loss funds nothing), on non-positive opening equity, and when that equity is no
+base — under 2 % of the opening assets, or a balance sheet that grew more than tenfold in
+the year; a payout above earnings reads **negative** (the dividend eats equity). Companies
+that bought back most of their equity read very high (Apple ≈ 1.6): true to the formula,
+and a reminder that the constant-leverage assumption no longer describes them. A parsed cash-flow statement with no dividends line
+is a non-payer — everything is retained; with no cash-flow statement the payout is unknown.
+
+**FR** — Higgins (1977) : la croissance finançable par les seuls bénéfices mis en réserve,
+sans nouveaux fonds propres et à levier constant — rentabilité des capitaux propres
+d'ouverture × taux de rétention. Un chiffre d'affaires qui croît durablement plus vite doit
+être payé par de la dette ou de la dilution. `NaN` en cas de perte, de capitaux propres
+d'ouverture non positifs, ou trop faibles pour servir de base (moins de 2 % de l'actif
+d'ouverture, ou bilan plus que décuplé dans l'exercice) ; une distribution supérieure au
+bénéfice lit **négatif**. Les sociétés qui ont racheté l'essentiel de leurs fonds propres
+lisent très haut (Apple ≈ 1,6) : fidèle à la formule, et signe que l'hypothèse de levier
+constant ne les décrit plus. Un tableau
+de flux sans ligne de dividendes est un non-payeur ; sans tableau de flux, la distribution est
+inconnue.
+
+---
+
+## 31. Gross-margin stability — `gross_margin_stability`
+
+**Formula** — `mean(gross_margin) / stdev(gross_margin)` over the last 8 reported years
+(sample standard deviation, at least 4 years; `gross_margin = gross_profit / revenue`)
+
+**EN** — Gray & Carlisle (*Quantitative Value*, franchise power): a margin that barely moves
+across a cycle is evidence of pricing power — a moat shows up as stability as much as growth.
+Higher is steadier: 10 means the margin's dispersion is a tenth of its level. `NaN` under four
+years, on a loss-making gross line, and on a perfectly flat margin (nothing to divide by).
+Yahoo-only listings carry ~4 annual periods, so their reading rests on the minimum; banks and
+insurers report no gross profit and stay `NaN`.
+
+**FR** — Gray & Carlisle (*Quantitative Value*, « franchise power ») : une marge qui bouge à
+peine sur un cycle signe un pouvoir de fixation des prix — un avantage durable se lit autant
+dans la stabilité que dans la croissance. Plus haut = plus stable : 10 signifie une dispersion
+égale au dixième du niveau. `NaN` sous quatre exercices, sur une marge brute négative et sur
+une marge parfaitement plate. Les cotations Yahoo seules n'ont que ~4 exercices ; banques et
+assureurs ne publient pas de marge brute et restent à `NaN`.
+
+---
+
+## 32. Net cash to market cap — `net_cash_to_market_cap`
+
+**Formula** — `(cash_and_equivalents − total_debt) / market_cap`
+
+**EN** — The share of the price that is cash net of **all** debt. Positive means the market
+pays for the business less than its quote suggests (at 1.0 the business comes free); negative
+is net debt. It complements `ncav_to_market_cap`, which also counts inventories and
+receivables nobody may be able to sell. Price-dependent: latest fiscal period only. **Above
+5 the value is nulled**: net cash worth more than five times the price is a unit or currency
+mismatch between the statements and the quote, never a bargain (the rule that nulls a P/E
+below 1). Net debt has no floor. For banks and insurers the « cash » is largely their
+customers' — read this column outside financials (the *Net cash value* preset excludes them).
+
+**FR** — La part du cours qui est de la trésorerie nette de **toute** la dette. Positif :
+le marché paie l'activité moins que ne le suggère le cours (à 1,0 l'activité est gratuite) ;
+négatif : dette nette. Complète `ncav_to_market_cap`, qui compte aussi des stocks et créances
+pas toujours cessibles. Dépend du cours : dernier exercice uniquement. **Au-delà de 5 la
+valeur est annulée** : une trésorerie nette supérieure à cinq fois le cours est un écart
+d'unité ou de devise entre les comptes et la cotation, jamais une affaire (la règle qui annule
+un P/E inférieur à 1). La dette nette n'a pas de plancher. Pour les banques et assureurs, la
+« trésorerie » est largement celle des clients : à lire hors financières (le preset *Net cash
+value* les exclut).
+
+---
+
+## 33. EV / FCF — `ev_to_fcf`
+
+**Formula** — `(market_cap + total_debt − cash_and_equivalents) / free_cash_flow`, defined
+when both the enterprise value and the free cash flow are positive, and nulled at or below 1
+
+**EN** — What the whole capital structure pays for one unit of free cash flow — the cash
+counterpart of `ev_to_ebitda_ratio`, with debt already inside the multiple and capex already
+paid. Lower is cheaper; 10 is a 10 % free-cash-flow yield on the enterprise. No multiple for a
+cash burner or a non-positive enterprise value, and none at or below 1: a whole enterprise
+priced under one year of its free cash flow is a unit or currency mismatch, like a P/E below
+1. Price-dependent: latest fiscal period only.
+
+**FR** — Ce que toute la structure de capital paie pour une unité de free cash flow — le
+pendant cash de `ev_to_ebitda_ratio`, dette incluse dans le multiple et capex déjà payé. Plus
+bas = moins cher ; 10 équivaut à 10 % de rendement du free cash flow sur la valeur
+d'entreprise. Pas de multiple pour une société qui brûle du cash ni pour une valeur
+d'entreprise non positive, ni à 1 ou en dessous : une entreprise entière valorisée moins d'un
+an de son free cash flow est un écart d'unité ou de devise, comme un P/E inférieur à 1.
+Dépend du cours : dernier exercice uniquement.
 
 ---
 

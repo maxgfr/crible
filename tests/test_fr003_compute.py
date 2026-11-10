@@ -1722,6 +1722,191 @@ def test_fr003_impossible_multiples_are_nulled() -> None:
     assert pb.iloc[0] == 1.5 and pb.iloc[1:].isna().all()
 
 
+# ------------------------------------------------ new indicators (schema 13)
+
+
+def _schema13_canonical() -> pd.DataFrame:
+    """The schema-9 fixture plus earnings and a dividend: equity 500→580,
+    debt 200, cash 100, total assets 1000, FCF 10/−5/20/30/40."""
+    canonical = _new_indicators_canonical()
+    canonical["net_income"] = [60.0, 70.0, 80.0, 90.0, 100.0]
+    canonical["dividends_paid"] = [-20.0] * 5  # outflows are reported negative
+    canonical["operating_cashflow"] = [80.0, 85.0, 90.0, 95.0, 100.0]
+    return canonical
+
+
+def test_net_operating_assets_scale_on_the_opening_balance_sheet() -> None:
+    """Hirshleifer et al. (2004): NOA over LAGGED total assets, with crible's
+    invested capital (equity + debt − cash) as the operating net."""
+    out = compute_extras(_schema13_canonical())
+    assert out.loc["2025", "net_operating_assets"] == pytest.approx((580.0 + 200.0 - 100.0) / 1000.0)
+    assert out.loc["2022", "net_operating_assets"] == pytest.approx((520.0 + 200.0 - 100.0) / 1000.0)
+    assert pd.isna(out.loc["2021", "net_operating_assets"])  # no opening balance sheet
+    # a net-cash company reads negative — the lean end of the scale, kept
+    lean = _schema13_canonical()
+    lean["cash_and_equivalents"] = 900.0
+    assert compute_extras(lean).loc["2025", "net_operating_assets"] == pytest.approx(-0.12)
+    missing = _schema13_canonical()
+    missing["total_debt"] = float("nan")
+    assert compute_extras(missing)["net_operating_assets"].isna().all()  # never imputed
+
+
+def test_croic_is_free_cash_flow_over_the_capital_roic_uses() -> None:
+    out = compute_extras(_schema13_canonical())
+    # 2025: average invested capital (560+200−100 + 580+200−100) / 2 = 670 — ROIC's denominator
+    assert out.loc["2025", "croic"] == pytest.approx(40.0 / 670.0)
+    assert out.loc["2022", "croic"] == pytest.approx(-5.0 / 610.0)  # a cash burner reads negative
+    assert pd.isna(out.loc["2021", "croic"])
+    # the same floor as ROIC: capital that cash nearly cancels is no denominator
+    hollow = _schema13_canonical()
+    hollow["total_equity"] = 100.0
+    hollow["total_debt"] = 0.0
+    hollow["cash_and_equivalents"] = 99.9
+    assert compute_extras(hollow)["croic"].isna().all()
+
+
+def test_cash_runway_counts_years_only_for_a_cash_burner() -> None:
+    out = compute_extras(_schema13_canonical())
+    assert out.loc["2022", "cash_runway_years"] == pytest.approx(100.0 / 5.0)
+    # a company that generates cash has no runway to count — NaN, not infinity
+    assert out.loc[["2021", "2023", "2024", "2025"], "cash_runway_years"].isna().all()
+    broke = _schema13_canonical()
+    broke.loc["2022", "cash_and_equivalents"] = 0.0
+    assert compute_extras(broke).loc["2022", "cash_runway_years"] == 0.0
+    # a negative cash balance is a filing error, not a negative runway
+    garbage = _schema13_canonical()
+    garbage.loc["2022", "cash_and_equivalents"] = -17.0
+    assert pd.isna(compute_extras(garbage).loc["2022", "cash_runway_years"])
+
+
+def test_sustainable_growth_is_retained_earnings_over_opening_equity() -> None:
+    out = compute_extras(_schema13_canonical())
+    # Higgins: ROE on opening equity × retention = (100 − 20) / 560
+    assert out.loc["2025", "sustainable_growth_rate"] == pytest.approx(80.0 / 560.0)
+    assert pd.isna(out.loc["2021", "sustainable_growth_rate"])  # no opening equity
+
+    # a parsed cash-flow statement without a dividends line is a non-payer:
+    # everything is retained (the shareholder_yield reading)
+    non_payer = _schema13_canonical()
+    non_payer["dividends_paid"] = float("nan")
+    assert compute_extras(non_payer).loc["2025", "sustainable_growth_rate"] == pytest.approx(100.0 / 560.0)
+    # no cash-flow statement at all: the payout is unknown, not zero
+    unknown = _schema13_canonical()
+    unknown["dividends_paid"] = float("nan")
+    unknown["operating_cashflow"] = float("nan")
+    assert compute_extras(unknown)["sustainable_growth_rate"].isna().all()
+
+    # a loss funds no growth; negative opening equity is no base
+    loss = _schema13_canonical()
+    loss.loc["2025", "net_income"] = -10.0
+    assert pd.isna(compute_extras(loss).loc["2025", "sustainable_growth_rate"])
+    underwater = _schema13_canonical()
+    underwater["total_equity"] = -50.0
+    assert compute_extras(underwater)["sustainable_growth_rate"].isna().all()
+    # paying out more than it earns reads negative — the dividend eats equity
+    overpaying = _schema13_canonical()
+    overpaying["dividends_paid"] = -150.0
+    assert compute_extras(overpaying).loc["2025", "sustainable_growth_rate"] == pytest.approx(-50.0 / 560.0)
+
+
+def test_gross_margin_stability_is_mean_over_standard_deviation() -> None:
+    """Gray & Carlisle's margin stability: gross margins 30 %…34 %."""
+    out = compute_extras(_schema13_canonical())
+    # 2025, five years: mean 0.32, sample σ = √(0.001 / 4)
+    assert out.loc["2025", "gross_margin_stability"] == pytest.approx(0.32 / (0.001 / 4) ** 0.5)
+    # 2024, four years: mean 0.315, sample σ = √(0.0005 / 3)
+    assert out.loc["2024", "gross_margin_stability"] == pytest.approx(0.315 / (0.0005 / 3) ** 0.5)
+    assert out.loc[["2021", "2022", "2023"], "gross_margin_stability"].isna().all()  # under four years
+
+    # a loss-making gross line has no franchise to measure
+    negative = _schema13_canonical()
+    negative["gross_profit"] = [-30.0, -31.0, -32.0, -33.0, -34.0]
+    assert compute_extras(negative)["gross_margin_stability"].isna().all()
+    # a perfectly flat margin has no dispersion to divide by — NaN, never ∞
+    flat = _schema13_canonical()
+    flat["gross_profit"] = 300.0
+    assert compute_extras(flat)["gross_margin_stability"].isna().all()
+
+
+def test_net_cash_and_ev_to_fcf_price_the_latest_period_only() -> None:
+    price = pd.Series([float("nan")] * 4 + [10.0], index=["2021", "2022", "2023", "2024", "2025"])
+    out = compute_extras(_schema13_canonical(), price)
+    market_cap = 10.0 * 98.8  # the period-end share count
+    assert out.loc["2025", "net_cash_to_market_cap"] == pytest.approx((100.0 - 200.0) / market_cap)
+    assert out.loc["2025", "ev_to_fcf"] == pytest.approx((market_cap + 200.0 - 100.0) / 40.0)
+    assert out.loc["2021":"2024", ["net_cash_to_market_cap", "ev_to_fcf"]].isna().all().all()
+
+    # no multiple on a cash burner, nor on a non-positive enterprise value
+    burner = _schema13_canonical()
+    burner.loc["2025", "free_cash_flow"] = -40.0
+    assert pd.isna(compute_extras(burner, price).loc["2025", "ev_to_fcf"])
+    cash_box = _schema13_canonical()
+    cash_box["cash_and_equivalents"] = 3000.0
+    boxed = compute_extras(cash_box, price).loc["2025"]
+    assert pd.isna(boxed["ev_to_fcf"])
+    assert boxed["net_cash_to_market_cap"] == pytest.approx((3000.0 - 200.0) / market_cap)
+
+    # without a price the columns exist and are empty
+    unpriced = compute_extras(_schema13_canonical())
+    assert unpriced[["net_cash_to_market_cap", "ev_to_fcf"]].isna().all().all()
+
+
+def test_new_multiples_null_what_only_a_unit_mismatch_can_produce() -> None:
+    """Observed on the published dataset: a foreign line quoted in EUR over
+    JPY accounts read net cash at 22× the market cap and an enterprise at
+    0.8× its free cash flow. Like a P/E below 1, never a bargain — nulled."""
+    price = pd.Series([float("nan")] * 4 + [10.0], index=["2021", "2022", "2023", "2024", "2025"])
+    market_cap = 10.0 * 98.8
+
+    yen_accounts = _schema13_canonical()
+    yen_accounts["cash_and_equivalents"] = 6000.0  # (6000 − 200) / 988 = 5.87×
+    assert pd.isna(compute_extras(yen_accounts, price).loc["2025", "net_cash_to_market_cap"])
+    cash_rich = _schema13_canonical()
+    cash_rich["cash_and_equivalents"] = 5000.0  # 4.86×: extreme, still possible
+    assert compute_extras(cash_rich, price).loc["2025", "net_cash_to_market_cap"] == pytest.approx(
+        4800.0 / market_cap
+    )
+    # net debt has no floor: a company can owe many times its market cap
+    indebted = _schema13_canonical()
+    indebted["total_debt"] = 50_000.0
+    assert compute_extras(indebted, price).loc["2025", "net_cash_to_market_cap"] == pytest.approx(
+        (100.0 - 50_000.0) / market_cap
+    )
+
+    gusher = _schema13_canonical()
+    gusher.loc["2025", "free_cash_flow"] = 2000.0  # EV 1088 / 2000 = 0.54×
+    assert pd.isna(compute_extras(gusher, price).loc["2025", "ev_to_fcf"])
+    gusher.loc["2025", "free_cash_flow"] = 1000.0  # 1.088×: cheap, not impossible
+    assert compute_extras(gusher, price).loc["2025", "ev_to_fcf"] == pytest.approx(1088.0 / 1000.0)
+
+
+def test_opening_bases_too_small_to_scale_on_are_no_base() -> None:
+    """A shell that merged (assets ×20 in a year) has no opening balance
+    sheet to scale net operating assets on; equity eroded to a sliver of the
+    assets is no base for a growth rate (a 1,500 % « sustainable » growth)."""
+    merged = _schema13_canonical()
+    merged["total_assets"] = [1000.0, 1000.0, 1000.0, 40.0, 1000.0]
+    out = compute_extras(merged)
+    assert pd.isna(out.loc["2025", "net_operating_assets"])  # opening 40 < 10 % of 1000
+    assert out.loc["2023", "net_operating_assets"] == pytest.approx((540.0 + 200.0 - 100.0) / 1000.0)
+
+    sliver = _schema13_canonical()
+    sliver["total_equity"] = [500.0, 520.0, 540.0, 15.0, 580.0]  # 15 < 2 % of 1000
+    out = compute_extras(sliver)
+    assert pd.isna(out.loc["2025", "sustainable_growth_rate"])
+    assert out.loc["2023", "sustainable_growth_rate"] == pytest.approx((80.0 - 20.0) / 520.0)
+    # the SPAC that raised its trust: opening equity is a real share of the
+    # opening assets, but those assets are a fiftieth of today's
+    spac = _schema13_canonical()
+    spac["total_assets"] = [1000.0, 1000.0, 1000.0, 20.0, 1000.0]
+    spac["total_equity"] = [500.0, 520.0, 540.0, 2.0, 580.0]
+    assert pd.isna(compute_extras(spac).loc["2025", "sustainable_growth_rate"])
+    # bank-scale equity (6 % of assets) is a base
+    bank = _schema13_canonical()
+    bank["total_equity"] = 60.0
+    assert compute_extras(bank).loc["2025", "sustainable_growth_rate"] == pytest.approx(80.0 / 60.0)
+
+
 def test_fr003_depositary_receipt_flag() -> None:
     from crible.compute.snapshot import depositary_receipt
 

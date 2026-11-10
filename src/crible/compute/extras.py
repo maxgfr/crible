@@ -30,6 +30,24 @@ def _cagr_3y(series: pd.Series) -> pd.Series:
 MIN_INVESTED_CAPITAL_SHARE = 0.1
 # a year-over-year share-count ratio outside (1/x, x) is not issuance
 MAX_ISSUANCE_FACTOR = 2.0
+# gross-margin stability: the book's eight-year window, at least four years
+MARGIN_STABILITY_YEARS = 8
+MARGIN_STABILITY_MIN_YEARS = 4
+# a dispersion below this is float noise around an identical margin
+MARGIN_STD_FLOOR = 1e-9
+# a balance sheet that grew more than tenfold in a year (a shell that merged,
+# a SPAC that raised its trust, a unit change between filings) is no opening
+# base — for net operating assets, nor for a growth rate on opening equity
+MIN_OPENING_ASSETS_SHARE = 0.1
+# opening equity under 2 % of the opening assets is a rounding residue, not a
+# base for a growth rate (the ROIC floor, at the scale of bank equity)
+MIN_OPENING_EQUITY_SHARE = 0.02
+# Bounds no real multiple crosses, like ratios.IMPOSSIBLE_BOUNDS: net cash
+# above five times the price, or a whole enterprise under one year of its free
+# cash flow, is a unit or currency mismatch between the statements and the
+# quote (a foreign line priced in EUR over JPY accounts), never a bargain
+NET_CASH_TO_MARKET_CAP_MAX = 5.0
+EV_TO_FCF_MIN = 1.0
 
 
 def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> pd.DataFrame:
@@ -64,9 +82,23 @@ def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
     # deposits sit outside "debt") is a rounding residue, not capital
     pretax = c["income_before_tax"]
     tax_rate = (c["income_tax_expense"] / pretax.where(pretax > 0)).clip(0.0, 0.5)
-    invested = average(c["total_equity"] + c["total_debt"] - c["cash_and_equivalents"])
+    capital = c["total_equity"] + c["total_debt"] - c["cash_and_equivalents"]
+    invested = average(capital)
     meaningful = invested >= MIN_INVESTED_CAPITAL_SHARE * average(c["total_assets"])
     out["roic"] = ebit * (1 - tax_rate) / invested.where((invested > 0) & meaningful)
+    # CROIC: the cash version of ROIC — free cash flow over the SAME average
+    # invested capital and the same floor, so the two are comparable line by
+    # line (a ROIC the cash never follows is an accrual story)
+    out["croic"] = c["free_cash_flow"] / invested.where((invested > 0) & meaningful)
+    # Hirshleifer, Hou, Teoh & Zhang (2004) balance-sheet bloat: net operating
+    # assets over LAGGED total assets. NOA = operating assets − operating
+    # liabilities, which reduces to debt + equity − cash: the invested capital
+    # above (short-term investments, minority interest and preferred stock are
+    # too thinly populated to subtract without nulling the column — documented
+    # deviation). A net-cash company reads negative, the lean end of the scale.
+    opening_assets = prior_period(c["total_assets"])
+    comparable = opening_assets >= MIN_OPENING_ASSETS_SHARE * c["total_assets"]
+    out["net_operating_assets"] = capital / opening_assets.where((opening_assets > 0) & comparable)
     # Novy-Marx (2013) gross profitability — the quality factor that survives
     # accounting choices below the gross line
     out["gross_profitability"] = c["gross_profit"] / c["total_assets"].where(c["total_assets"] > 0)
@@ -83,6 +115,38 @@ def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
     # reported (at least three needed — never extrapolated)
     fcf = c["free_cash_flow"]
     out["positive_fcf_years_5y"] = (fcf > 0).astype(float).where(fcf.notna()).rolling(5, min_periods=3).sum()
+    # cash runway: years of cash left at the last year's burn. Defined for a
+    # cash burner only — a company that generates cash has no runway to count
+    # (NaN, not infinity)
+    cash = c["cash_and_equivalents"]
+    out["cash_runway_years"] = cash.where(cash >= 0) / (-fcf).where(fcf < 0)
+    # dividends actually paid, as a magnitude. One reading is not a
+    # fabrication: a PARSED cash-flow statement (operating_cashflow present)
+    # with no dividends line is a genuine non-payer — dividends are truly zero
+    # there; with no cash-flow statement at all the payout stays unknown.
+    dividends = c["dividends_paid"].abs()
+    dividends = dividends.mask(dividends.isna() & c["operating_cashflow"].notna(), 0.0)
+    # sustainable growth (Higgins 1977): what retained earnings alone can
+    # fund — ROE on OPENING equity × retention = (NI − dividends) / opening
+    # equity. A loss funds nothing and negative equity is no base → NaN; a
+    # payout above earnings reads negative (the dividend eats equity).
+    opening_equity = prior_period(c["total_equity"])
+    earned = c["net_income"].where(c["net_income"] > 0)
+    a_base = (opening_equity >= MIN_OPENING_EQUITY_SHARE * opening_assets) & comparable
+    out["sustainable_growth_rate"] = (earned - dividends) / opening_equity.where(
+        (opening_equity > 0) & a_base
+    )
+    # gross-margin stability (Gray & Carlisle, Quantitative Value — franchise
+    # power): mean over sample standard deviation of the gross margin across
+    # the last eight reported years, at least four. Loss-making gross lines
+    # have no franchise to measure; a perfectly flat margin has no dispersion
+    # to divide by (NaN, never infinity).
+    gross_margin = c["gross_profit"] / c["revenue"].where(c["revenue"] > 0)
+    window = gross_margin.rolling(MARGIN_STABILITY_YEARS, min_periods=MARGIN_STABILITY_MIN_YEARS)
+    margin_mean, margin_std = window.mean(), window.std()
+    out["gross_margin_stability"] = margin_mean.where(margin_mean > 0) / margin_std.where(
+        margin_std > MARGIN_STD_FLOOR
+    )
 
     # Greenblatt magic-formula: return on capital = EBIT / (NWC + net fixed assets).
     # Non-positive invested capital would sign-flip the ratio (negative EBIT over a
@@ -120,16 +184,23 @@ def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
         # total shareholder yield: dividends + net buybacks over market cap.
         # Buybacks are proxied by the share-count decline valued at the current
         # price (issuance reads negative — dilution shows up as a drag);
-        # missing inputs propagate as NaN, never a fabricated zero. One reading
-        # is not a fabrication: a PARSED cash-flow statement (operating_cashflow
-        # present) with no dividends line is a genuine non-payer — dividends are
-        # truly zero there, so the computable buyback signal survives.
-        dividends = c["dividends_paid"].abs()
-        dividends = dividends.mask(dividends.isna() & c["operating_cashflow"].notna(), 0.0)
+        # missing inputs propagate as NaN, never a fabricated zero (the
+        # non-payer reading of ``dividends`` above keeps the computable buyback
+        # signal alive).
         # the same split / unit-change bound as net_share_issuance: an
         # unrestated 1:10 reverse split is not a 900 % buyback
         buyback_value = ((prior_period(shares) - shares) * price).where(plausible_count_change)
         out["shareholder_yield"] = (dividends + buyback_value) / market_cap
+        # net cash over market cap: the share of the price that is cash net of
+        # ALL debt (negative = net debt). Next to NCAV it is the deep-value
+        # reading that survives inventories and receivables nobody can sell.
+        net_cash = (c["cash_and_equivalents"] - c["total_debt"]) / market_cap
+        out["net_cash_to_market_cap"] = net_cash.where(net_cash <= NET_CASH_TO_MARKET_CAP_MAX)
+        # EV / FCF: what the whole capital structure pays for a unit of free
+        # cash flow. No multiple on a cash burner, nor on a non-positive EV,
+        # nor under 1 (the P/E-below-1 rule: a mismatch, not a bargain).
+        ev_to_fcf = enterprise_value.where(enterprise_value > 0) / fcf.where(fcf > 0)
+        out["ev_to_fcf"] = ev_to_fcf.where(ev_to_fcf > EV_TO_FCF_MIN)
     else:
         for col in (
             "graham_number",
@@ -138,6 +209,8 @@ def compute_extras(canonical: pd.DataFrame, price: pd.Series | None = None) -> p
             "greenblatt_earnings_yield",
             "peg_ratio",
             "shareholder_yield",
+            "net_cash_to_market_cap",
+            "ev_to_fcf",
         ):
             out[col] = float("nan")
 
