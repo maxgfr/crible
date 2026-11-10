@@ -110,6 +110,27 @@ def test_parse_dfp_pins_the_ground_rules(tmp_path) -> None:
     assert ind.loc["2024-12-31", "TotalRevenue"] == 111_000.0  # ind fills con-less filers
 
 
+def test_parse_dfp_keeps_the_latest_version_of_a_refiled_statement(tmp_path) -> None:
+    """A company that refiles its DFP leaves both versions in the yearly
+    file: the figure of the highest VERSAO is the one that stands — the first
+    row read used to win, i.e. the superseded number whenever v1 came first."""
+
+    def line(version: int, value: str) -> str:
+        return (
+            f"{CNPJ_BB};2024-12-31;{version};X;001;DF;REAL;MIL;ÚLTIMO;2024-01-01;2024-12-31;3.01;D;{value};S"
+        )
+
+    for order in ((1, 2), (2, 1)):  # whatever the order of the rows in the file
+        rows = [
+            line(order[0], {1: "1000", 2: "1200"}[order[0]]),
+            line(order[1], {1: "1000", 2: "1200"}[order[1]]),
+        ]
+        path = tmp_path / f"dfp-{order[0]}.zip"
+        path.write_bytes(_zip({"dfp_cia_aberta_DRE_con_2024.csv": "\n".join([DFP_HEADER, *rows])}).getvalue())
+        income = parse_dfp(path, {CNPJ_BB})[CNPJ_BB][("income", "annual")].set_index("period")
+        assert income.loc["2024-12-31", "TotalRevenue"] == 1_200_000.0
+
+
 def test_resolve_cvm_maps_trading_codes(tmp_path) -> None:
     path = tmp_path / "fca.zip"
     path.write_bytes(_fca_zip().getvalue())
@@ -230,6 +251,32 @@ def test_run_cvm_register_fallback_is_not_an_outage(tmp_path, monkeypatch) -> No
     (tmp_path / "mirror" / "cvm" / f"fca_{year - 1}.zip").unlink()
     down = run_cvm(years=1, limit=10, http=_MultiHttp({}))
     assert down["outage"] and down["enriched"] == 0
+
+
+def test_run_cvm_an_unpublished_current_year_is_not_an_outage(tmp_path, monkeypatch) -> None:
+    """Early in the year the current DFP file does not exist yet: the closed
+    years load and the stage is healthy. A closed year that cannot be fetched
+    is a real outage."""
+    from datetime import date
+
+    from crible.ingest.enrichment import run_cvm
+
+    _seed_br_universe(tmp_path, monkeypatch)
+    year = date.today().year
+    bodies = {
+        "fca_cia_aberta": _fca_zip().getvalue(),
+        f"dfp_cia_aberta_{year - 1}": _dfp_zip(year - 1).getvalue(),
+        f"dfp_cia_aberta_{year - 2}": _dfp_zip(year - 2).getvalue(),
+    }
+    outcome = run_cvm(years=2, limit=10, http=_MultiHttp(bodies))
+    assert outcome["years"] == [year - 1, year - 2]
+    assert outcome["outage"] is None and outcome["enriched"] == 1
+
+    for stale in (tmp_path / "mirror" / "cvm").glob("dfp_*"):
+        stale.unlink()
+    del bodies[f"dfp_cia_aberta_{year - 2}"]
+    broken = run_cvm(years=2, limit=10, http=_MultiHttp(bodies))
+    assert broken["outage"] and str(year - 2) in broken["outage"]
 
 
 def test_run_cvm_limit_zero_is_a_pure_noop(tmp_path, monkeypatch) -> None:

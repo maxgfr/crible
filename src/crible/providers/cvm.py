@@ -90,11 +90,12 @@ def parse_dfp(zip_path: Path | str, wanted: set[str]) -> dict[str, dict[tuple[st
     """One DFP yearly ZIP → {CNPJ: frames} for the wanted companies.
 
     Consolidated members win whole statements; ``ÚLTIMO`` rows only; MIL
-    scaling; ranked code map. Frames carry a ``period`` column (fiscal year
+    scaling; ranked code map; the highest ``VERSAO`` of a refiled statement. Frames carry a ``period`` column (fiscal year
     end date) in crible's yfinance vocabulary.
     """
-    # values[cnpj][statement][period][column] = (rank, value)
-    values: dict[str, dict[str, dict[str, dict[str, tuple[int, float]]]]] = {}
+    # values[cnpj][statement][period][column] = (rank, -version, value): the
+    # best-ranked code wins, and among refilings of it the highest VERSAO
+    values: dict[str, dict[str, dict[str, dict[str, tuple[int, int, float]]]]] = {}
     consolidated: set[tuple[str, str]] = set()  # (cnpj, statement) served by _con
 
     def _ingest(member_rows, statement: str, scope: str) -> None:
@@ -121,10 +122,16 @@ def parse_dfp(zip_path: Path | str, wanted: set[str]) -> dict[str, dict[tuple[st
                 continue
             if scope == "con":
                 consolidated.add((cnpj, statement))
+            try:
+                version = int(row.get("VERSAO") or 0)
+            except ValueError:
+                version = 0
             slot = values.setdefault(cnpj, {}).setdefault(statement, {}).setdefault(period, {})
             current = slot.get(column)
-            if current is None or rank < current[0]:
-                slot[column] = (rank, value)
+            # a refiled statement leaves every version in the yearly file: the
+            # latest stands, whatever the order of the rows
+            if current is None or (rank, -version) < current[:2]:
+                slot[column] = (rank, -version, value)
 
     with zipfile.ZipFile(zip_path) as bundle:
         members = [(m, _member_kind(m)) for m in bundle.namelist()]
@@ -140,7 +147,7 @@ def parse_dfp(zip_path: Path | str, wanted: set[str]) -> dict[str, dict[tuple[st
         out: dict[tuple[str, str], pd.DataFrame] = {}
         for statement, periods in statements.items():
             records = [
-                {"period": period, **{col: val for col, (_, val) in columns.items()}}
+                {"period": period, **{col: val for col, (_, _, val) in columns.items()}}
                 for period, columns in sorted(periods.items())
             ]
             out[(statement, "annual")] = pd.DataFrame(records)

@@ -16,8 +16,9 @@ def run_cvm(
     http=None,
     time_budget_seconds: float | None = None,
 ) -> dict:
-    """Audited Brazil: mirror the CVM DFP yearly ZIPs, accumulate the last
-    ``years`` fiscal years into ONE frame-set per company (the raw layer
+    """Audited Brazil: mirror the CVM DFP yearly ZIPs, accumulate the current
+    year (filings still landing) and the last ``years`` closed fiscal years
+    into ONE frame-set per company (the raw layer
     keeps a single newest frame per statement — per-year writes would
     shadow each other), and write provider='cvm' raw for every mapped
     ``.SA`` listing. ``limit <= 0`` is a pure no-op (the marathon convention)."""
@@ -99,6 +100,11 @@ def run_cvm(
                 max_age_seconds=CVM_MAX_AGE if year >= this_year - 1 else CLOSED_YEAR_MAX_AGE,
             )
         except Exception as exc:  # noqa: BLE001 — a missing year is not fatal
+            if year == this_year:
+                # the current year's file appears as the first filings land:
+                # not there yet is the normal state early in the year
+                log.info("cvm: dfp %d not available yet (%s) — continuing", year, exc)
+                continue
             outcome["outage"] = f"dfp {year}: {exc}"
             log.warning("cvm: %s — continuing", outcome["outage"])
             continue
