@@ -242,8 +242,10 @@ def run_esef_cycle(
             except Exception as exc:  # noqa: BLE001 — outage: record, resume next cycle
                 if entry_error(exc):
                     # this filer's filing is gone or broken: stamp it, go on
+                    # the depth too: a filer left « due for a deeper backfill »
+                    # had its broken filing requested again on every run
                     log.warning("esef: skipping %s (LEI %s): %s", symbols, lei, exc)
-                    stamp(symbols, time.time())
+                    stamp(symbols, time.time(), history)
                     continue
                 outcome["outage"] = f"{symbols[0]}: {exc}"
                 log.warning("esef: outage on %s: %s — resuming next cycle", symbols, exc)
@@ -397,11 +399,17 @@ def run_esef_sweep(
                         # next run walks past it instead of stalling on it
                         log.warning("esef sweep: skipping %s: %s", lei, exc)
                         stamp = time.time()
+                        # the requested depth is stamped too: a filer left
+                        # « due for a deeper backfill » had its broken filing
+                        # requested again on every run
                         for symbol in due:
                             con.execute(
-                                "INSERT INTO esef_tasks (symbol, lei, last_fetched_at) VALUES (?, ?, ?)"
-                                " ON CONFLICT (symbol) DO UPDATE SET last_fetched_at = excluded.last_fetched_at",
-                                [symbol, lei, stamp],
+                                "INSERT INTO esef_tasks (symbol, lei, last_fetched_at, history_depth)"
+                                " VALUES (?, ?, ?, ?) ON CONFLICT (symbol) DO UPDATE SET"
+                                " last_fetched_at = excluded.last_fetched_at,"
+                                " history_depth = greatest(coalesce(esef_tasks.history_depth, 1),"
+                                " excluded.history_depth)",
+                                [symbol, lei, stamp, history],
                             )
                         continue
                     outcome["outage"] = f"{lei}: {exc}"

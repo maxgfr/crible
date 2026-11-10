@@ -1219,6 +1219,37 @@ def test_fr010_sweep_skips_a_dead_filing_instead_of_stalling(tmp_path, monkeypat
     assert stamped is not None and stamped[0] is not None
 
 
+def test_fr010_a_dead_filing_is_not_fetched_again_on_a_deep_backfill(tmp_path, monkeypatch) -> None:
+    """With history > 1 the skip stamped the date but not the depth, so the
+    filer stayed « due for a deeper backfill » and its broken filing was
+    requested again on every run, in the sweep and in the cycle alike."""
+    from crible.ingest.service import run_esef_cycle, run_esef_sweep
+
+    _seed_sweep_universe(tmp_path, monkeypatch)
+    attempts: list[str] = []
+
+    class DeadFiler:
+        def filings_index(self, page_size=100, page_number=1):
+            if page_number > 1:
+                return [], 1
+            return [{"attributes": {"json_url": f"/{LEI_ABN}/2025-12-31/dead.json"}}], 1
+
+        def filings_for_lei(self, lei):
+            attempts.append(lei)
+            raise _status_error(404)
+
+    mapping = {"NL0011540547": LEI_ABN}
+    for _ in range(3):
+        outcome = run_esef_sweep(limit=10, client=DeadFiler(), mapping=mapping, history=3)
+        assert outcome["outage"] is None
+    assert attempts == [LEI_ABN]  # once, not once per run
+
+    attempts.clear()
+    for _ in range(3):
+        run_esef_cycle(limit=10, client=DeadFiler(), mapping=mapping, history=3)
+    assert attempts == []  # the sweep's stamp already covers the cycle
+
+
 def test_fr010_cycle_skips_a_filer_whose_filing_is_gone(tmp_path, monkeypatch) -> None:
     from crible.ingest.service import run_esef_cycle
 
