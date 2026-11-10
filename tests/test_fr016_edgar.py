@@ -193,6 +193,40 @@ def test_fr016_service_cycle_writes_edgar_raw_and_counts_unmatched(tmp_path, mon
     # Q4-inside-10-K) now feed a quarterly income frame instead of being dropped
 
 
+def test_fr016_two_share_classes_of_one_issuer_fetch_its_facts_once(tmp_path, monkeypatch) -> None:
+    """GOOG and GOOGL share a CIK: one companyfacts document serves both
+    listings — it used to be requested once per symbol."""
+    import duckdb as _duckdb
+    import pandas as pd
+
+    from crible.ingest.service import run_edgar_cycle
+    from crible.universe import bootstrap_universe
+    from tests.test_fr001_universe import fixture_frame
+
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    frame = fixture_frame()
+    apple = frame[frame["symbol"] == "AAPL"]
+    classes = pd.concat([apple.assign(symbol="GOOG"), apple.assign(symbol="GOOGL")])
+    con = _duckdb.connect(str(tmp_path / "crible.duckdb"))
+    bootstrap_universe(con, pd.concat([frame, classes], ignore_index=True))
+    con.close()
+
+    calls: list[int] = []
+
+    class CountingClient:
+        def companyfacts(self, cik):
+            calls.append(cik)
+            return COMPANYFACTS
+
+    outcome = run_edgar_cycle(
+        limit=10, client=CountingClient(), ticker_map={"AAPL": 320193, "GOOG": 1652044, "GOOGL": 1652044}
+    )
+    assert sorted(outcome["enriched"]) == ["AAPL", "GOOG", "GOOGL"]
+    assert sorted(calls) == [320193, 1652044]  # one document per issuer
+    for symbol in ("GOOG", "GOOGL"):
+        assert len(list(tmp_path.glob(f"raw/provider=edgar/symbol={symbol}/*.parquet"))) == 4
+
+
 def test_fr016_service_cycle_outage_records_and_resumes(tmp_path, monkeypatch) -> None:
     from crible.ingest.service import run_edgar_cycle
 

@@ -126,9 +126,14 @@ def run_edgar_cycle(limit: int = 5, client=None, ticker_map: dict[str, int] | No
             _created.append(client)
         from crible.ingest.raw import write_raw_statement
 
+        # ONE document per issuer: share classes of one CIK (GOOG / GOOGL)
+        # get the same frames — it used to refetch per listing
+        frames_by_cik: dict[int, dict] = {}
         for symbol, cik in due:
             try:
-                frames = facts_to_frames(client.companyfacts(int(cik)))
+                if int(cik) not in frames_by_cik:
+                    frames_by_cik[int(cik)] = facts_to_frames(client.companyfacts(int(cik)))
+                frames = frames_by_cik[int(cik)]
                 fetched_at = time.time()
                 for (statement_type, freq), frame in frames.items():
                     write_raw_statement(
