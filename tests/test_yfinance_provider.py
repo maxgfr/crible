@@ -126,3 +126,44 @@ def test_the_crawled_quote_currency_beats_the_listed_one(tmp_path) -> None:
     row = build_snapshot(tmp_path).iloc[-1]
     # 6810p = £68.10 = €80.12; × 456 M shares
     assert row["market_cap"] == pytest.approx(68.10 / 0.85 * 456e6)
+
+
+class _Failing(_Ticker):
+    def __init__(self, error: Exception) -> None:
+        super().__init__()
+        self._raise = error
+
+    def _frame(self, freq="yearly"):
+        raise self._raise
+
+    get_income_stmt = get_balance_sheet = get_cash_flow = _frame
+
+    def history(self, period="1y", auto_adjust=False):
+        raise self._raise
+
+
+@pytest.mark.parametrize("symbol", ["4290.T", "1429.HK", "600429.SS"])
+def test_a_symbol_holding_429_is_not_a_rate_limit(monkeypatch, symbol) -> None:
+    """An error that merely names the ticker (4290.T: possibly delisted) was
+    classified as a 429: six backed-off retries (~45 min) per such symbol, and
+    three in a row tripped the breaker."""
+    import yfinance
+
+    from crible.ingest.service import _YfPriceAdapter
+    from crible.providers.base import RateLimitedError
+
+    delisted = RuntimeError(f"${symbol}: possibly delisted; no price data found")
+    monkeypatch.setattr(yfinance, "Ticker", lambda s: _Failing(delisted))
+    with pytest.raises(RuntimeError) as crawl:
+        YFinanceProvider().fetch_statements(symbol)
+    assert not isinstance(crawl.value, RateLimitedError)
+    with pytest.raises(RuntimeError) as refresh:
+        _YfPriceAdapter().fetch_prices(symbol)
+    assert not isinstance(refresh.value, RateLimitedError)
+
+    throttled = RuntimeError(f"429 Client Error: Too Many Requests for url: …/chart/{symbol}")
+    monkeypatch.setattr(yfinance, "Ticker", lambda s: _Failing(throttled))
+    with pytest.raises(RateLimitedError):
+        YFinanceProvider().fetch_statements(symbol)
+    with pytest.raises(RateLimitedError):
+        _YfPriceAdapter().fetch_prices(symbol)

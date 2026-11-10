@@ -15,6 +15,16 @@ from crible.providers.base import FetchResult, RateLimitedError, StatementPayloa
 RATE_LIMIT_MARKERS = ("429", "too many requests", "rate limit", "crumb")
 
 
+def is_rate_limited(exc: Exception, symbol: str = "") -> bool:
+    """Whether a yfinance error is Yahoo throttling. The symbol's own name is
+    taken out first: an error that merely cites 4290.T or 1429.HK ("possibly
+    delisted") is not a 429."""
+    text = str(exc).lower()
+    if symbol:
+        text = text.replace(symbol.lower(), "")
+    return any(marker in text for marker in RATE_LIMIT_MARKERS)
+
+
 def _normalise(frame: pd.DataFrame | None) -> pd.DataFrame | None:
     if frame is None or frame.empty:
         return None
@@ -59,8 +69,7 @@ class YFinanceProvider:
             prices = ticker.history(period="1y", auto_adjust=False)
             prices = prices.reset_index() if prices is not None and not prices.empty else None
         except Exception as exc:  # noqa: BLE001 — classify then re-raise
-            text = str(exc).lower()
-            if any(marker in text for marker in RATE_LIMIT_MARKERS):
+            if is_rate_limited(exc, symbol):
                 raise RateLimitedError(str(exc)) from exc
             raise
 

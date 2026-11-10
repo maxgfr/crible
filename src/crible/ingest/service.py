@@ -736,7 +736,7 @@ class _YfPriceAdapter:
         import yfinance as yf
 
         from crible.providers.base import RateLimitedError
-        from crible.providers.yfinance_provider import RATE_LIMIT_MARKERS
+        from crible.providers.yfinance_provider import is_rate_limited
 
         try:
             # one year of daily bars is still ONE request — and FR-015's
@@ -744,7 +744,7 @@ class _YfPriceAdapter:
             # pillar); a 5d window left it permanently NaN
             bars = yf.Ticker(symbol).history(period="1y", auto_adjust=False)
         except Exception as exc:  # noqa: BLE001
-            if any(m in str(exc).lower() for m in RATE_LIMIT_MARKERS):
+            if is_rate_limited(exc, symbol):
                 raise RateLimitedError(str(exc)) from exc
             raise
         return bars.reset_index() if bars is not None and not bars.empty else None
