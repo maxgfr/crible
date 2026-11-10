@@ -37,6 +37,19 @@ test("toDsl round-trips comparisons, IN lists, NOT and nesting", () => {
   }
 });
 
+test("every serialised clause parses back to the condition it came from", () => {
+  // a value ending in a backslash used to re-serialise as 'ab\' — an
+  // unterminated string, so the funnel threw and the diagnosis vanished
+  const query = String.raw`name = 'ab\\' AND sector = 'O\'Neil' AND name != 'a\\\'b' AND revenue > 1e21 AND altman_z < 1e400`;
+  const ast = parse(query);
+  if (ast.type !== "bool") throw new Error("expected a top-level AND");
+  const clauses = topLevelClauses(query);
+  expect(clauses).toHaveLength(5);
+  const shape = (node: ReturnType<typeof parse>) =>
+    node.type === "comparison" ? [node.field, node.op, node.value] : node.type;
+  expect(clauses.map((clause) => shape(parse(clause)))).toEqual(ast.operands.map(shape));
+});
+
 test("topLevelClauses splits only top-level ANDs", () => {
   expect(topLevelClauses("piotroski_f >= 7 AND altman_z > 2.99 AND montier_c <= 1")).toEqual([
     "piotroski_f >= 7",

@@ -5,6 +5,9 @@
 // text stays the single screening language; the builder never parses it back.
 
 import type { FieldInfo } from "../data";
+import { quote } from "../dsl/parser";
+
+export { quote };
 
 export const NUMBER_OPS = [">", ">=", "<", "<=", "=", "!=", "IN"] as const;
 export const STRING_OPS = ["=", "!=", "IN"] as const;
@@ -24,11 +27,6 @@ export interface Group {
 }
 
 export type FieldTypes = Map<string, FieldInfo["type"]>;
-
-/** Escape a value into one single-quoted DSL string literal. */
-export function quote(value: string): string {
-  return `'${value.replaceAll("\\", "\\\\").replaceAll("'", "\\'")}'`;
-}
 
 export function operatorsFor(type: FieldInfo["type"]): readonly Op[] {
   return type === "number" ? NUMBER_OPS : STRING_OPS;

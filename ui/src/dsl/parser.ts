@@ -94,6 +94,12 @@ const KEYWORDS = new Map<string, TokenKind>([
   ["in", "IN"],
 ]);
 
+/** One value → one single-quoted DSL string literal: the inverse of the
+ *  parser's unescaping, and the only place that rule is written. */
+export function quote(value: string): string {
+  return `'${value.replaceAll("\\", "\\\\").replaceAll("'", "\\'")}'`;
+}
+
 export const MAX_QUERY_LENGTH = 2000;
 export const MAX_DEPTH = 32;
 

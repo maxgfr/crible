@@ -2,10 +2,14 @@
 // so the empty state can count survivors per clause. The serializer mirrors
 // the parser exactly — never a second grammar.
 
-import { type AstNode, parse } from "./parser";
+import { type AstNode, parse, quote } from "./parser";
 
 function literal(value: number | string): string {
-  return typeof value === "number" ? String(value) : `'${String(value).replace(/'/g, "\\'")}'`;
+  if (typeof value === "string") return quote(value);
+  // ±Infinity (a literal past the double range, 1e400) has no spelling in the
+  // grammar: any exponent that overflows parses back to it
+  if (!Number.isFinite(value)) return value > 0 ? "1e999" : "-1e999";
+  return String(value);
 }
 
 export function toDsl(node: AstNode): string {
