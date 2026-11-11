@@ -144,9 +144,14 @@ jobs:
         # timeout-minutes. The budget window resumes from
         # data/budget-state.json — a slot starting <1h after the previous
         # consumer inherits its spending instead of doubling it.
+        # The deadline travels through env, never ${{ }}-interpolated into the
+        # script: it derives from a workflow_dispatch input (the guard checks
+        # it is a number, this keeps the shell out of it regardless).
+        env:
+          CRAWL_DEADLINE: ${{ needs.guard.outputs.deadline }}
         run: |
           uv run crible refresh \
-            --deadline "${{ needs.guard.outputs.deadline }}" \
+            --deadline "$CRAWL_DEADLINE" \
             --max-minutes 320 \
             --esef-limit 0 --edgar-limit 0 \
             --no-fetch-gleif --no-fetch-fx
