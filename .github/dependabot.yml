@@ -1,5 +1,6 @@
-# Keeps the patch-pinned Docker bases (Dockerfile) and the pinned GitHub
-# Actions fresh. Monthly: low churn, the pins exist for reproducibility,
+# Keeps the patch-pinned Docker bases (Dockerfile), the pinned GitHub
+# Actions and both lockfiles (uv.lock, ui/package-lock.json) fresh. Monthly:
+# low churn, the pins exist for reproducibility,
 # not for chasing every patch the day it ships.
 version: 2
 updates:
@@ -21,3 +22,21 @@ updates:
     directory: /
     schedule:
       interval: monthly
+  # The Python lockfile (uv.lock) and the UI lockfile: majors arrive one per
+  # PR (DuckDB 2, MCP 2, React 19, TypeScript 7 need their own migration),
+  # minors and patches grouped so they land in one reviewable PR a month.
+  # CI (pytest, vitest, both builds, the compose smoke) gates every one.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      python-minor-and-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: npm
+    directory: /ui
+    schedule:
+      interval: monthly
+    groups:
+      ui-minor-and-patch:
+        update-types: ["minor", "patch"]
