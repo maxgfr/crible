@@ -52,8 +52,6 @@ COEFFICIENTS = {
 }
 BASE_RATE = 0.0037
 
-DECHOW_COMPONENTS = list(COEFFICIENTS)
-
 
 def _delta(series: pd.Series) -> pd.Series:
     return series - prior_period(series)

@@ -79,10 +79,6 @@ IMPOSSIBLE_BOUNDS: dict[str, tuple[float | None, float | None]] = {
 }
 
 
-def _avg(series: pd.Series) -> pd.Series:
-    return average(series)
-
-
 def build_inputs(canonical: pd.DataFrame, price: pd.Series | None = None) -> dict[str, pd.Series]:
     c = canonical
     inputs: dict[str, pd.Series] = {}
@@ -137,14 +133,14 @@ def build_inputs(canonical: pd.DataFrame, price: pd.Series | None = None) -> dic
     alias(["shares_outstanding", "average_outstanding_shares"], c["shares_outstanding"])
     alias(["common_shares_outstanding", "total_shares_outstanding"], price_shares(c))
 
-    inputs["average_total_assets"] = _avg(c["total_assets"])
-    inputs["average_total_equity"] = _avg(c["total_equity"])
-    inputs["average_inventory"] = _avg(c["inventory"])
-    inputs["average_accounts_receivable"] = _avg(c["accounts_receivable"])
-    inputs["average_accounts_payable"] = _avg(c["accounts_payable"])
-    inputs["average_total_debt"] = _avg(c["total_debt"])
-    inputs["average_total_liabilities"] = _avg(c["total_liabilities"])
-    inputs["average_net_fixed_assets"] = _avg(c["net_ppe"])
+    inputs["average_total_assets"] = average(c["total_assets"])
+    inputs["average_total_equity"] = average(c["total_equity"])
+    inputs["average_inventory"] = average(c["inventory"])
+    inputs["average_accounts_receivable"] = average(c["accounts_receivable"])
+    inputs["average_accounts_payable"] = average(c["accounts_payable"])
+    inputs["average_total_debt"] = average(c["total_debt"])
+    inputs["average_total_liabilities"] = average(c["total_liabilities"])
+    inputs["average_net_fixed_assets"] = average(c["net_ppe"])
 
     # The composite cycle functions take the day-ratio SERIES as parameters,
     # not raw fields — feed them the same published components reflection

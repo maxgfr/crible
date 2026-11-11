@@ -26,9 +26,6 @@ COEFFICIENTS = {
     "lvgi": -0.327,
 }
 INTERCEPT = -4.84
-RED_FLAG_THRESHOLD = -1.78
-
-COMPONENT_COLUMNS = [f"beneish_{c}" for c in COEFFICIENTS]
 
 
 def beneish_components(canonical: pd.DataFrame) -> pd.DataFrame:

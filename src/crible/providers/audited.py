@@ -14,6 +14,22 @@ import pandas as pd
 
 from crible.ingest.raw import write_raw_statement
 
+# a fiscal YEAR spans 320–400 days (52/53-week calendars, a shifted year-end);
+# anything shorter is an interim or a transition period
+FULL_YEAR_DAYS = (320, 400)
+
+
+def full_year(start: str, end: str) -> bool:
+    """Whether [start, end] (ISO dates, a time part tolerated) is one fiscal
+    year — shared by the EDGAR, ESEF and Companies House parsers."""
+    from datetime import date
+
+    try:
+        span = (date.fromisoformat(str(end)[:10]) - date.fromisoformat(str(start)[:10])).days
+    except ValueError:
+        return False
+    return FULL_YEAR_DAYS[0] <= span <= FULL_YEAR_DAYS[1]
+
 
 def merge_audited(
     primary: dict[tuple[str, str], pd.DataFrame],

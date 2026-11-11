@@ -15,16 +15,16 @@ from __future__ import annotations
 import logging
 import re
 import zipfile
-from datetime import date
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterator
 
 import pandas as pd
 
+from crible.providers.audited import full_year as _full_year
+
 log = logging.getLogger("crible.providers.companies_house")
 
-FULL_YEAR_DAYS = (320, 400)
 
 # FRC / UK-GAAP concept local-name (lowercased) → (canonical column, statement).
 # Matched by local part so it survives taxonomy-namespace churn.
@@ -47,17 +47,6 @@ CONCEPT_MAP: dict[str, tuple[str, str]] = {
 }
 STATEMENT_OF = {column: stmt for column, stmt in CONCEPT_MAP.values()}
 CONCEPT_RANK = {local: rank for rank, local in enumerate(CONCEPT_MAP)}
-
-
-def _full_year(start: str, end: str) -> bool:
-    try:
-        return (
-            FULL_YEAR_DAYS[0]
-            <= (date.fromisoformat(end[:10]) - date.fromisoformat(start[:10])).days
-            <= FULL_YEAR_DAYS[1]
-        )
-    except ValueError:
-        return False
 
 
 class _IxbrlParser(HTMLParser):

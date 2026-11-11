@@ -27,7 +27,6 @@ FLAG_COLUMNS = [
 ]
 
 ASSET_GROWTH_THRESHOLD = 0.10
-RED_FLAG_THRESHOLD = 5  # 5–6 raised flags → aggressive-accounting candidate
 
 
 def montier_components(canonical: pd.DataFrame) -> pd.DataFrame:

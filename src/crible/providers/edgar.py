@@ -21,6 +21,8 @@ from typing import Any
 
 import pandas as pd
 
+from crible.providers.audited import full_year as _full_year
+
 from crible.ingest.budget import TokenBucket
 
 log = logging.getLogger("crible.providers.edgar")
@@ -47,7 +49,6 @@ MAX_QUARTERS = 8
 
 ANNUAL_FORMS = ("10-K", "20-F", "40-F")
 # a full-year duration, with slack for 52/53-week fiscal calendars
-FULL_YEAR_DAYS = (320, 400)
 # a DISCRETE quarter (13/14-week calendars land at 84–98 days); the 6/9-month
 # YTD durations many 10-Qs carry (~181/273 days) are safely outside — they
 # are dropped, never differenced into quarters
@@ -177,14 +178,6 @@ MIN_PLAUSIBLE_SHARES = 10_000
 
 def plausible_shares(column: str, value: float) -> bool:
     return column not in SHARE_COLUMNS or value >= MIN_PLAUSIBLE_SHARES
-
-
-def _full_year(start: str, end: str) -> bool:
-    try:
-        days = (date.fromisoformat(end) - date.fromisoformat(start)).days
-    except ValueError:
-        return False
-    return FULL_YEAR_DAYS[0] <= days <= FULL_YEAR_DAYS[1]
 
 
 def _quarter_duration(start: str, end: str) -> bool:

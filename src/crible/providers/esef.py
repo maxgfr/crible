@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import date
 from typing import Any
 
 import pandas as pd
+
+from crible.providers.audited import full_year as _full_year
 
 log = logging.getLogger("crible.providers.esef")
 
@@ -22,7 +23,6 @@ FILINGS_API = "https://filings.xbrl.org/api/filings"
 ENTITIES_API = "https://filings.xbrl.org/api/entities"
 
 # a full-year duration, with slack for 52/53-week fiscal calendars (as EDGAR)
-FULL_YEAR_DAYS = (320, 400)
 
 # IFRS concept (ifrs-full unless prefixed) → (canonical field, statement type).
 # Ordered narrow/classic before broad variants (CONCEPT_RANK below). Fill
@@ -224,14 +224,6 @@ def facts_to_frames(xbrl_json: dict[str, Any]) -> dict[tuple[str, str], pd.DataF
                 frame["_currency"] = reporting_unit.split(":", 1)[1]
             frames[(statement_type, "annual")] = frame
     return frames
-
-
-def _full_year(start: str, end: str) -> bool:
-    try:
-        span = (date.fromisoformat(end[:10]) - date.fromisoformat(start[:10])).days
-    except ValueError:
-        return False
-    return FULL_YEAR_DAYS[0] <= span <= FULL_YEAR_DAYS[1]
 
 
 def _fiscal_year(period: str) -> str | None:
