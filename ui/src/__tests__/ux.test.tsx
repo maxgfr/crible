@@ -299,6 +299,24 @@ describe("engine sort + pagination", () => {
     fireEvent.click(rtl.getByRole("button", { name: /^Piotroski F/ }));
     await waitFor(() => expect(screenCalls.length).toBe(3));
     expect(screenCalls[2].sort).toBe("piotroski_f"); // second click = ascending
+
+    // third click: back to the default order — never an unsorted screen a
+    // reload would then sort differently
+    fireEvent.click(rtl.getByRole("button", { name: /^Piotroski F/ }));
+    await waitFor(() => expect(screenCalls.length).toBe(4));
+    expect(screenCalls[3].sort).toBe("-composite_rank");
+  });
+
+  it("a permalink without a sort reads the default order, cold or navigated", async () => {
+    // a cold load of #/?q=x sorted by composite rank; the same URL reached
+    // by editing the hash of an open app screened unsorted
+    mockApi();
+    render(<App />);
+    await waitFor(() => expect(screenCalls.length).toBe(1));
+    expect(screenCalls[0].sort).toBe("-composite_rank");
+    window.location.hash = `#/?q=${encodeURIComponent("piotroski_f >= 7")}`;
+    await waitFor(() => expect(screenCalls.length).toBe(2));
+    expect(screenCalls[1]).toEqual({ query: "piotroski_f >= 7", sort: "-composite_rank", page: 1 });
   });
 
   it("pages through large result sets in the engine", async () => {

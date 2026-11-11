@@ -117,7 +117,7 @@ export default function App() {
   const reqId = useRef(0);
   // the q/sort of the URL the app has already acted on: the one it booted on,
   // then every screen that ran, then every URL edit it picked up (ran or not)
-  const handledUrl = useRef({ q: route.q, sort: route.sort });
+  const handledUrl = useRef<{ q: string | null; sort: string }>({ q: route.q, sort: route.sort ?? DEFAULT_SORT });
   // latest-value refs: callbacks read them without re-memoising per keystroke
   const queryRef = useRef(query);
   queryRef.current = query;
@@ -151,7 +151,7 @@ export default function App() {
       if (id !== reqId.current) return;
       setResult(response);
       setRanQuery(q);
-      handledUrl.current = { q, sort: sortNext || null };
+      handledUrl.current = { q, sort: sortNext || DEFAULT_SORT };
       setSort(sortNext);
       setPage(pageNext);
       pushQueryHistory(q);
@@ -189,7 +189,7 @@ export default function App() {
     // like Enter and the pager: a sort click never supersedes the screen in
     // flight (it would re-sort the OLD query and drop the one just run)
     if (running) return;
-    const next = sort === `-${column}` ? column : sort === column ? null : `-${column}`;
+    const next = sort === `-${column}` ? column : sort === column ? DEFAULT_SORT : `-${column}`;
     runScreen(ranQuery ?? queryRef.current, next, 1);
   }, [running, sort, ranQuery, runScreen]);
 
@@ -227,11 +227,13 @@ export default function App() {
   // field, API down) a corrected URL must still run.
   useEffect(() => {
     if (route.view !== "screener" || route.q === null) return;
+    // no sort in the URL means the default order — on a cold load and here
+    const wantedSort = route.sort ?? DEFAULT_SORT;
     const handled = handledUrl.current;
-    if (route.q !== handled.q || route.sort !== handled.sort) {
-      handledUrl.current = { q: route.q, sort: route.sort };
+    if (route.q !== handled.q || wantedSort !== handled.sort) {
+      handledUrl.current = { q: route.q, sort: wantedSort };
       setQuery(route.q);
-      runScreen(route.q, route.sort, 1);
+      runScreen(route.q, wantedSort, 1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.q, route.sort]);
