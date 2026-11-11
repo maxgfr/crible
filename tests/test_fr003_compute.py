@@ -236,6 +236,10 @@ def test_fr003_ohlson_size_reads_millions_not_raw_units() -> None:
     big = ohlson(canonical_from(OHLSON_FRAME, ["2024", "2025"])).loc["2025", "ohlson_o"]
     tiny = ohlson(canonical_from(small, ["2024", "2025"])).loc["2025", "ohlson_o"]
     assert tiny - big == pytest.approx(0.407 * math.log(1000), abs=1e-9)
+    # absolute values: a $1m balance sheet has size log(1) = 0, so its O is
+    # the ratio terms alone (raw units read log(1e6) and O 5.6 lower)
+    assert tiny == pytest.approx(-2.8855 + 0.407 * math.log(1000), abs=1e-3)
+    assert big == pytest.approx(-2.8855, abs=1e-3)
 
 
 def test_fr003_ohlson_o_matches_hand_computed_value() -> None:

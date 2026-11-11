@@ -272,18 +272,34 @@ describe("export", () => {
   it("an export the server refuses shows its error and keeps the app", async () => {
     mockApi();
     const working = globalThis.fetch;
+    let exports = 0;
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (url: string, init?: RequestInit) =>
-        String(url).startsWith("/api/screen.csv")
-          ? { ok: false, status: 404, json: async () => ({ detail: "no snapshot yet" }) }
-          : working(url, init),
-      ),
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (!String(url).startsWith("/api/screen.csv")) return working(url, init);
+        exports += 1;
+        // the first export is cut at the cap, the second one is refused
+        return exports === 1
+          ? {
+              ok: true,
+              status: 200,
+              headers: new Headers({ "X-Crible-Truncated": "25000" }),
+              blob: async () => new Blob(["symbol\n"], { type: "text/csv" }),
+            }
+          : { ok: false, status: 404, json: async () => ({ detail: "no snapshot yet" }) };
+      }),
     );
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:csv"), revokeObjectURL: vi.fn() }));
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     render(<App />);
     await waitFor(() => expect(rtl.getAllByText("AIR.PA").length).toBeGreaterThan(0));
     fireEvent.click(rtl.getByRole("button", { name: /Export all results/ }));
+    expect(await rtl.findByText(/first 10,000 of 25,000 rows/)).toBeInTheDocument();
+    await waitFor(() => expect(rtl.getByRole("button", { name: /Export all results/ })).toBeEnabled());
+    fireEvent.click(rtl.getByRole("button", { name: /Export all results/ }));
     expect(await rtl.findByText(/no snapshot yet/)).toBeInTheDocument();
+    // the refused export does not keep the previous export's note
+    expect(rtl.queryByText(/first 10,000 of 25,000 rows/)).not.toBeInTheDocument();
     expect(rtl.getByRole("button", { name: /Export all results/ })).toBeEnabled();
   });
 });
