@@ -23,7 +23,7 @@ export const STATIC_MODE = import.meta.env.VITE_DATA_MODE === "static";
 
 let clientPromise: Promise<DataClient> | null = null;
 
-export function getClient(): Promise<DataClient> {
+function getClient(): Promise<DataClient> {
   if (clientPromise === null) {
     clientPromise =
       import.meta.env.VITE_DATA_MODE === "static"

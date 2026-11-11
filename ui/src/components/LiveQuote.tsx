@@ -6,10 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchLiveQuote, isStale, type LiveQuote as Quote } from "../data/live-quote";
-
-function fmt(value: number): string {
-  return Math.abs(value) >= 1000 ? value.toFixed(0) : value.toFixed(2);
-}
+import { formatPrice as fmt } from "../format";
 
 export function LiveQuote({ symbol, asof }: { symbol: string; asof: string | null }) {
   const [quote, setQuote] = useState<Quote | null>(null);

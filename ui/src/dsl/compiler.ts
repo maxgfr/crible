@@ -6,13 +6,13 @@
 
 import { type AstNode, DslError, pyRepr } from "./parser";
 
-export const OPERATORS: Record<string, string> = {
+const OPERATORS: Record<string, string> = {
   ">": ">", ">=": ">=", "<": "<", "<=": "<=", "=": "=", "==": "=", "!=": "<>", "<>": "<>",
 };
 
 // mirrors crible.compute.ranks.RANK_COLUMNS + the compiler's extras
 const RANK_COLUMNS = ["quality_rank", "value_rank", "momentum_rank", "composite_rank", "magic_formula_rank"];
-export const BUILD_TIME_COLUMNS = new Set([
+const BUILD_TIME_COLUMNS = new Set([
   ...RANK_COLUMNS, "rank_peer_group", "rank_missing_pillars", "return_6m",
 ]);
 const BUILD_TIME_REMEDY =
@@ -55,7 +55,7 @@ function matchedChars(a: string, b: string): number {
 /** difflib.get_close_matches(word, sorted(candidates), n=1, cutoff=0.6) —
  * heapq.nlargest over (ratio, candidate): on an equal ratio the LARGEST
  * candidate string wins. */
-export function closestMatch(word: string, candidates: string[], cutoff = 0.6): string | null {
+function closestMatch(word: string, candidates: string[], cutoff = 0.6): string | null {
   let best: string | null = null;
   let bestScore = -1;
   for (const candidate of candidates) {

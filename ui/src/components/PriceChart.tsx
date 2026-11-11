@@ -8,6 +8,7 @@
 
 import { useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { prices, type PriceBar } from "../data";
+import { formatPrice as fmt } from "../format";
 import { ChartTooltip } from "./ChartTooltip";
 
 const W = 100;
@@ -53,7 +54,6 @@ export function PriceChart({ symbol, currency }: { symbol: string; currency?: st
   const last = closes[closes.length - 1];
   const first = bars[0]?.date ?? "";
   const asof = bars[bars.length - 1]?.date ?? "";
-  const fmt = (v: number) => (Math.abs(v) >= 1000 ? v.toFixed(0) : v.toFixed(2));
 
   const onPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();

@@ -123,6 +123,13 @@ const TTM_FIELDS = [
   "price_to_earnings_ttm", "price_to_sales_ttm", "ttm_fcf_yield",
 ];
 
+// both SEC layers (companyfacts and the financial statement data sets) land
+// on the same filing index
+const secFilings = (symbol: string) => ({
+  href: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${encodeURIComponent(symbol.split(".")[0])}&type=10-K`,
+  label: "view the SEC filings",
+});
+
 // provenance ends at the SOURCE, not at a provider string: link the place
 // the numbers actually come from (the audited filings when the layer is
 // audited, the quote page for the scraped fallback)
@@ -131,14 +138,8 @@ const PROVENANCE_LINKS: Record<string, (symbol: string) => { href: string; label
     href: `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}`,
     label: "view on Yahoo Finance",
   }),
-  edgar: (symbol) => ({
-    href: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${encodeURIComponent(symbol.split(".")[0])}&type=10-K`,
-    label: "view the SEC filings",
-  }),
-  fsds: (symbol) => ({
-    href: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${encodeURIComponent(symbol.split(".")[0])}&type=10-K`,
-    label: "view the SEC filings",
-  }),
+  edgar: secFilings,
+  fsds: secFilings,
   esef: () => ({
     href: "https://filings.xbrl.org/",
     label: "browse the ESEF filings repository",

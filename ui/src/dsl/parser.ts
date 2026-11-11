@@ -100,8 +100,8 @@ export function quote(value: string): string {
   return `'${value.replaceAll("\\", "\\\\").replaceAll("'", "\\'")}'`;
 }
 
-export const MAX_QUERY_LENGTH = 2000;
-export const MAX_DEPTH = 32;
+const MAX_QUERY_LENGTH = 2000;
+const MAX_DEPTH = 32;
 
 /** Python positions count code points; JS strings index UTF-16 units. */
 function codePoints(text: string, end: number): number {

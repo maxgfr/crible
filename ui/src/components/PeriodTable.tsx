@@ -28,7 +28,7 @@ interface HeaderProps {
   labels?: string[];
 }
 
-export function PeriodHeader({ periods, sparse, labels }: HeaderProps) {
+function PeriodHeader({ periods, sparse, labels }: HeaderProps) {
   return (
     <thead>
       <tr>

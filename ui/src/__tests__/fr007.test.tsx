@@ -4,7 +4,7 @@
 import { render, screen as rtl, waitFor, fireEvent } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
-import { exportCsvUrl } from "../api";
+import { exportCsvUrl } from "../data/api-client";
 
 const ROWS = [
   { symbol: "AIR.PA", name: "Airbus", country: "FR", sector: "Industrials", piotroski_f: 8, altman_z: 3.2, beneish_m: -2.5, return_on_equity: 0.18 },

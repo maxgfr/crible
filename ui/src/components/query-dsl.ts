@@ -9,8 +9,8 @@ import { quote } from "../dsl/parser";
 
 export { quote };
 
-export const NUMBER_OPS = [">", ">=", "<", "<=", "=", "!=", "IN"] as const;
-export const STRING_OPS = ["=", "!=", "IN"] as const;
+const NUMBER_OPS = [">", ">=", "<", "<=", "=", "!=", "IN"] as const;
+const STRING_OPS = ["=", "!=", "IN"] as const;
 export type Op = (typeof NUMBER_OPS)[number];
 
 export interface Condition {

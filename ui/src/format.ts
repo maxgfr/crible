@@ -112,6 +112,12 @@ export function formatNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(3);
 }
 
+/** A share price: whole units from 1,000 up, two decimals below — the
+ *  price chart and the live-quote chip read the same way. */
+export function formatPrice(value: number): string {
+  return Math.abs(value) >= 1000 ? value.toFixed(0) : value.toFixed(2);
+}
+
 /** Fractions → "40.0%" — chart-readout display for the margin series. */
 export function formatPercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;

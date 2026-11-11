@@ -193,7 +193,7 @@ export const STARTER_FILTERS: StarterFilter[] = [
 // net_current_asset_value duplicates ncav. They stay hand-queryable — the
 // compiler whitelist is untouched; the engine stops generating them, which
 // retires this list once the published data catches up.
-export const HIDDEN_FIELDS = new Set([
+const HIDDEN_FIELDS = new Set([
   "earnings_yield_growth",
   "free_cash_flow_yield_growth",
   "ev_to_ebit_growth",

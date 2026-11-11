@@ -51,7 +51,7 @@ export const DEFAULT_COLUMNS = [
   "return_on_equity", "net_profit_margin", "debt_to_equity_ratio",
 ];
 // a preset's curated columns REPLACE the visible set on top of this base
-export const IDENTITY_COLUMNS = ["symbol", "name", "country", "sector"];
+const IDENTITY_COLUMNS = ["symbol", "name", "country", "sector"];
 // blank = the whole covered universe (q="" is a real, shareable screen);
 // the default sort is the engine's own published blend so the first paint
 // reads "every company, strongest composite first" — NULLS LAST sinks
@@ -59,7 +59,7 @@ export const IDENTITY_COLUMNS = ["symbol", "name", "country", "sector"];
 const DEFAULT_QUERY = "";
 // the row cap of one export, both engines (crible.store.EXPORT_LIMIT)
 const EXPORT_CAP = 10_000;
-export const DEFAULT_SORT = "-composite_rank";
+const DEFAULT_SORT = "-composite_rank";
 export const PAGE_SIZE = 500;
 // one shared empty page — a fresh [] per render would defeat the grid's memo
 const NO_ROWS: Record<string, unknown>[] = [];

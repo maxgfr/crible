@@ -3,8 +3,8 @@
 // CSS box stretches (preserveAspectRatio="none" + non-scaling strokes — the
 // PriceChart idiom). Pure functions: unit-tested with exact vectors.
 
-export const CHART_W = 100;
-export const CHART_H = 100;
+const CHART_W = 100;
+const CHART_H = 100;
 
 export interface ChartDomain {
   min: number;
