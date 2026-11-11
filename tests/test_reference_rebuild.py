@@ -200,3 +200,112 @@ def test_a_base_from_before_the_record_is_rebuilt_once(tmp_path, rebuilt) -> Non
     rebuilt.clear()
     assert snap.publish_incremental(tmp_path) is None
     assert rebuilt == []
+
+
+def test_a_mirror_missing_from_the_data_dir_is_not_a_change(tmp_path, rebuilt) -> None:
+    """The published tarball carries no mirror/ and the marathon runs with
+    --no-fetch-fx: an ABSENT input says nothing about what moved — it used to
+    read as « moved » and rebuild good rows into degraded ones (a JPY filer
+    lost its currency, a EUR line its market cap)."""
+    import shutil
+
+    _company(tmp_path, "TM", currency=None)
+    _company(tmp_path, "FOR.DE", currency="USD")
+    _universe(tmp_path, {"TM": "JPY", "FOR.DE": "EUR"})
+    _rates(tmp_path, {"USD": 1.25, "JPY": 160.0})
+    mirror = tmp_path / "mirror" / "defeatbeta" / "company_tickers.json"
+    mirror.parent.mkdir(parents=True)
+    mirror.write_text(json.dumps({"0": {"ticker": "TM", "financial_currency": "JPY"}}))
+    _splits(tmp_path, [("FOR.DE", "2020-01-02", "2:1")])
+    first = snap.publish_incremental(tmp_path)
+    assert _latest(first, "TM")["reporting_currency"] == "JPY"
+    assert _latest(first, "FOR.DE")["market_cap"] == pytest.approx(625.0)
+
+    rebuilt.clear()
+    shutil.rmtree(tmp_path / "mirror")
+    (tmp_path / "events" / "defeatbeta-splits.parquet").unlink()
+    snap.publish_incremental(tmp_path)
+    assert rebuilt == []  # nothing is known to have moved: nothing is rebuilt
+
+
+def test_a_warrant_outside_the_universe_settles(tmp_path, rebuilt) -> None:
+    """ABCD and its warrant ABCDW in raw, neither in the universe: refreshing
+    only the warrant built it as a company (the census saw the dirty symbols
+    only), and the reference check then rebuilt it on every run."""
+    _company(tmp_path, "ABCD")
+    _company(tmp_path, "ABCDW", close=0.05)
+    first = snap.publish_incremental(tmp_path)
+    assert "ABCDW" not in set(first["symbol"])
+
+    time.sleep(0.02)
+    write_raw_statement(
+        tmp_path,
+        symbol="ABCDW",
+        provider="yfinance",
+        statement_type="prices",
+        freq="daily",
+        frame=pd.DataFrame({"Date": ["2026-03-04"], "Close": [0.06]}),
+        fetched_at=time.time(),
+    )
+    second = snap.publish_incremental(tmp_path)
+    assert second is None or "ABCDW" not in set(second["symbol"])
+    rebuilt.clear()
+    assert snap.publish_incremental(tmp_path) is None
+    assert rebuilt == []
+
+
+def test_a_symbol_with_no_readable_frames_settles(tmp_path, rebuilt) -> None:
+    """A raw directory no reader takes frames from records no currencies: a
+    rate change must not flag it forever."""
+    _company(tmp_path, "AAA")
+    write_raw_statement(
+        tmp_path,
+        symbol="ODD",
+        provider="someone-else",
+        statement_type="income",
+        freq="annual",
+        frame=pd.DataFrame({"period": ["2025-12-31"], "TotalRevenue": [1.0]}),
+        fetched_at=1000.0,
+    )
+    _rates(tmp_path, {"USD": 1.1})
+    snap.publish_incremental(tmp_path)
+    rebuilt.clear()
+    _rates(tmp_path, {"USD": 1.3})
+    snap.publish_incremental(tmp_path)
+    assert "ODD" not in sum(rebuilt, [])
+    rebuilt.clear()
+    assert snap.publish_incremental(tmp_path) is None
+
+
+def test_compute_lock_leaves_a_missing_data_dir_alone(tmp_path) -> None:
+    """A mistyped --data-dir: compute must not create it (and its lock file,
+    which `crible clean` then refuses to remove)."""
+    missing = tmp_path / "typo"
+    with snap.compute_lock(missing):
+        pass
+    assert not missing.exists()
+
+
+def test_compute_lock_without_lock_support_still_computes(tmp_path, monkeypatch) -> None:
+    """flock unsupported (ENOLCK on some network filesystems) is no « other
+    compute running »: compute goes on unlocked instead of never running."""
+    import errno
+    import fcntl
+
+    def unsupported(handle, flags):
+        raise OSError(errno.ENOLCK, "No locks available")
+
+    monkeypatch.setattr(fcntl, "flock", unsupported)
+    with snap.compute_lock(tmp_path):
+        pass  # no ComputeBusy
+
+
+def test_an_undated_bar_never_becomes_the_price() -> None:
+    from crible.compute.snapshot import latest_close
+
+    bars = pd.DataFrame(
+        {"Date": ["2026-06-01", None, "garbage", "2026-06-02"], "Close": [10.0, 11.0, 12.0, 20.0]}
+    )
+    assert latest_close({("prices", "daily"): bars}) == (20.0, "2026-06-02")
+    undated = pd.DataFrame({"Date": [None, None], "Close": [10.0, 11.0]})
+    assert latest_close({("prices", "daily"): undated}) is None

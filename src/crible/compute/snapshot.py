@@ -54,8 +54,10 @@ def latest_close(frames: dict[tuple[str, str], pd.DataFrame]) -> tuple[float, st
     closes = pd.to_numeric(bars[close_col], errors="coerce")
     valid = bars[closes > 0]
     if date_col and len(valid):
+        # undated or unparseable bars cannot be « the newest »: dropped
         order = pd.to_datetime(valid[date_col], errors="coerce", utc=True)
-        valid = valid.iloc[order.argsort(kind="stable")]
+        valid = valid[order.notna().to_numpy()]
+        valid = valid.iloc[order.dropna().argsort(kind="stable")]
     if not len(valid):
         return None
     last = valid.iloc[-1]
@@ -664,19 +666,26 @@ def compute_lock(data_dir: Path | str):
     snapshot, the base and its watermark over each other through the same
     temp files — a watermark newer than the rows it describes, and those
     symbols were never rebuilt. An advisory lock that the OS releases when
-    the process dies; raises ComputeBusy instead of waiting."""
+    the process dies; raises ComputeBusy instead of waiting. A missing data
+    directory is left alone (a mistyped --data-dir has nothing to compute),
+    and a filesystem without lock support computes unlocked."""
     directory = Path(data_dir)
-    directory.mkdir(parents=True, exist_ok=True)
     try:
         import fcntl
     except ImportError:  # no advisory locks on this platform: single-process use
+        fcntl = None
+    if fcntl is None or not directory.is_dir():
         yield
         return
     with open(directory / COMPUTE_LOCK_NAME, "w") as handle:
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
+        except BlockingIOError:
             raise ComputeBusy(f"another compute is running on {directory}") from None
+        except OSError as exc:  # ENOLCK / ENOTSUP: no locks here, not « busy »
+            log.warning("compute: no file lock on %s (%s) — computing unlocked", directory, exc)
+            yield
+            return
         try:
             yield
         finally:
@@ -689,13 +698,16 @@ def build_symbol_rows(
     inventory: RawInventory | None = None,
     should_stop: Callable[[], bool] | None = None,
     reference: dict[str, dict] | None = None,
+    census: set[str] | None = None,
 ) -> pd.DataFrame:
     """The per-symbol stage: canonical fields + ratios + scores + price for each
     symbol, BEFORE the cross-sectional finalize (universe/FX/ranks). This is the
     expensive part — the seam incremental compute recomputes for changed symbols
     only. ``reference`` collects, per symbol, the reference data its rows were
     built with (``_reference_record``) — what the incremental pass compares
-    with today's to know a kept row went stale."""
+    with today's to know a kept row went stale. ``census`` is every symbol of
+    the raw layer: a warrant is told from its company against all of them,
+    not only against the symbols rebuilt in this pass."""
     quotes = _price_quotes(data_dir)
     quote_currencies = _listing_currencies(data_dir)
     rates = load_rates(data_dir)
@@ -703,7 +715,7 @@ def build_symbol_rows(
     statement_currencies = load_statement_currencies(data_dir)
     # the raw layer's own symbols count as bases too: a warrant the SEC
     # directory maps to its parent's CIK (DAVEW) is not in the universe
-    derivatives = derivative_listings(_universe_symbols(data_dir) | set(symbols))
+    derivatives = derivative_listings(_universe_symbols(data_dir) | set(symbols) | (census or set()))
     # ONE scan of the raw layer for the whole build (it used to be 8 globs
     # per symbol — the dominant cost at 20k symbols)
     inventory = inventory if inventory is not None else RawInventory.scan(data_dir)
@@ -846,13 +858,25 @@ def _load_reference(data_dir: Path) -> dict[str, dict] | None:
     return {str(row["symbol"]): row for row in frame.to_dict("records")}
 
 
-def _stale_reference(data_dir: Path, symbols: list[str], stored: dict[str, dict]) -> set[str]:
-    """Symbols whose reference inputs differ from the ones their rows hold."""
+def _stale_reference(
+    data_dir: Path, symbols: list[str], stored: dict[str, dict], census: set[str]
+) -> set[str]:
+    """Symbols whose reference inputs differ from the ones their rows hold.
+
+    Only an input that is present can have moved: the published tarball
+    carries no mirror/ and some runs skip the FX fetch — an ABSENT mirror,
+    universe currency column or split file says nothing about a symbol, and
+    rebuilding on it would degrade good rows (a JPY filer losing its
+    currency). The rows are rebuilt when the input is back and differs."""
     listing = _listing_currencies(data_dir)
+    statements_present = (
+        data_dir / "mirror" / STATEMENT_CURRENCIES_FILE[0] / STATEMENT_CURRENCIES_FILE[1]
+    ).exists()
     statements = load_statement_currencies(data_dir)
+    splits_present = (data_dir / "events" / "defeatbeta-splits.parquet").exists()
     splits = _load_splits(data_dir)
     rates = load_rates(data_dir)
-    derivatives = derivative_listings(_universe_symbols(data_dir) | set(symbols))
+    derivatives = derivative_listings(_universe_symbols(data_dir) | census)
     stale: set[str] = set()
     for symbol in symbols:
         was = stored.get(symbol)
@@ -862,16 +886,21 @@ def _stale_reference(data_dir: Path, symbols: list[str], stored: dict[str, dict]
         if was["derivative"]:
             continue  # still a warrant/unit: it has no rows to go stale
         if (
-            was["listing_currency"] != listing.get(symbol)
-            or was["statement_currency"] != statements.get(symbol)
-            or was["splits"] != _splits_key(splits.get(symbol))
+            (listing and was["listing_currency"] != listing.get(symbol))
+            or (statements_present and was["statement_currency"] != statements.get(symbol))
+            or (splits_present and was["splits"] != _splits_key(splits.get(symbol)))
         ):
             stale.add(symbol)
+            continue
+        # the factor depends on the rates only when both currencies are known
+        # (otherwise it is 1, or a minor-unit constant, whatever the rates) —
+        # and absent rates say nothing about them
+        if rates is None or was["quote_currency"] is None or was["reporting_currency"] is None:
             continue
         now = price_factor(was["quote_currency"], was["reporting_currency"], rates)
         before = was["factor"]
         if (now is None) != (before is None):
-            stale.add(symbol)  # a rate appeared (or vanished): priced ⇄ unpriced
+            stale.add(symbol)  # a rate appeared (or vanished from the file): priced ⇄ unpriced
         elif now is not None and abs(now / before - 1) > FX_REBUILD_TOLERANCE:
             stale.add(symbol)
     return stale
@@ -1004,13 +1033,14 @@ def _incremental_rows(
     inventory = RawInventory.scan(data_dir)
     symbols = crawled_symbols(data_dir, inventory=inventory)
     stored = _load_reference(data_dir)
+    census = set(symbols)
     # no cache, a cache built by a different engine schema (the nightly
     # restores base.parquet from the last release), or one that predates the
     # reference record → full rebuild
     if not base_path.exists() or _cached_schema_version(data_dir) != ENGINE_SCHEMA_VERSION or stored is None:
         records: dict[str, dict] = {}
         rows = build_symbol_rows(
-            data_dir, symbols, inventory=inventory, should_stop=should_stop, reference=records
+            data_dir, symbols, inventory=inventory, should_stop=should_stop, reference=records, census=census
         )
         return rows, records
 
@@ -1031,7 +1061,7 @@ def _incremental_rows(
     # statements' currency, splits, warrant status or price factor is no
     # longer what its rows were built with is dirty too
     already = set(dirty)
-    stale = _stale_reference(data_dir, [s for s in symbols if s not in already], stored)
+    stale = _stale_reference(data_dir, [s for s in symbols if s not in already], stored, census)
     if stale:
         log.info("compute: %d symbol(s) rebuilt for moved reference data", len(stale))
         dirty = [s for s in symbols if s in already or s in stale]
@@ -1050,7 +1080,9 @@ def _incremental_rows(
     current = set(symbols)
     records = {symbol: record for symbol, record in stored.items() if symbol in current}
     fresh = (
-        build_symbol_rows(data_dir, dirty, inventory=inventory, should_stop=should_stop, reference=records)
+        build_symbol_rows(
+            data_dir, dirty, inventory=inventory, should_stop=should_stop, reference=records, census=census
+        )
         if dirty
         else pd.DataFrame()
     )
