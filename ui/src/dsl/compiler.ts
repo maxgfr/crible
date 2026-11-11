@@ -14,6 +14,9 @@ const OPERATORS: Record<string, string> = {
 const RANK_COLUMNS = ["quality_rank", "value_rank", "momentum_rank", "composite_rank", "magic_formula_rank"];
 const BUILD_TIME_COLUMNS = new Set([
   ...RANK_COLUMNS, "rank_peer_group", "rank_missing_pillars", "return_6m",
+  // engine schema 13 — a dataset computed before the upgrade lacks them too
+  "croic", "net_operating_assets", "cash_runway_years", "sustainable_growth_rate",
+  "gross_margin_stability", "net_cash_to_market_cap", "ev_to_fcf",
 ]);
 const BUILD_TIME_REMEDY =
   "added at snapshot build time (FR-015) — recompute the snapshot" +

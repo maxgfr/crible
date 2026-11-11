@@ -126,6 +126,9 @@ ERRORS = [
     "constructor > 1",
     "__proto__ = 1",
     "toString IN (1, 2)",
+    # a schema-13 column on a dataset computed before the upgrade: recompute
+    "croic >= 0.15",
+    "piotroski_f > 1 AND ev_to_fcf <= 12",
     "piotroski_f > 1 AND hasOwnProperty > 2",
     "piotroski_f > valueOf",
     # caps: nesting depth and length

@@ -18,6 +18,16 @@ OPERATORS = {">": ">", ">=": ">=", "<": "<", "<=": "<=", "=": "=", "==": "=", "!
 # FR-015 columns exist only in snapshots computed after the upgrade — the
 # remedy is a recompute, not a spelling fix.
 BUILD_TIME_COLUMNS = set(RANK_COLUMNS) | {"rank_peer_group", "rank_missing_pillars", "return_6m"}
+# engine schema 13 — a dataset computed before the upgrade lacks them too
+BUILD_TIME_COLUMNS |= {
+    "croic",
+    "net_operating_assets",
+    "cash_runway_years",
+    "sustainable_growth_rate",
+    "gross_margin_stability",
+    "net_cash_to_market_cap",
+    "ev_to_fcf",
+}
 BUILD_TIME_REMEDY = (
     "added at snapshot build time (FR-015) — recompute the snapshot (`crible compute`) after upgrading"
 )

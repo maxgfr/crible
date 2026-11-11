@@ -462,6 +462,18 @@
       "hint": "no similar field exists"
     },
     {
+      "query": "croic >= 0.15",
+      "message": "unknown field 'croic' at position 0 — added at snapshot build time (FR-015) — recompute the snapshot (`crible compute`) after upgrading",
+      "position": 0,
+      "hint": "added at snapshot build time (FR-015) — recompute the snapshot (`crible compute`) after upgrading"
+    },
+    {
+      "query": "piotroski_f > 1 AND ev_to_fcf <= 12",
+      "message": "unknown field 'ev_to_fcf' at position 20 — added at snapshot build time (FR-015) — recompute the snapshot (`crible compute`) after upgrading",
+      "position": 20,
+      "hint": "added at snapshot build time (FR-015) — recompute the snapshot (`crible compute`) after upgrading"
+    },
+    {
       "query": "piotroski_f > 1 AND hasOwnProperty > 2",
       "message": "unknown field 'hasOwnProperty' at position 20 — no similar field exists",
       "position": 20,
