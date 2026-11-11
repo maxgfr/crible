@@ -161,6 +161,19 @@ describe("static client — company / search", () => {
     expect(periods?.params).toEqual(["AIR.PA"]);
   });
 
+  it("reads one company's history over HTTP once, not on every drawer open", async () => {
+    // snapshot_all stays a view over the remote Parquet (materialising every
+    // period of every company would hold the whole history in browser
+    // memory): the answer for a symbol is kept instead — the published
+    // dataset does not change while the page is open
+    const { runner, calls } = scriptedRunner();
+    const client = makeClient(runner);
+    const first = await client.company("AIR.PA");
+    const again = await client.company("AIR.PA");
+    expect(again).toEqual(first);
+    expect(calls.filter((c) => c.sql.includes("FROM snapshot_all"))).toHaveLength(1);
+  });
+
   it("returns empty periods for a universe-only symbol and null for unknown", async () => {
     const { runner } = scriptedRunner();
     const client = makeClient(runner);

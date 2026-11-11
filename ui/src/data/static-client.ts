@@ -32,6 +32,8 @@ export interface StaticClientOptions {
 }
 
 const MAX_LIMIT = 10_000; // mirrors crible.store.MAX_LIMIT
+// companies kept per page session (the oldest drops first) — a few hundred kB
+const COMPANY_CACHE_SIZE = 64;
 const NOT_PUBLISHED_HINT =
   "dataset not published yet — the nightly refresh publishes the first snapshot";
 
@@ -214,6 +216,28 @@ export function createStaticClient(options: StaticClientOptions = {}): DataClien
     }
   };
 
+  const companies = new Map<string, Promise<CompanyDetail | null>>();
+  const loadCompany = async (symbol: string): Promise<CompanyDetail | null> => {
+    if (!(await published())) return null;
+    const r = await runner();
+    const profiles = await r.query("SELECT * FROM universe WHERE symbol = ?", [symbol]);
+    const periods = await r.query(
+      "SELECT * FROM snapshot_all WHERE symbol = ? ORDER BY period DESC",
+      [symbol],
+    );
+    if (profiles.length === 0 && periods.length === 0) return null;
+    const profile =
+      profiles.length > 0
+        ? normalizeRow(profiles[0])
+        : Object.fromEntries(
+            ["symbol", "name", "country", "region", "sector"].map((k) => [
+              k,
+              normalizeRow(periods[0])[k] ?? null,
+            ]),
+          );
+    return { profile, periods: periods.map(normalizeRow) };
+  };
+
   return {
     manifest,
 
@@ -253,25 +277,20 @@ export function createStaticClient(options: StaticClientOptions = {}): DataClien
       return json<Preset[]>("presets.json", []);
     },
 
-    async company(symbol): Promise<CompanyDetail | null> {
-      if (!(await published())) return null;
-      const r = await runner();
-      const profiles = await r.query("SELECT * FROM universe WHERE symbol = ?", [symbol]);
-      const periods = await r.query(
-        "SELECT * FROM snapshot_all WHERE symbol = ? ORDER BY period DESC",
-        [symbol],
-      );
-      if (profiles.length === 0 && periods.length === 0) return null;
-      const profile =
-        profiles.length > 0
-          ? normalizeRow(profiles[0])
-          : Object.fromEntries(
-              ["symbol", "name", "country", "region", "sector"].map((k) => [
-                k,
-                normalizeRow(periods[0])[k] ?? null,
-              ]),
-            );
-      return { profile, periods: periods.map(normalizeRow) };
+    company(symbol): Promise<CompanyDetail | null> {
+      // snapshot_all stays a view over the remote Parquet (materialising
+      // every period of every company would hold the whole history in
+      // browser memory): each symbol's answer is kept instead — the dataset
+      // does not change while the page is open. A failure is not kept.
+      const kept = companies.get(symbol);
+      if (kept) return kept;
+      const answer = loadCompany(symbol).catch((err: unknown) => {
+        companies.delete(symbol);
+        throw err;
+      });
+      companies.set(symbol, answer);
+      if (companies.size > COMPANY_CACHE_SIZE) companies.delete(companies.keys().next().value as string);
+      return answer;
     },
 
     async status(): Promise<StatusResponse> {
