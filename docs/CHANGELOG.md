@@ -8,9 +8,26 @@
   `net_cash_to_market_cap` and `ev_to_fcf` — formulas, reading and caveats in
   `docs/INDICATORS.md` §27–33. Engine schema 13.
 - **Four presets**: Cash compounders, Net cash value, Short cash runway, Bloated balance sheet.
-- **Code audit** (`AUDIT.md`): 14 bugs fixed with regression tests, a full screen page served
-  ~16× faster, `stats` ~2.3× faster. `shareholder_yield` is now NULL across a split or unit
-  change (engine schema 12).
+- **Values that change on the next compute** (engine schema 13 rebuilds every row once):
+  `shareholder_yield` is NULL across a split or unit change; Ohlson O reads total assets in
+  millions (it was ~5.6 too low, so `O < 0` passed almost everyone); `net_debt_to_ebitda`
+  exists without a price; a split dated a day apart by two sources counts once; the price is
+  the newest positive close.
+- **Incremental compute follows reference data**: a row is rebuilt when the FX rates, the
+  listing or statements' currency, the split events or the warrant census it was built with
+  move — on the published dataset 4,417 market caps and 1,141 reporting currencies were stale.
+- **Ingest robustness**: the 429 breaker and SIGTERM are honoured everywhere (targeted
+  crawls, backoff and budget waits, price-refresh hangs); a ticker containing `429` is no
+  rate limit; atomic budget state; one compute at a time per data directory; a stray file,
+  a budget below one fetch or an oversized download no longer breaks a run; the quote
+  currency survives a price refresh; CVM keeps the latest refiling; a dead ESEF filing is
+  not refetched; EDGAR fetches an issuer's facts once for all its share classes.
+- **Faster API**: a full screen page ~16× faster to serve, `stats` ~2.3× faster.
+- **UI**: the CSV export stays in the app and says when it was cut at 10,000 rows; a
+  permalink without a sort always reads the default order; a corrected URL runs after a
+  failed screen; races in the company drawer, corrupt saved presets, a manifest missing a
+  field and `constructor`-like field names no longer break the app; static search is literal.
+- **`crible clean`** trusts only files crible writes and follows a symlinked data dir.
 
 ## Unreleased — 2026-07-17 (keyless-only)
 

@@ -388,8 +388,10 @@ def run_esef_sweep(
                     if history > 1 and hasattr(client, "filings_for_lei"):
                         # deep backfill: enumerate the filer's filings and merge
                         # the N most recent (one filings_for_lei + ≤N fetches)
-                        filings = client.filings_for_lei(lei) or [filing]
-                        frames = fetch_history_frames(client, filings, history)
+                        # its own name: rebinding `filings` here shadowed the
+                        # index page this loop iterates
+                        filer_filings = client.filings_for_lei(lei) or [filing]
+                        frames = fetch_history_frames(client, filer_filings, history)
                     else:
                         xbrl = client.fetch_xbrl_json(filing)
                         frames = facts_to_frames(xbrl) if xbrl else {}
