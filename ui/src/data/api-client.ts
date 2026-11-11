@@ -135,7 +135,16 @@ export const apiClient: DataClient = {
   prices,
   requestFetch,
   async exportCsv(query, sort, columns): Promise<CsvExport> {
-    return { url: exportCsvUrl(query, sort, columns) };
+    // fetched, not navigated to: a 4xx/404 used to replace the app with the
+    // server's raw JSON error, and the truncation header was never read
+    const response = await fetch(exportCsvUrl(query, sort, columns));
+    if (!response.ok) throw await apiError(response);
+    const truncated = Number(response.headers.get("X-Crible-Truncated"));
+    return {
+      blob: await response.blob(),
+      filename: "crible-screen.csv",
+      ...(Number.isFinite(truncated) && truncated > 0 ? { truncatedFrom: truncated } : {}),
+    };
   },
   async manifest(): Promise<SiteManifest | null> {
     return null; // live API — not a static build

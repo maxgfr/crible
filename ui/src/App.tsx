@@ -57,6 +57,8 @@ export const IDENTITY_COLUMNS = ["symbol", "name", "country", "sector"];
 // reads "every company, strongest composite first" — NULLS LAST sinks
 // symbols with missing pillars, and an explicit ?sort= in the URL wins
 const DEFAULT_QUERY = "";
+// the row cap of one export, both engines (crible.store.EXPORT_LIMIT)
+const EXPORT_CAP = 10_000;
 export const DEFAULT_SORT = "-composite_rank";
 export const PAGE_SIZE = 500;
 // one shared empty page — a fresh [] per render would defeat the grid's memo
@@ -108,6 +110,8 @@ export default function App() {
   const [statusLine, setStatusLine] = useState("");
   const [fieldInfos, setFieldInfos] = useState<FieldInfo[]>([]);
   const [exporting, setExporting] = useState(false);
+  // a truncated export says so next to the button (never a silent partial file)
+  const [exportNote, setExportNote] = useState<string | null>(null);
   const queryInputRef = useRef<HTMLInputElement>(null);
   // the id of the latest screen request — any other response is stale
   const reqId = useRef(0);
@@ -399,19 +403,22 @@ export default function App() {
                 setExporting(true);
                 try {
                   const csv = await exportCsv(ranQuery, sort, columns);
-                  if ("url" in csv) {
-                    window.location.assign(csv.url);
-                  } else {
-                    const url = URL.createObjectURL(csv.blob);
-                    const link = document.createElement("a");
-                    link.href = url;
-                    link.download = csv.filename;
-                    link.click();
-                    URL.revokeObjectURL(url);
-                  }
+                  const url = URL.createObjectURL(csv.blob);
+                  const link = document.createElement("a");
+                  link.href = url;
+                  link.download = csv.filename;
+                  link.click();
+                  // revoking at once cancels the download in some Firefox
+                  // and Safari versions: give the browser time to start it
+                  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                  setExportNote(
+                    csv.truncatedFrom
+                      ? `exported the first ${EXPORT_CAP.toLocaleString("en-US")} of ${csv.truncatedFrom.toLocaleString("en-US")} rows — narrow the query for the rest`
+                      : null,
+                  );
                 } catch (err) {
                   setError({
-                    error: `export failed: ${String(err)}`,
+                    error: `export failed: ${err instanceof Error ? err.message : String(err)}`,
                     position: null,
                     hint: "try again — the engine may still be loading",
                   });
@@ -422,6 +429,11 @@ export default function App() {
             >
               {exporting ? "Exporting…" : "Export all results (CSV)"}
             </button>
+            {exportNote && (
+              <span className="meta export-note" role="status">
+                {exportNote}
+              </span>
+            )}
           </div>
           {firstRun && statusData ? (
             <FirstRun statusData={statusData} />

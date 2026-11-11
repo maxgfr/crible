@@ -234,7 +234,7 @@ export function createStaticClient(options: StaticClientOptions = {}): DataClien
     },
 
     async exportCsv(query, sort, columns): Promise<CsvExport> {
-      const { rows } = await runScreen(query, sort, MAX_LIMIT, 0, columns?.length ? columns : undefined);
+      const { rows, total } = await runScreen(query, sort, MAX_LIMIT, 0, columns?.length ? columns : undefined);
       const keep =
         columns && columns.length
           ? columns.filter((c) => rows.length === 0 || c in rows[0])
@@ -242,7 +242,11 @@ export function createStaticClient(options: StaticClientOptions = {}): DataClien
       const lines = [keep.map(csvCell).join(",")];
       for (const row of rows) lines.push(keep.map((c) => csvCell(row[c])).join(","));
       const blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv" });
-      return { blob, filename: "crible-screen.csv" };
+      return {
+        blob,
+        filename: "crible-screen.csv",
+        ...(total > rows.length ? { truncatedFrom: total } : {}),
+      };
     },
 
     async presets(): Promise<Preset[]> {

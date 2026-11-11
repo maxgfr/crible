@@ -140,7 +140,14 @@ export interface QueryRunner {
 }
 
 /** api mode navigates to a server URL; static mode hands back a Blob. */
-export type CsvExport = { url: string } | { blob: Blob; filename: string };
+/** The CSV of a screen, ready to save. `truncatedFrom` is the full match
+ *  count when the export stopped at the row cap (10,000) — said out loud,
+ *  never a silently partial file. */
+export interface CsvExport {
+  blob: Blob;
+  filename: string;
+  truncatedFrom?: number;
+}
 
 export interface DataClient {
   /** `columns` is a projection hint: static mode reads only those (plus

@@ -233,6 +233,55 @@ describe("export", () => {
     await waitFor(() => expect(rtl.getAllByText("AIR.PA").length).toBeGreaterThan(0));
     expect(rtl.getByRole("button", { name: /Export all results/ })).toBeEnabled();
   });
+
+  it("downloads the CSV without leaving the app, and says when it was cut", async () => {
+    mockApi();
+    const working = globalThis.fetch;
+    const exports: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (String(url).startsWith("/api/screen.csv")) {
+          exports.push(String(url));
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers({ "X-Crible-Truncated": "25000" }),
+            blob: async () => new Blob(["symbol\nAIR.PA\n"], { type: "text/csv" }),
+          };
+        }
+        return working(url, init);
+      }),
+    );
+    const created = vi.fn(() => "blob:csv");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: created, revokeObjectURL: vi.fn() }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    render(<App />);
+    await waitFor(() => expect(rtl.getAllByText("AIR.PA").length).toBeGreaterThan(0));
+    fireEvent.click(rtl.getByRole("button", { name: /Export all results/ }));
+    await waitFor(() => expect(click).toHaveBeenCalled());
+    expect(exports).toHaveLength(1);
+    expect(created).toHaveBeenCalled();
+    expect(await rtl.findByText(/first 10,000 of 25,000 rows/)).toBeInTheDocument();
+  });
+
+  it("an export the server refuses shows its error and keeps the app", async () => {
+    mockApi();
+    const working = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) =>
+        String(url).startsWith("/api/screen.csv")
+          ? { ok: false, status: 404, json: async () => ({ detail: "no snapshot yet" }) }
+          : working(url, init),
+      ),
+    );
+    render(<App />);
+    await waitFor(() => expect(rtl.getAllByText("AIR.PA").length).toBeGreaterThan(0));
+    fireEvent.click(rtl.getByRole("button", { name: /Export all results/ }));
+    expect(await rtl.findByText(/no snapshot yet/)).toBeInTheDocument();
+    expect(rtl.getByRole("button", { name: /Export all results/ })).toBeEnabled();
+  });
 });
 
 describe("engine sort + pagination", () => {

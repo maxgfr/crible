@@ -197,6 +197,19 @@ describe("static client — CSV export", () => {
     expect(text).toContain('"Airbus, SAS"'); // comma → quoted
     const select = calls.find((c) => c.sql.includes("FROM snapshot_latest WHERE"));
     expect(select?.sql).toContain("LIMIT 10000");
+    expect(result.truncatedFrom).toBeUndefined(); // every match is in the file
+  });
+
+  it("says when the export stopped at the row cap", async () => {
+    const { runner } = scriptedRunner();
+    const capped: QueryRunner = {
+      async query(sql, params) {
+        const rows = await runner.query(sql, params);
+        return sql.includes("count(*) OVER ()") ? rows.map((r) => ({ ...r, __total: 25_000n })) : rows;
+      },
+    };
+    const result = await makeClient(capped).exportCsv("", null, ["symbol"]);
+    expect(result.truncatedFrom).toBe(25_000);
   });
 });
 
