@@ -77,12 +77,23 @@ function parse(payload: unknown, via: string): LiveQuote | null {
   };
 }
 
-export async function fetchLiveQuote(
+// one request per symbol at a time: concurrent callers share it
+const inFlight = new Map<string, Promise<LiveQuote | null>>();
+
+export function fetchLiveQuote(
   symbol: string,
   { proxies = proxiesAllowed() }: { proxies?: boolean } = {},
 ): Promise<LiveQuote | null> {
   const hit = cache.get(symbol);
-  if (hit && Date.now() - hit.at < TTL_MS) return hit.quote;
+  if (hit && Date.now() - hit.at < TTL_MS) return Promise.resolve(hit.quote);
+  const pending = inFlight.get(symbol);
+  if (pending) return pending;
+  const request = resolveQuote(symbol, proxies).finally(() => inFlight.delete(symbol));
+  inFlight.set(symbol, request);
+  return request;
+}
+
+async function resolveQuote(symbol: string, proxies: boolean): Promise<LiveQuote | null> {
   let quote: LiveQuote | null = null;
   for (const route of ROUTES) {
     if (route.proxy && !proxies) continue;
@@ -103,4 +114,5 @@ export async function fetchLiveQuote(
 
 export function clearLiveQuoteCache(): void {
   cache.clear();
+  inFlight.clear();
 }

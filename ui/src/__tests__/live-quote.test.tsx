@@ -62,6 +62,20 @@ describe("fetchLiveQuote", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("concurrent calls for one symbol share a single request", async () => {
+    // the grid row and the drawer asking at once each went to Yahoo
+    let answer: (value: unknown) => void = () => {};
+    const fetchMock = vi.fn(() => new Promise((resolve) => (answer = resolve)));
+    vi.stubGlobal("fetch", fetchMock);
+    const first = fetchLiveQuote("AIR.PA");
+    const second = fetchLiveQuote("AIR.PA");
+    answer(ok(YAHOO));
+    const [a, b] = await Promise.all([first, second]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(a?.price).toBe(123.45);
+    expect(b).toEqual(a);
+  });
+
   it("resolves null when every route fails", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new TypeError("down"));
     vi.stubGlobal("fetch", fetchMock);
