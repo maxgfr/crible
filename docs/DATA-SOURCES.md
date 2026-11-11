@@ -150,10 +150,12 @@ the same date settle by source priority (the dumps before a TradingView
 snapshot).
 
 The company drawer's **live quote** chip is display-only (never a score, a
-rank or the invest signal): it asks Yahoo's public chart endpoint directly,
-then — on the hosted static site only — through the corsproxy.io / allorigins
-mirrors, which see every ticker looked up. A self-hosted API build keeps them
-off unless `VITE_LIVE_QUOTE_PROXY=1` at build time; the chip names the route
+rank or the invest signal). On the hosted static site it asks Yahoo's public
+chart endpoint directly from the browser, then the corsproxy.io / allorigins
+mirrors, which see every ticker looked up. A self-hosted API build sends the
+ticker nowhere by default — no chip, no third-party request; its operator opts
+in at build time with `VITE_LIVE_QUOTE=1` (the direct Yahoo call) or
+`VITE_LIVE_QUOTE_PROXY=1` (direct, then the mirrors). The chip names the route
 the quote took.
 
 | Dump | Coverage | Access | Freshness | Terms |

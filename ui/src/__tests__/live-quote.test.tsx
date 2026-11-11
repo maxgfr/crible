@@ -57,8 +57,8 @@ describe("fetchLiveQuote", () => {
   it("caches per symbol — a second call within the TTL never refetches", async () => {
     const fetchMock = vi.fn().mockResolvedValue(ok(YAHOO));
     vi.stubGlobal("fetch", fetchMock);
-    await fetchLiveQuote("AIR.PA");
-    await fetchLiveQuote("AIR.PA");
+    await fetchLiveQuote("AIR.PA", { direct: true });
+    await fetchLiveQuote("AIR.PA", { direct: true });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -67,8 +67,8 @@ describe("fetchLiveQuote", () => {
     let answer: (value: unknown) => void = () => {};
     const fetchMock = vi.fn(() => new Promise((resolve) => (answer = resolve)));
     vi.stubGlobal("fetch", fetchMock);
-    const first = fetchLiveQuote("AIR.PA");
-    const second = fetchLiveQuote("AIR.PA");
+    const first = fetchLiveQuote("AIR.PA", { direct: true });
+    const second = fetchLiveQuote("AIR.PA", { direct: true });
     answer(ok(YAHOO));
     const [a, b] = await Promise.all([first, second]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -83,12 +83,26 @@ describe("fetchLiveQuote", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3); // every route tried once
   });
 
-  it("API mode never sends tickers to third-party proxies by default", async () => {
+  it("API mode sends the ticker nowhere by default", async () => {
+    // a self-hosted screener told Yahoo which company its user opened, on a
+    // browser request Yahoo's CORS policy may never even let through
     const fetchMock = vi.fn().mockRejectedValue(new TypeError("cors"));
     vi.stubGlobal("fetch", fetchMock);
     expect(await fetchLiveQuote("AIR.PA")).toBeNull(); // the test build is API mode
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0][0])).toMatch(/^https:\/\/query1\.finance\.yahoo\.com\//);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("VITE_LIVE_QUOTE=1 opts API mode into the direct Yahoo call only", async () => {
+    vi.stubEnv("VITE_LIVE_QUOTE", "1");
+    try {
+      const fetchMock = vi.fn().mockRejectedValue(new TypeError("cors"));
+      vi.stubGlobal("fetch", fetchMock);
+      expect(await fetchLiveQuote("AIR.PA")).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0][0])).toMatch(/^https:\/\/query1\.finance\.yahoo\.com\//);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("VITE_LIVE_QUOTE_PROXY=1 opts API mode into the proxies", async () => {
@@ -105,12 +119,13 @@ describe("fetchLiveQuote", () => {
 
   it("a direct answer is labelled as coming straight from Yahoo", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(ok(YAHOO)));
-    expect((await fetchLiveQuote("AIR.PA"))?.source).toBe("Yahoo Finance (direct)");
+    expect((await fetchLiveQuote("AIR.PA", { direct: true }))?.source).toBe("Yahoo Finance (direct)");
   });
 });
 
 describe("LiveQuote chip", () => {
   it("renders price, signed change and both vintages when the close is stale", async () => {
+    vi.stubEnv("VITE_LIVE_QUOTE", "1");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(ok(YAHOO)));
     render(<LiveQuote symbol="AIR.PA" asof="2020-01-02" />);
     await waitFor(() => expect(rtl.getByRole("status")).toBeInTheDocument());
@@ -120,6 +135,17 @@ describe("LiveQuote chip", () => {
     expect(chip).toHaveTextContent("dataset close 2020-01-02");
     expect(chip).toHaveTextContent(/unofficial/);
     expect(chip).toHaveTextContent("Yahoo Finance (direct)"); // the route is named
+    vi.unstubAllEnvs();
+  });
+
+  it("renders nothing and fetches nothing in a default API build", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ok(YAHOO));
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = render(<LiveQuote symbol="AIR.PA" asof="2020-01-02" />);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("fetches nothing when the published close is today's", async () => {

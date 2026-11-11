@@ -49,6 +49,18 @@ function proxiesAllowed(): boolean {
   );
 }
 
+// The direct browser → Yahoo call. On the hosted static site it is the point
+// of the chip; a self-hosted API build makes no call to a third party unless
+// its operator opts in at build time (VITE_LIVE_QUOTE=1, or the proxies'
+// VITE_LIVE_QUOTE_PROXY=1): the ticker a user opens stays on their server.
+function directAllowed(): boolean {
+  return (
+    import.meta.env.VITE_DATA_MODE === "static" ||
+    import.meta.env.VITE_LIVE_QUOTE === "1" ||
+    import.meta.env.VITE_LIVE_QUOTE_PROXY === "1"
+  );
+}
+
 const TIMEOUT_MS = 6_000;
 const TTL_MS = 60_000;
 const cache = new Map<string, { at: number; quote: LiveQuote | null }>();
@@ -82,21 +94,21 @@ const inFlight = new Map<string, Promise<LiveQuote | null>>();
 
 export function fetchLiveQuote(
   symbol: string,
-  { proxies = proxiesAllowed() }: { proxies?: boolean } = {},
+  { proxies = proxiesAllowed(), direct = directAllowed() || proxies }: { proxies?: boolean; direct?: boolean } = {},
 ): Promise<LiveQuote | null> {
   const hit = cache.get(symbol);
   if (hit && Date.now() - hit.at < TTL_MS) return Promise.resolve(hit.quote);
   const pending = inFlight.get(symbol);
   if (pending) return pending;
-  const request = resolveQuote(symbol, proxies).finally(() => inFlight.delete(symbol));
+  const request = resolveQuote(symbol, proxies, direct).finally(() => inFlight.delete(symbol));
   inFlight.set(symbol, request);
   return request;
 }
 
-async function resolveQuote(symbol: string, proxies: boolean): Promise<LiveQuote | null> {
+async function resolveQuote(symbol: string, proxies: boolean, direct: boolean): Promise<LiveQuote | null> {
   let quote: LiveQuote | null = null;
   for (const route of ROUTES) {
-    if (route.proxy && !proxies) continue;
+    if (route.proxy ? !proxies : !direct) continue;
     try {
       const signal =
         typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(TIMEOUT_MS) : undefined;
