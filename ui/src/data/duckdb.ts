@@ -57,7 +57,9 @@ export async function createDuckDbRunner(
 
     const conn = await db.connect();
     await loadParquet(conn, new URL(`${base}duckdb-ext`, document.baseURI).href);
-    await conn.query("CREATE VIEW universe AS SELECT * FROM read_parquet('universe.parquet')");
+    // a TABLE, read once (~5 MB): as a view over the remote file every
+    // search keystroke and every drawer re-read it over HTTP
+    await conn.query("CREATE TABLE universe AS SELECT * FROM read_parquet('universe.parquet')");
     await conn.query("CREATE VIEW snapshot_all AS SELECT * FROM read_parquet('snapshot.parquet')");
     await conn.query(`
       CREATE TABLE snapshot_latest AS

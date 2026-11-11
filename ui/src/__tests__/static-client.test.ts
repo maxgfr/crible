@@ -177,6 +177,14 @@ describe("static client — company / search", () => {
     const search = calls.find((c) => c.sql.includes("ILIKE"));
     expect(search?.params).toEqual(["%air%", "%air%", 20]);
   });
+
+  it("searches a literal substring: % and _ are not wildcards (the API's rule)", async () => {
+    const { runner, calls } = scriptedRunner();
+    await makeClient(runner).search("BRK_B 100%");
+    const search = calls.find((c) => c.sql.includes("ILIKE"));
+    expect(search?.sql).toContain("ESCAPE '\\'");
+    expect(search?.params).toEqual(["%BRK\\_B 100\\%%", "%BRK\\_B 100\\%%", 20]);
+  });
 });
 
 describe("static client — CSV export", () => {

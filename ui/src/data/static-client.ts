@@ -304,10 +304,12 @@ export function createStaticClient(options: StaticClientOptions = {}): DataClien
     async search(q): Promise<SearchHit[]> {
       if (!q.trim() || !(await published())) return [];
       const r = await runner();
+      // a literal substring, like the API: LIKE's own % and _ are escaped
+      const needle = q.trim().replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
       const rows = await r.query(
         "SELECT symbol, name, country, sector FROM universe" +
-          " WHERE symbol ILIKE ? OR name ILIKE ? ORDER BY symbol LIMIT ?",
-        [`%${q.trim()}%`, `%${q.trim()}%`, 20],
+          " WHERE symbol ILIKE ? ESCAPE '\\' OR name ILIKE ? ESCAPE '\\' ORDER BY symbol LIMIT ?",
+        [`%${needle}%`, `%${needle}%`, 20],
       );
       return rows.map(normalizeRow) as unknown as SearchHit[];
     },

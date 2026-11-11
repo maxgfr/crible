@@ -22,24 +22,28 @@ export function CoverageBanner() {
     );
   }
 
-  const refreshed = new Date(data.generated_at * 1000).toISOString().slice(0, 10);
-  const universe = data.universe_rows.toLocaleString("en-US");
-  const priceCoverage = data.prices
-    ? ` · daily prices for ${data.prices.symbols.toLocaleString("en-US")}`
-    : "";
+  // the manifest is published data, not code: a missing field drops its
+  // clause — it threw a RangeError here and took the whole app down
+  const count = (n: unknown) => (typeof n === "number" && Number.isFinite(n) ? n.toLocaleString("en-US") : null);
+  const stamp = typeof data.generated_at === "number" ? new Date(data.generated_at * 1000) : null;
+  const refreshed = stamp && !Number.isNaN(stamp.getTime()) ? ` · refreshed ${stamp.toISOString().slice(0, 10)}` : "";
+  const universe = count(data.universe_rows);
+  const searchable = universe ? ` · all ${universe} listings searchable` : "";
+  const companies = count(data.snapshot_symbols) ?? "the covered";
+  const priceSymbols = count(data.prices?.symbols);
+  const priceCoverage = priceSymbols ? ` · daily prices for ${priceSymbols}` : "";
   const REGION_LABEL: Record<string, string> = { europe: "EU", us: "US", world: "world" };
   const byRegion = data.snapshot_by_region
     ? ` (${Object.entries(data.snapshot_by_region)
-        .filter(([, n]) => n > 0)
+        .filter(([, n]) => typeof n === "number" && n > 0)
         .map(([region, n]) => `${REGION_LABEL[region] ?? region} ${n.toLocaleString("en-US")}`)
         .join(" · ")})`
     : "";
   return (
     <div className="coverage-banner" role="note">
-      Fundamentals for {data.snapshot_symbols.toLocaleString("en-US")} companies{byRegion} —
-      audited filings (SEC · ESEF) plus a polite crawl, growing nightly{priceCoverage} · all{" "}
-      {universe} listings searchable · refreshed {refreshed} · runs entirely in your browser
-      (DuckDB-WASM) · <a href="#/status">why not everything?</a>
+      Fundamentals for {companies} companies{byRegion} — audited filings (SEC · ESEF) plus a
+      polite crawl, growing nightly{priceCoverage}{searchable}{refreshed} · runs entirely in
+      your browser (DuckDB-WASM) · <a href="#/status">why not everything?</a>
     </div>
   );
 }

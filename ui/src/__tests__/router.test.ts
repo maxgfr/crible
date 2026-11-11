@@ -30,6 +30,13 @@ describe("parseHash", () => {
     });
   });
 
+  it("keeps a second, unencoded ? inside the query string", () => {
+    // a hand-typed #/?q=name = 'what?' lost everything after the second ?
+    expect(parseHash("#/?q=name = 'what?'&sort=symbol")).toEqual({
+      view: "screener", company: null, q: "name = 'what?'", sort: "symbol",
+    });
+  });
+
   it("never throws on a malformed escape (#/company/%E0)", () => {
     expect(parseHash("#/company/%E0")).toEqual({
       view: "screener", company: "%E0", q: null, sort: null,

@@ -26,7 +26,10 @@ function safeDecode(text: string): string {
 
 export function parseHash(hash: string): Route {
   const raw = hash.replace(/^#/, "");
-  const [path, search = ""] = raw.split("?", 2) as [string, string?];
+  // split on the FIRST ? only: a hand-typed value may hold another one
+  const cut = raw.indexOf("?");
+  const path = cut < 0 ? raw : raw.slice(0, cut);
+  const search = cut < 0 ? "" : raw.slice(cut + 1);
   const params = new URLSearchParams(search);
   const q = params.get("q");
   const sort = params.get("sort");
