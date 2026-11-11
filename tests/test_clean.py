@@ -14,6 +14,7 @@ runner = CliRunner()
 def marked_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
     (tmp_path / "universe.parquet").write_bytes(b"parquet")
+    (tmp_path / "crible.duckdb").write_bytes(b"duckdb")
     (tmp_path / "raw").mkdir()
     return tmp_path
 
@@ -76,3 +77,39 @@ def test_clean_aborts_when_confirmation_is_declined(marked_dir) -> None:
     assert result.exit_code != 0
     assert marked_dir.exists()
     assert (marked_dir / "universe.parquet").exists()
+
+
+def test_clean_refuses_a_folder_holding_only_downloaded_assets(tmp_path, monkeypatch) -> None:
+    """universe.parquet and snapshot.parquet are release assets anyone can
+    download: ~/Downloads holding them is not a crible dataset."""
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    (tmp_path / "universe.parquet").write_bytes(b"parquet")
+    (tmp_path / "snapshot.parquet").write_bytes(b"parquet")
+    (tmp_path / "taxes-2025.pdf").write_bytes(b"%PDF")
+    result = runner.invoke(app, ["clean", "--yes"])
+    assert result.exit_code == 1
+    assert (tmp_path / "taxes-2025.pdf").exists()
+
+
+@pytest.mark.parametrize("marker", ["crible.duckdb", "snapshot/base-schema.json", ".restored-manifest.json"])
+def test_clean_recognises_each_crible_written_marker(tmp_path, monkeypatch, marker) -> None:
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(tmp_path))
+    (tmp_path / marker).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / marker).write_text("{}")
+    result = runner.invoke(app, ["clean", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert not tmp_path.exists()
+
+
+def test_clean_follows_a_symlinked_data_dir(tmp_path, monkeypatch) -> None:
+    """data -> /mnt/disk/crible-data: rmtree refused the link with a
+    traceback. The dataset it points to is removed, then the link."""
+    real = tmp_path / "disk" / "crible-data"
+    (real / "raw" / "provider=yfinance" / "symbol=AAPL").mkdir(parents=True)
+    link = tmp_path / "data"
+    link.symlink_to(real, target_is_directory=True)
+    monkeypatch.setenv("CRIBLE_DATA_DIR", str(link))
+    result = runner.invoke(app, ["clean", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert not real.exists() and not link.is_symlink()
+    assert (tmp_path / "disk").exists()  # only the dataset went

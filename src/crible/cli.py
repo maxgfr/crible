@@ -205,10 +205,16 @@ def status() -> None:
 
 # files only crible writes mark a directory as a crible dataset — the guard
 # keeps a mistyped --data-dir from deleting an arbitrary folder (a bare raw/ or
-# snapshot/ folder is too common a name to count)
+# snapshot/ folder is too common a name to count, and universe.parquet /
+# snapshot.parquet are release assets anyone may have downloaded)
 # a raw layout counts only with a listing in it: an empty raw/provider=x/
 # (one mkdir) was enough to delete a directory full of foreign files
-_DATASET_MARKERS = ("universe.parquet", "crible.duckdb", "raw/provider=*/symbol=*")
+_DATASET_MARKERS = (
+    "crible.duckdb",
+    "raw/provider=*/symbol=*",
+    "snapshot/base-schema.json",
+    ".restored-manifest.json",
+)
 
 
 def _is_dataset(target: Path) -> bool:
@@ -237,10 +243,17 @@ def clean(
             fg=typer.colors.RED,
         )
         raise typer.Exit(code=1)
-    size_mb = sum(f.stat().st_size for f in target.rglob("*") if f.is_file()) / 1e6
+    # a symlinked data dir (data -> /mnt/disk/crible-data): the dataset is
+    # where it points — rmtree refuses a link — and the link goes with it
+    link = target if target.is_symlink() else None
+    real = target.resolve()
+    size_mb = sum(f.stat().st_size for f in real.rglob("*") if f.is_file()) / 1e6
     if not yes:
-        typer.confirm(f"delete {target} ({size_mb:.0f} MB)?", abort=True)
-    shutil.rmtree(target)
+        shown = f"{target} → {real}" if link else str(target)
+        typer.confirm(f"delete {shown} ({size_mb:.0f} MB)?", abort=True)
+    shutil.rmtree(real)
+    if link is not None:
+        link.unlink()
     typer.echo(f"removed {target} ({size_mb:.0f} MB freed)")
 
 
