@@ -263,6 +263,10 @@ describe("export", () => {
     expect(exports).toHaveLength(1);
     expect(created).toHaveBeenCalled();
     expect(await rtl.findByText(/first 10,000 of 25,000 rows/)).toBeInTheDocument();
+
+    // the note describes THAT export: the next screen clears it
+    window.location.hash = `#/?q=${encodeURIComponent("piotroski_f >= 7")}`;
+    await waitFor(() => expect(rtl.queryByText(/first 10,000 of 25,000 rows/)).not.toBeInTheDocument());
   });
 
   it("an export the server refuses shows its error and keeps the app", async () => {

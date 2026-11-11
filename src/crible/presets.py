@@ -277,8 +277,9 @@ _PRESETS = [
         name="Net cash value",
         description=(
             "Cash net of all debt worth at least a quarter of the market cap, and the whole"
-            " enterprise priced under 12× its free cash flow — financials left out (a bank's"
-            " cash is its customers')"
+            " enterprise priced under 12× its free cash flow — companies with a known,"
+            " non-financial sector only (a bank's cash is its customers', and an unknown"
+            " sector may be one)"
         ),
         dsl="net_cash_to_market_cap >= 0.25 AND ev_to_fcf <= 12 AND sector != 'Financials'",
         columns=(

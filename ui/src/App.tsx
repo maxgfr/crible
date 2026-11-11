@@ -144,6 +144,8 @@ export default function App() {
     const id = ++reqId.current;
     setRunning(true);
     setError(null);
+    // a truncation note describes the export of the PREVIOUS screen
+    setExportNote(null);
     const wanted = [...new Set([...visibleRef.current, ...extraColumns, ...fieldsInQuery(q)])];
     try {
       const response = await screen(q, sortNext, pageNext, PAGE_SIZE, wanted);
@@ -419,6 +421,7 @@ export default function App() {
                       : null,
                   );
                 } catch (err) {
+                  setExportNote(null);
                   setError({
                     error: `export failed: ${err instanceof Error ? err.message : String(err)}`,
                     position: null,
