@@ -139,8 +139,11 @@ def ohlson(canonical: pd.DataFrame) -> pd.DataFrame:
 
     Two documented deviations from the 1980 paper (crible is multi-currency and
     provider-agnostic, unlike the US-firm sample Ohlson fitted):
-    - the size term uses log(total_assets) directly instead of dividing total
-      assets by a US GNP price-level index (base 1968);
+    - the size term uses log(total_assets in MILLIONS of the reporting
+      currency) — Ohlson's Compustat units — instead of dividing by a US GNP
+      price-level index (base 1968). Raw units shifted every O by −5.6 (the
+      ohlson-safe preset passed almost everyone); a non-dollar filer still
+      carries its currency's scale (documented caveat);
     - funds-from-operations is proxied by operating cash flow (alternative:
       net_income + depreciation_and_amortization).
     OENEG/INTWO comparisons against NaN yield 0, but the arithmetic terms carry
@@ -150,7 +153,7 @@ def ohlson(canonical: pd.DataFrame) -> pd.DataFrame:
     ta = c["total_assets"]
     tl = c["total_liabilities"]
     ni = c["net_income"]
-    size = np.log(ta.where(ta > 0))
+    size = np.log(ta.where(ta > 0) / 1e6)
     oeneg = (tl > ta).astype(float)
     prev_ni = prior_period(ni)
     intwo = ((ni < 0) & (prev_ni < 0)).astype(float)

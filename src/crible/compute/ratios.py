@@ -166,6 +166,10 @@ def build_inputs(canonical: pd.DataFrame, price: pd.Series | None = None) -> dic
     # guard-only (no ratio parameter is named like this): see POSITIVE_DENOMINATORS
     inputs["_operating_ebitda"] = c["operating_income"] + c["depreciation_and_amortization"]
 
+    # net debt needs no price: an audited-only listing without a quote still
+    # gets net_debt_to_ebitda (it used to be built inside the price block)
+    inputs["net_debt"] = c["total_debt"] - c["cash_and_equivalents"]
+
     if price is not None:
         market_cap = price * price_shares(c)
         eps = c["net_income"] / c["shares_outstanding"]
@@ -173,7 +177,6 @@ def build_inputs(canonical: pd.DataFrame, price: pd.Series | None = None) -> dic
         alias(["market_cap", "market_capitalization"], market_cap)
         inputs["earnings_per_share"] = eps
         inputs["book_value_per_share"] = c["total_equity"] / price_shares(c)
-        inputs["net_debt"] = c["total_debt"] - c["cash_and_equivalents"]
         inputs["enterprise_value"] = market_cap + c["total_debt"] - c["cash_and_equivalents"]
 
     return inputs

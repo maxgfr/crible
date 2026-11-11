@@ -8,6 +8,8 @@ worked example whose components are analytically exact.
 
 from __future__ import annotations
 
+import math
+
 import pandas as pd
 import pytest
 
@@ -212,21 +214,34 @@ def test_fr003_zmijewski_matches_hand_computed_value() -> None:
 
 # --------------------------------------------------------------------- ohlson
 
+# a company with $1bn of assets (Ohlson's size term reads millions)
 OHLSON_FRAME = {
-    "income": {"NetIncome": [50.0, 80.0]},
+    "income": {"NetIncome": [50e6, 80e6]},
     "balance": {
-        "TotalAssets": [1000.0, 1000.0],
-        "TotalLiabilitiesNetMinorityInterest": [400.0, 400.0],
-        "CurrentAssets": [500.0, 500.0],
-        "CurrentLiabilities": [200.0, 200.0],
+        "TotalAssets": [1000e6, 1000e6],
+        "TotalLiabilitiesNetMinorityInterest": [400e6, 400e6],
+        "CurrentAssets": [500e6, 500e6],
+        "CurrentLiabilities": [200e6, 200e6],
     },
-    "cashflow": {"OperatingCashFlow": [100.0, 100.0]},
+    "cashflow": {"OperatingCashFlow": [100e6, 100e6]},
 }
+
+
+def test_fr003_ohlson_size_reads_millions_not_raw_units() -> None:
+    """In raw units every O was 0.407·ln(1e6) ≈ 5.6 lower: the ohlson-safe
+    preset passed almost everyone. The same ratios on a balance sheet a
+    thousand times smaller now score 0.407·ln(1000) higher (smaller is
+    riskier, per Ohlson)."""
+    small = {k: {f: [v / 1000 for v in vals] for f, vals in rows.items()} for k, rows in OHLSON_FRAME.items()}
+    big = ohlson(canonical_from(OHLSON_FRAME, ["2024", "2025"])).loc["2025", "ohlson_o"]
+    tiny = ohlson(canonical_from(small, ["2024", "2025"])).loc["2025", "ohlson_o"]
+    assert tiny - big == pytest.approx(0.407 * math.log(1000), abs=1e-9)
 
 
 def test_fr003_ohlson_o_matches_hand_computed_value() -> None:
     out = ohlson(canonical_from(OHLSON_FRAME, ["2024", "2025"]))
-    # Hand-worked from the 1980 coefficients (natural log; size = log(total_assets);
+    # Hand-worked from the 1980 coefficients (natural log; size = log(total
+    # assets in millions) = log(1000);
     # FFO ≈ operating cash flow; WC = CA-CL = 300; CHIN = 30/130): O ≈ -2.8855.
     assert out.loc["2025", "ohlson_o"] == pytest.approx(-2.8855, abs=1e-3)
     # needs the prior period → the first period is NaN, never fabricated
@@ -632,8 +647,7 @@ def test_fr003_price_ratio_growths_and_ncav_duplicate_are_not_emitted() -> None:
     assert "price_to_earnings_ratio_growth" not in snapshot.columns
     assert "market_cap_growth" not in snapshot.columns
     assert "revenue_growth" in snapshot.columns  # real growths stay
-    # net_debt only resolves when a price is passed, but its VALUES are a
-    # full series — the growth is real and must survive
+    # net_debt needs no price: its ratio is a full series, the growth is real
     assert "net_debt_to_ebitda_ratio_growth" in snapshot.columns
     assert "ncav" in snapshot.columns
     assert "net_current_asset_value" not in snapshot.columns
@@ -646,7 +660,20 @@ def test_fr003_price_dependent_ratio_columns_reflect_the_wiring() -> None:
     assert "price_to_earnings_ratio" in cols
     assert "market_cap" in cols
     assert "net_profit_margin" not in cols  # price-free ratio
-    assert "net_debt_to_ebitda_ratio" not in cols  # price-gated but full-series
+    assert "net_debt_to_ebitda_ratio" not in cols  # needs no price
+
+
+def test_fr003_net_debt_to_ebitda_exists_without_a_price() -> None:
+    """An audited-only listing without a quote had no net_debt_to_ebitda:
+    net debt was only built when a price was passed."""
+    from crible.compute.ratios import compute_ratios
+
+    canonical = _quickwin_canonical()
+    canonical["ebitda"] = [300.0] * 4
+    canonical["operating_income"] = [250.0] * 4
+    canonical["depreciation_and_amortization"] = [50.0] * 4
+    unpriced = compute_ratios(canonical)
+    assert unpriced.loc["2025", "net_debt_to_ebitda_ratio"] == pytest.approx((200.0 - 50.0) / 300.0)
 
 
 def test_fr003_stale_base_cache_columns_are_scrubbed() -> None:

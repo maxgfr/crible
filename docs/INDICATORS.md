@@ -101,7 +101,7 @@ souvent disponible.
 **Formula**
 
 ```
-O = −1.32 − 0.407·log(total_assets)
+O = −1.32 − 0.407·log(total_assets / 1,000,000)        (assets in millions, Ohlson's units)
         + 6.03·(total_liabilities / total_assets)
         − 1.43·(working_capital / total_assets)
         + 0.0757·(current_liabilities / current_assets)
@@ -128,15 +128,23 @@ correspond à > 50 % de probabilité modélisée de détresse. Comme `CHIN` et `
 deux années consécutives, **la première période d'une société est toujours `NaN`**.
 
 > **Caveats · Nuances** — Two documented deviations from the 1980 paper, because crible is
-> multi-currency and provider-agnostic (Ohlson fitted a US-firm sample): the size term uses
-> `log(total_assets)` directly instead of dividing assets by a US GNP price-level index; and
-> "funds from operations" is proxied by `operating_cashflow` (alternative: `net_income +
-> depreciation_and_amortization`). The practical cutoff is often stated as probability > 0.5
-> (`O > 0`); Ohlson's own misclassification-minimising cutoff was ≈ 0.038.
+> multi-currency and provider-agnostic (Ohlson fitted a US-firm sample): the size term takes
+> total assets in millions of the reporting currency (Ohlson's Compustat units) instead of
+> dividing them by a US GNP price-level index; and "funds from operations" is proxied by
+> `operating_cashflow` (alternative: `net_income + depreciation_and_amortization`). Until
+> engine schema 13 the size term read raw units, which lowered every O by about 5.6 and let
+> `O < 0` pass almost every company. A filer in a currency far from the dollar's scale (JPY,
+> IDR) still carries it: `0.407·ln(150)` ≈ 2 points for yen. The practical cutoff is often
+> stated as probability > 0.5 (`O > 0`); Ohlson's own misclassification-minimising cutoff
+> was ≈ 0.038.
 > · Deux écarts documentés au papier de 1980, crible étant multi-devises et agnostique du
-> fournisseur : le terme de taille utilise `log(total_assets)` au lieu de diviser l'actif par
-> un indice de prix PNB américain ; et les « funds from operations » sont approximés par
-> `operating_cashflow`. Le seuil pratique est souvent une probabilité > 0,5 (`O > 0`).
+> fournisseur : le terme de taille prend l'actif en millions de la devise de publication (les
+> unités Compustat d'Ohlson) au lieu de le diviser par un indice de prix PNB américain ; et
+> les « funds from operations » sont approximés par `operating_cashflow`. Jusqu'au schéma 13,
+> le terme lisait des unités brutes, ce qui abaissait chaque O d'environ 5,6 et laissait
+> passer presque toutes les sociétés sous `O < 0`. Une devise d'échelle éloignée du dollar
+> (JPY, IDR) garde son biais : ≈ 2 points pour le yen. Le seuil pratique est souvent une
+> probabilité > 0,5 (`O > 0`).
 
 ---
 

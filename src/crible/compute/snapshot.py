@@ -928,7 +928,9 @@ BASE_REFERENCE_NAME = "base-reference.parquet"
 #     above 100 %, P/E below 1, P/B ≤ 0).
 # 12: values only — shareholder_yield nulled across a split / unit change.
 # 13: + net_operating_assets, croic, cash_runway_years, sustainable_growth_rate,
-#     gross_margin_stability, net_cash_to_market_cap, ev_to_fcf
+#     gross_margin_stability, net_cash_to_market_cap, ev_to_fcf; values:
+#     Ohlson's size term in millions, net_debt_to_ebitda without a price,
+#     split de-duplication across sources, the newest positive close
 ENGINE_SCHEMA_VERSION = 13
 
 
