@@ -217,8 +217,8 @@ export function createStaticClient(options: StaticClientOptions = {}): DataClien
   };
 
   const companies = new Map<string, Promise<CompanyDetail | null>>();
+  // the manifest check lives in company(), before the cache
   const loadCompany = async (symbol: string): Promise<CompanyDetail | null> => {
-    if (!(await published())) return null;
     const r = await runner();
     const profiles = await r.query("SELECT * FROM universe WHERE symbol = ?", [symbol]);
     const periods = await r.query(
@@ -277,11 +277,14 @@ export function createStaticClient(options: StaticClientOptions = {}): DataClien
       return json<Preset[]>("presets.json", []);
     },
 
-    company(symbol): Promise<CompanyDetail | null> {
+    async company(symbol): Promise<CompanyDetail | null> {
       // snapshot_all stays a view over the remote Parquet (materialising
       // every period of every company would hold the whole history in
       // browser memory): each symbol's answer is kept instead — the dataset
-      // does not change while the page is open. A failure is not kept.
+      // does not change while the page is open. A failure is not kept, and
+      // neither is the null of a manifest that could not be read (a network
+      // blip is retried on the next call, like everywhere else here).
+      if (!(await published())) return null;
       const kept = companies.get(symbol);
       if (kept) return kept;
       const answer = loadCompany(symbol).catch((err: unknown) => {

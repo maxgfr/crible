@@ -174,6 +174,22 @@ describe("static client — company / search", () => {
     expect(calls.filter((c) => c.sql.includes("FROM snapshot_all"))).toHaveLength(1);
   });
 
+  it("a network blip on the manifest never keeps a company « not found »", async () => {
+    // a deep link opened during a blip: the manifest fetch throws, company()
+    // answers null — that null must not be kept once the network is back
+    const { runner } = scriptedRunner();
+    const ok = stubFetch(FILES);
+    let blip = true;
+    const flaky = vi.fn(async (url: string) => {
+      if (blip) throw new TypeError("network down");
+      return ok(url);
+    }) as unknown as typeof fetch;
+    const client = createStaticClient({ runner: async () => runner, fetchImpl: flaky, baseUrl: "/" });
+    expect(await client.company("AIR.PA")).toBeNull();
+    blip = false;
+    expect((await client.company("AIR.PA"))?.profile.symbol).toBe("AIR.PA");
+  });
+
   it("returns empty periods for a universe-only symbol and null for unknown", async () => {
     const { runner } = scriptedRunner();
     const client = makeClient(runner);

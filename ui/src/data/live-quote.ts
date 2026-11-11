@@ -1,10 +1,11 @@
 // Best-effort real-time quote for stale published data. The dataset ships
 // nightly EOD closes; when the latest close is not from today (UTC), the
 // drawer tops it up from Yahoo's public chart endpoint — direct first, then
-// public CORS mirrors (Yahoo sends no CORS headers itself). The mirrors are
-// third parties that see every ticker looked up: they are ON for the hosted
-// static site (no server of its own) and OFF for a self-hosted API build
-// unless VITE_LIVE_QUOTE_PROXY=1. Failures are silent: the chip simply
+// public CORS mirrors. The mirrors are third parties that see every ticker
+// looked up. The hosted static site (no server of its own) uses both; a
+// self-hosted API build makes NO third-party call by default — its operator
+// opts in with VITE_LIVE_QUOTE=1 (direct) or VITE_LIVE_QUOTE_PROXY=1 (direct,
+// then the mirrors). Failures are silent: the chip simply
 // doesn't render and the published as-of stays the honest truth. The quote
 // is display-only — it never feeds a score, a rank or the invest signal.
 
