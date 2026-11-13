@@ -16,7 +16,7 @@ RUN --mount=type=cache,target=/root/.npm \
 COPY ui/ ./
 RUN npm run build
 
-FROM python:3.12.15-slim AS builder
+FROM python:3.12.16-slim AS builder
 COPY --from=uv /uv /bin/uv
 # UV_LINK_MODE=copy: the cache mount is a separate filesystem, hardlinks
 # into .venv would fail
@@ -35,7 +35,7 @@ COPY src/ src/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable
 
-FROM python:3.12.15-slim AS runtime
+FROM python:3.12.16-slim AS runtime
 ENV PYTHONUNBUFFERED=1 \
     CRIBLE_DATA_DIR=/data \
     PATH="/app/.venv/bin:$PATH"
